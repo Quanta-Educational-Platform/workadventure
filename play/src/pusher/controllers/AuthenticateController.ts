@@ -135,7 +135,9 @@ export class AuthenticateController extends BaseHttpController {
             );
             res.cookie("playUri", query.playUri, {
                 httpOnly: true, // dont let browser javascript access cookie ever
-                secure: req.secure, // only use cookie over https
+                // quanta: rooms open framed inside Quanta, behind TLS-terminating Traefik (req.secure is false)
+                secure: true,
+                sameSite: "none",
             });
 
             res.redirect(loginUri);
@@ -603,7 +605,9 @@ export class AuthenticateController extends BaseHttpController {
             // save the playUri in cookie to redirect to the world after logout
             res.cookie("playUri", query.playUri, {
                 httpOnly: true, // dont let browser javascript access cookie ever
-                secure: req.secure, // only use cookie over https
+                // quanta: rooms open framed inside Quanta, behind TLS-terminating Traefik (req.secure is false)
+                secure: true,
+                sameSite: "none",
             });
             res.redirect(query.redirect);
         });

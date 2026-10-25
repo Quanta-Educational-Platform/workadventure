@@ -41,6 +41,7 @@ import { subscribeToOutboundVideoQualityAnalytics } from "../WebRtc/VideoQuality
 import { LIVEKIT_PIXEL_DENSITY } from "../Enum/EnvironmentVariable";
 import { audioPlaybackStore } from "../Stores/AudioPlaybackStore";
 import { SCRIPTING_AUDIO_TRACK_NAME } from "./LivekitConstants";
+import { startCameraCap } from "./CameraCap";
 import { LiveKitParticipant } from "./LivekitParticipant";
 import type { LiveKitRoomInterface } from "./LiveKitRoomInterface";
 
@@ -328,6 +329,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             // instead of calling replaceTrack() on an unpublished track.
             this.localCameraTrack = cameraTrack;
             this.cameraAnalyticsUnsubscribe = this.subscribeToEncoderAnalytics(cameraTrack, "video");
+            if (this.room) startCameraCap(this.room, cameraTrack);
         } else {
             await this.localCameraTrack.replaceTrack(videoTrack, {
                 userProvidedTrack: true,

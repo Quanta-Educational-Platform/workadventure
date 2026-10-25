@@ -25,6 +25,21 @@ export interface RecordingEventPayload {
 
 const RECORDING_EVENT_RETRY_DELAYS_MS = [250, 1_000, 4_000];
 
+// quanta: Admin API errors carry ADMIN_API_TOKEN in their request, and are logged whole: keep only
+// the method, path, status and answer.
+axios.interceptors.response.use(undefined, (error: unknown) => {
+    const url = isAxiosError(error) ? error.config?.url : undefined;
+    if (isAxiosError(error) && ADMIN_API_URL && url?.startsWith(ADMIN_API_URL)) {
+        const config = { method: error.config?.method, url: url.split("?")[0], timeout: error.config?.timeout };
+        error.config = config as typeof error.config;
+        error.request = undefined;
+        if (error.response) {
+            const { status, statusText, headers, data } = error.response;
+            error.response = { status, statusText, headers, data, config } as typeof error.response;
+        }
+    }
+    return Promise.reject(error);
+});
 class AdminApi {
     /**
      * Tells the admin that a recording egress ended. Retried a few times on
@@ -37,7 +52,7 @@ class AdminApi {
             return;
         }
 
-        const url = new URL("api/recordings/events", ADMIN_API_URL).toString();
+        const url = `${ADMIN_API_URL}/api/recordings/events`;
         const send = async (attempt: number): Promise<void> => {
             try {
                 await axios.post(url, payload, {
@@ -73,7 +88,7 @@ class AdminApi {
             playUri,
         };
 
-        const res = await axios.get(new URL("api/livekit/credentials", ADMIN_API_URL).toString(), {
+        const res = await axios.get(`${ADMIN_API_URL}/api/livekit/credentials`, {
             headers: {
                 Authorization: `${ADMIN_API_TOKEN ?? ""}`,
                 Accept: "application/json",
@@ -93,7 +108,7 @@ class AdminApi {
         };
 
         try {
-            const res = await axios.get(new URL("api/map", ADMIN_API_URL).toString(), {
+            const res = await axios.get(`${ADMIN_API_URL}/api/map`, {
                 headers: {
                     Authorization: `${ADMIN_API_TOKEN ?? ""}`,
                     Accept: "application/json",

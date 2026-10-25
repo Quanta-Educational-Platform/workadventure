@@ -117,6 +117,48 @@ export type FetchMemberDataByUuidResponse = z.infer<typeof isFetchMemberDataByUu
 
 export type FetchWorldChatMembers = z.infer<typeof isFetchWorldChatMembers>;
 
+// quanta: the access token, email and a playUri still carrying ?token= went to the Admin API as query
+// parameters, into every request log on the way: they travel as headers instead (Quanta reads those).
+axios.interceptors.request.use((config) => {
+    const params = config.params as Record<string, unknown> | undefined;
+    if (!ADMIN_API_URL || !params || !config.url?.startsWith(ADMIN_API_URL)) return config;
+    const moved: Record<string, string> = {
+        accessToken: "X-Wa-Access-Token",
+        userIdentifier: "X-Wa-User-Identifier",
+        userId: "X-Wa-User-Id",
+    };
+    const rest: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(params)) {
+        if (moved[key] && typeof value === "string") config.headers.set(moved[key], value);
+        else if (key === "playUri" && typeof value === "string") {
+            try {
+                const url = new URL(value);
+                url.searchParams.delete("token");
+                rest[key] = url.toString();
+            } catch {
+                rest[key] = value;
+            }
+        } else rest[key] = value;
+    }
+    config.params = rest;
+    return config;
+});
+// quanta: Admin API errors carry the tokens in their request, and are logged whole: keep only the
+// method, path, status and answer.
+axios.interceptors.response.use(undefined, (error: unknown) => {
+    const bases = [ADMIN_API_URL, ADMIN_URL].filter((base): base is string => !!base);
+    const url = isAxiosError(error) ? error.config?.url : undefined;
+    if (isAxiosError(error) && url && bases.some((base) => url.startsWith(base))) {
+        const config = { method: error.config?.method, url: url.split("?")[0], timeout: error.config?.timeout };
+        error.config = config as typeof error.config;
+        error.request = undefined;
+        if (error.response) {
+            const { status, statusText, headers, data } = error.response;
+            error.response = { status, statusText, headers, data, config } as typeof error.response;
+        }
+    }
+    return Promise.reject(error);
+});
 class AdminApi implements AdminInterface {
     private capabilities: Capabilities = {};
     private capabilitiesDeferred = new Deferred<Capabilities>();

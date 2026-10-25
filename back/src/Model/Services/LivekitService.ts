@@ -69,7 +69,10 @@ export class LivekitWebhookError extends Error {
     }
 }
 
-export function getLivekitRoomName(roomName: string): string {
+export function getLivekitRoomName(spaceName: string): string {
+    // quanta: instances on one host share one LiveKit, whose rooms are global: the prefix keeps
+    // prod's and staging's calls (and their cleanups) apart.
+    const roomName = (process.env.LIVEKIT_ROOM_PREFIX ?? "") + spaceName;
     return roomName.length > 250
         ? crypto.createHash("sha256").update(roomName).digest("hex").substring(0, 250)
         : roomName;
@@ -132,6 +135,8 @@ export class LiveKitService {
             metadata: JSON.stringify({
                 userId: user.spaceUserId,
                 uuid: user.uuid,
+                // quanta: the front's camera cap leaves moderators' cameras at full quality
+                moderator: user.tags.includes("admin"),
             }),
         });
 

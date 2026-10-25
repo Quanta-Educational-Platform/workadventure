@@ -1,0 +1,29 @@
+# A staging candidate: quanta-wa's tree published to the public fork, whose Actions build its images.
+# Every merge to main makes one; any branch can be built by hand.
+name: Quanta candidate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch to build (main also extends the fork's quanta branch)
+        required: true
+        default: main
+concurrency: quanta-publish
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: github.repository == 'Quanta-Educational-Platform/quanta-wa'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - run: .github/quanta/snapshot.sh
+        env:
+          PUBLIC_FORK_DEPLOY_KEY: ${{ secrets.PUBLIC_FORK_DEPLOY_KEY }}
+          SOURCE_REF: ${{ inputs.ref || github.ref_name }}

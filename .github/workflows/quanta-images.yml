@@ -1,0 +1,78 @@
+# Runs in the public fork only, on tags the release bot pushes (quanta-wa's .github/quanta/snapshot.sh and
+# quanta-release.yml). A candidate (quanta-v1.34.4-rc.3) builds play, back and map-storage from its commit;
+# a release (quanta-v1.34.4-q2) gives the images of the candidate on the same commit the release tag,
+# digests unchanged. Never runs for pull requests.
+name: Quanta images
+on:
+  push:
+    tags: ["quanta-v*"]
+permissions: {}
+env:
+  REGISTRY: ghcr.io/quanta-educational-platform
+jobs:
+  build:
+    if: github.repository == 'Quanta-Educational-Platform/workadventure' && contains(github.ref_name, '-rc.')
+    strategy:
+      matrix:
+        service: [play, back, map-storage]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/wa-${{ matrix.service }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/wa-${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/wa-${{ matrix.service }}:buildcache,mode=max
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/wa-${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - run: echo "${{ env.REGISTRY }}/wa-${{ matrix.service }}@${{ steps.build.outputs.digest }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  release:
+    if: github.repository == 'Quanta-Educational-Platform/workadventure' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the candidate's images
+        run: |
+          set -euo pipefail
+          candidate=$(git tag --points-at HEAD 'quanta-v*-rc.*' | sort -V | tail -1)
+          [ -n "$candidate" ] || { echo "no candidate on this commit"; exit 1; }
+          for service in play back map-storage; do
+            docker buildx imagetools create -t "$REGISTRY/wa-$service:$GITHUB_REF_NAME" "$REGISTRY/wa-$service:$candidate"
+            echo "$REGISTRY/wa-$service:$GITHUB_REF_NAME = $candidate@$(docker buildx imagetools inspect "$REGISTRY/wa-$service:$candidate" --format '{{.Manifest.Digest}}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          done

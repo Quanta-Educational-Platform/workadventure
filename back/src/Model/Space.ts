@@ -844,6 +844,8 @@ export class Space implements CustomJsonReplacerInterface, ICommunicationSpace {
     }
 
     public async startRecording(user: SpaceUser) {
+        // quanta: only who runs the room records (the admin tag Quanta gives course staff, never a client)
+        if (!user.tags.includes("admin")) throw new Error("Only the room's moderators may record");
         try {
             await this.communicationManager.handleStartRecording(user);
         } catch (error) {

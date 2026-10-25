@@ -38,6 +38,8 @@ class OpenIDClient {
                         client_secret: OPID_CLIENT_SECRET,
                         redirect_uris: [OPID_CLIENT_REDIRECT_URL],
                         response_types: ["code"],
+                        // quanta: Supabase signs ID tokens with ES256; openid-client otherwise expects RS256
+                        id_token_signed_response_alg: process.env.OPENID_ID_TOKEN_SIGNED_RESPONSE_ALG || "RS256",
                     });
                 })
                 .catch((e) => {
@@ -52,6 +54,8 @@ class OpenIDClient {
                                 client_secret: OPID_CLIENT_SECRET,
                                 redirect_uris: [OPID_CLIENT_REDIRECT_URL],
                                 response_types: ["code"],
+                                id_token_signed_response_alg:
+                                    process.env.OPENID_ID_TOKEN_SIGNED_RESPONSE_ALG || "RS256",
                             });
                         })
                         .catch((e) => {
@@ -83,7 +87,9 @@ class OpenIDClient {
             // it should be httpOnly (not readable by javascript) and encrypted.
             res.cookie("code_verifier", this.encrypt(code_verifier), {
                 httpOnly: true, // dont let browser javascript access cookie ever
-                secure: req.secure, // only use cookie over https
+                // quanta: rooms open framed inside Quanta, behind TLS-terminating Traefik (req.secure is false)
+                secure: true,
+                sameSite: "none",
             });
 
             // We also store the state in cookies. The state should not be needed, except for older OpenID client servers that
@@ -91,7 +97,9 @@ class OpenIDClient {
             const state = v4();
             res.cookie("oidc_state", state, {
                 httpOnly: true, // dont let browser javascript access cookie ever
-                secure: req.secure, // only use cookie over https
+                // quanta: rooms open framed inside Quanta, behind TLS-terminating Traefik (req.secure is false)
+                secure: true,
+                sameSite: "none",
             });
 
             const code_challenge = generators.codeChallenge(code_verifier);

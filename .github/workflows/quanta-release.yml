@@ -1,0 +1,40 @@
+# Releases a tested staging candidate: tags its very commit quanta-<upstream release>-q<n> in the public
+# fork, where the candidate's images get the release tag too (same digests, nothing rebuilt).
+name: Quanta release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: The candidate tag tested on staging, e.g. quanta-v1.34.4-rc.3
+        required: true
+concurrency: quanta-publish
+permissions:
+  contents: read
+jobs:
+  release:
+    if: github.repository == 'Quanta-Educational-Platform/quanta-wa'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Tag the candidate as a release
+        env:
+          PUBLIC_FORK_DEPLOY_KEY: ${{ secrets.PUBLIC_FORK_DEPLOY_KEY }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE" =~ ^quanta-(v[0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]] || { echo "not a candidate tag: $CANDIDATE"; exit 1; }
+          base=${BASH_REMATCH[1]}
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf "$ssh_dir"' EXIT
+          printf '%s\n' "$PUBLIC_FORK_DEPLOY_KEY" > "$ssh_dir/key"
+          chmod 600 "$ssh_dir/key"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+          public=git@github.com:Quanta-Educational-Platform/workadventure.git
+          git init --quiet -b x .
+          git fetch --quiet --no-tags "$public" "+refs/tags/quanta-$base-*:refs/tags/quanta-$base-*"
+          commit=$(git rev-parse "refs/tags/$CANDIDATE^{commit}")
+          last=$(git tag -l "quanta-$base-q*" | sed 's/.*-q//' | sort -n | tail -1)
+          tag="quanta-$base-q$(( ${last:-0} + 1 ))"
+          git tag "$tag" "$commit"
+          git push --quiet "$public" "refs/tags/$tag"
+          echo "Released $CANDIDATE as $tag." | tee -a "$GITHUB_STEP_SUMMARY"

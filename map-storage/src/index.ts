@@ -190,6 +190,23 @@ app.get(
     proxyFiles(fileSystem),
 );
 
+// quanta: private files (map attachments) are checked by verifyJWT on the literal /private/files/
+// route only; the catch-all below decodes the path again, so an encoded /private/%66iles/... reached
+// them unchecked.
+app.use((req, res, next) => {
+    let p: string;
+    try {
+        p = decodeURIComponent(req.path.replace(/\+/g, " "));
+    } catch {
+        res.status(400).send("Invalid request");
+        return;
+    }
+    if (/(^|\/)private\//i.test(p)) {
+        res.status(404).send("Not found");
+        return;
+    }
+    next();
+});
 app.use(proxyFiles(fileSystem));
 
 // Check that the dist-ui directory exists
