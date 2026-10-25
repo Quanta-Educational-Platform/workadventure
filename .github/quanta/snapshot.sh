@@ -16,6 +16,11 @@ echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH
 export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
 
 base=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+# The base becomes a parent of the public commit, so everything behind it is published: it must be
+# upstream's own release, never a tag someone made here on one of our commits.
+upstream=$(git ls-remote https://github.com/workadventure/workadventure "refs/tags/$base" "refs/tags/$base^{}" |
+  awk -v t="refs/tags/$base" '$2 == t "^{}" { peeled = $1 } $2 == t { plain = $1 } END { print peeled ? peeled : plain }')
+[ -n "$upstream" ] && [ "$upstream" = "$(git rev-parse "$base^{commit}")" ] || { echo "$base is not upstream WorkAdventure's $base" >&2; exit 1; }
 git fetch --quiet --no-tags "$public" "+refs/tags/quanta-*:refs/tags/quanta-*"
 has_branch=$(git ls-remote --heads "$public" quanta | wc -l)
 [ "$has_branch" -eq 0 ] || git fetch --quiet --no-tags "$public" "+refs/heads/quanta:refs/remotes/public/quanta"
@@ -37,5 +42,6 @@ commit=$(GIT_AUTHOR_NAME="Quanta release bot" GIT_AUTHOR_EMAIL="noreply@quanta.w
 git tag "$tag" "$commit"
 refs=("refs/tags/$tag")
 [ "$SOURCE_REF" != main ] || refs+=("$commit:refs/heads/quanta")
-git push --quiet "$public" "${refs[@]}"
+# All or nothing: a tag without its branch update would build images for a snapshot main never got.
+git push --quiet --atomic "$public" "${refs[@]}"
 echo "Published $tag ($SOURCE_REF): the images build in the public fork's Actions." | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
