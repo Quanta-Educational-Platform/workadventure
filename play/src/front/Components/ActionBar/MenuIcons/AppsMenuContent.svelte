@@ -21,6 +21,7 @@
         showModalGlobalComminucationVisibilityStore,
     } from "../../../Stores/ModalStore";
     import { mapEditorModeStore } from "../../../Stores/MapEditorStore";
+    import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
     import { chatVisibilityStore } from "../../../Stores/ChatStore";
     import { userIsAdminStore } from "../../../Stores/GameStore";
     import { showRecordingList } from "../../../Stores/RecordingStore";
@@ -77,8 +78,8 @@
     }
 </script>
 
-<!-- Room list part -->
-{#if $roomListActivated || $userIsAdminStore}
+<!-- Room list part. quanta: no unconfigured apps advertised to admins -->
+{#if $roomListActivated || ($userIsAdminStore && !QUANTA_UI)}
     <ActionBarButton
         onclick={showRoomList}
         onkeydown={showRoomList}
@@ -89,7 +90,8 @@
     </ActionBarButton>
 {/if}
 
-{#if recording?.buttonState !== "hidden" && $userIsConnected}
+<!-- quanta: recordings live on the course page in Quanta -->
+{#if recording?.buttonState !== "hidden" && $userIsConnected && !QUANTA_UI}
     <ActionBarButton
         classList="group/btn-recording-list"
         onclick={() => {
@@ -106,7 +108,7 @@
 {/if}
 
 <!-- Calendar integration -->
-{#if $isCalendarActivatedStore || $userIsAdminStore}
+{#if $isCalendarActivatedStore || ($userIsAdminStore && !QUANTA_UI)}
     <ActionBarButton
         onclick={openExternalModuleCalendar}
         label={$LL.actionbar.calendar()}
@@ -116,7 +118,7 @@
     </ActionBarButton>
 {/if}
 
-{#if $isTodoListActivatedStore || $userIsAdminStore}
+{#if $isTodoListActivatedStore || ($userIsAdminStore && !QUANTA_UI)}
     <ActionBarButton
         onclick={openExternalModuleTodoList}
         label={$LL.actionbar.todoList()}

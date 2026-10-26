@@ -5,7 +5,13 @@
     import { requestVisitCardsStore } from "../Stores/GameStore";
     import { helpNotificationSettingsVisibleStore, helpWebRtcSettingsVisibleStore } from "../Stores/HelpSettingsStore";
     import { helpSettingsPopupBlockedStore } from "../Stores/HelpSettingsPopupBlockedStore";
-    import { menuVisiblilityStore, warningBannerStore } from "../Stores/MenuStore";
+    import {
+        activeSubMenuStore,
+        menuVisiblilityStore,
+        subMenusStore,
+        SubMenusInterface,
+        warningBannerStore,
+    } from "../Stores/MenuStore";
     import { textMessageStore } from "../Stores/TypeMessageStore/TextMessageStore";
     import { soundPlayingStore } from "../Stores/SoundPlayingStore";
     import { modalVisibilityStore, roomListVisibilityStore, showLimitRoomModalStore } from "../Stores/ModalStore";
@@ -45,6 +51,8 @@
     import type { WorkAdventureComponent } from "../../types/component";
     import { LL } from "../../i18n/i18n-svelte";
     import { sidePanelWidthStore } from "../Stores/SidePanelStore";
+    import QuantaSettings from "../quanta/QuantaSettings.svelte";
+    import { QUANTA_UI } from "../Enum/EnvironmentVariable";
     import { mapEditorSideBarWidthStore } from "./MapEditor/MapEditorSideBarWidthStore";
     import { calendarRemindersStore, startCalendarReminders } from "./Calendar/CalendarReminder";
     import ActionBar from "./ActionBar/ActionBar.svelte";
@@ -243,6 +251,15 @@
     function exitHighlightFullscreen() {
         highlightFullScreen.set(false);
     }
+
+    // quanta: the WA menu entries the settings dialog shows as tabs
+    let quantaSettingsTab = $derived.by((): "settings" | "shortcuts" | "globalMessages" | undefined => {
+        const key = $subMenusStore[$activeSubMenuStore]?.key;
+        if (key === SubMenusInterface.settings) return "settings";
+        if (key === SubMenusInterface.shortcuts) return "shortcuts";
+        if (key === SubMenusInterface.globalMessages) return "globalMessages";
+        return undefined;
+    });
 </script>
 
 <!-- Components ordered by z-index -->
@@ -259,11 +276,15 @@
     {/if}
 
     {#if $highlightedEmbedScreen && $highlightFullScreen}
-        <div class="w-full h-full fixed start-0 end-0 z-[310]">
+        <!-- quanta: quanta-fullscreen-media keeps it inside the map's window, above the dock (quanta-ui.css) -->
+        <div class="w-full h-full fixed start-0 end-0 z-[310] quanta-fullscreen-media">
             <MediaBox videoBox={$highlightedEmbedScreen} fullScreen={true} />
         </div>
         <!-- Fullscreen participant cameras list: slide + single edge toggle (same arrow, same spot) -->
-        <div class="absolute top-0 right-0 z-[320] h-full w-[250px] pointer-events-none" aria-hidden="false">
+        <div
+            class="absolute top-0 right-0 z-[320] h-full w-[250px] pointer-events-none quanta-fullscreen-list"
+            aria-hidden="false"
+        >
             <div
                 id="highlightFullScreenParticipantCamerasList"
                 class="absolute inset-y-0 right-0 flex w-[250px] flex-col bg-contrast/50 backdrop-blur shadow-lg transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-transform"
@@ -366,7 +387,12 @@
             {/if}
 
             {#if $menuVisiblilityStore}
-                <Menu />
+                <!-- quanta: settings, shortcuts and global messages in one dialog styled like the dock -->
+                {#if QUANTA_UI && quantaSettingsTab !== undefined}
+                    <QuantaSettings initialTab={quantaSettingsTab === "settings" ? undefined : quantaSettingsTab} />
+                {:else}
+                    <Menu />
+                {/if}
             {/if}
 
             {#if $textMessageStore.length > 0}
@@ -486,7 +512,10 @@
         <div class="">
             <!--<ActionBar />-->
         </div>
-        <ActionBar />
+        <!-- quanta: Meet-style docked controls instead of WA's bar, across the whole window (App.svelte) -->
+        {#if !QUANTA_UI}
+            <ActionBar />
+        {/if}
     </div>
 </div>
 

@@ -1,0 +1,52 @@
+import type { DeepPartial } from "../DeepPartial";
+import type { Translation } from "../i18n-types";
+
+const randomNames: DeepPartial<Translation["randomNames"]> = {
+    template: "{adjective} {name}",
+    adjectives: {
+        name0: "Космічний",
+        name1: "Електричний",
+        name2: "Містичний",
+        name3: "Неоновий",
+        name4: "Квантовий",
+        name5: "Зоряний",
+        name6: "Турбо",
+        name7: "Кібер",
+        name8: "Піксельний",
+        name9: "Сяйний",
+        name10: "Примарний",
+        name11: "Тіньовий",
+        name12: "Кришталевий",
+        name13: "Золотий",
+        name14: "Срібний",
+        name15: "Вогняний",
+        name16: "Крижаний",
+        name17: "Штормовий",
+        name18: "Громовий",
+        name19: "Блискавичний",
+    },
+    names: {
+        name0: "Дракон",
+        name1: "Фенікс",
+        name2: "Воїн",
+        name3: "Ніндзя",
+        name4: "Чарівник",
+        name5: "Дослідник",
+        name6: "Пілот",
+        name7: "Капітан",
+        name8: "Герой",
+        name9: "Титан",
+        name10: "Чемпіон",
+        name11: "Майстер",
+        name12: "Вартовий",
+        name13: "Лицар",
+        name14: "Рейнджер",
+        name15: "Мисливець",
+        name16: "Слідопит",
+        name17: "Мандрівник",
+        name18: "Мореплавець",
+        name19: "Шукач пригод",
+    },
+};
+
+export default randomNames;
