@@ -1,6 +1,7 @@
 <script lang="ts">
     import { fly } from "svelte/transition";
     import { onDestroy } from "svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { errorScreenStore } from "../../Stores/ErrorScreenStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { connectionManager } from "../../Connection/ConnectionManager";
@@ -67,7 +68,8 @@
             <!-- <div class="logo" bind:this={logoErrorParent} />
             <div class="icon" bind:this={imageErrorParent} /> -->
             <div class="logo">
-                {#if logoErrorSrc && $errorScreenStore.type !== "reconnecting"}
+                <!-- quanta: no WA logo; a room that refuses entry never loads the platform's branding -->
+                {#if logoErrorSrc && $errorScreenStore.type !== "reconnecting" && (!QUANTA_UI || errorScreen?.imageLogo)}
                     <img
                         src={errorScreen?.imageLogo ?? logoErrorSrc}
                         alt="Logo error"
@@ -77,14 +79,20 @@
                     />
                 {/if}
             </div>
-            <div class="icon">
-                <img
-                    src={errorScreen?.image ?? startRoom?.errorSceneLogo ?? errorGif}
-                    alt="Error"
-                    style="height:125px; max-width:100%;"
-                    draggable="false"
-                />
-            </div>
+            <!-- quanta: an empty image from the admin API means none, not a broken one -->
+            {#if !QUANTA_UI || errorScreen?.image || startRoom?.errorSceneLogo}
+                <div class="icon">
+                    <img
+                        src={(QUANTA_UI ? errorScreen?.image || startRoom?.errorSceneLogo : undefined) ??
+                            errorScreen?.image ??
+                            startRoom?.errorSceneLogo ??
+                            errorGif}
+                        alt="Error"
+                        style="height:125px; max-width:100%;"
+                        draggable="false"
+                    />
+                </div>
+            {/if}
             {#if $errorScreenStore.type !== "retry"}<h2 class="mt-10">{$errorScreenStore.title}</h2>{/if}
             {#if $errorScreenStore.subtitle}<p>{$errorScreenStore.subtitle}</p>{/if}
             {#if $errorScreenStore.type !== "retry" && $errorScreenStore.type !== "reconnecting"}<p class="code">

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { mapEditorModeStore, mapExplorationModeStore } from "../../Stores/MapEditorStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
@@ -116,7 +117,8 @@
 
 <div
     class="fixed bottom-2 mobile:bottom-24 bg-contrast/80 rounded pointer-events-auto p-1 backdrop-blur hover:bg-contrast/100"
-    style:right={`calc(${mapEditorRightOffset}px + 0.5rem)`}
+    style:right={`calc(${mapEditorRightOffset}px + ${QUANTA_UI ? "24px" : "0.5rem"})`}
+    style:bottom={QUANTA_UI ? "120px" /* quanta: inside the map's corner, above the docked controls */ : undefined}
     data-testid="actions-explorer"
 >
     <div class="flex flex-col justify-center gap-2">
