@@ -21,8 +21,9 @@
     import Input from "../Input/Input.svelte";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { warningMessageStore } from "../../Stores/ErrorStore";
-    import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
-    import { IconChevronUp, IconEye, IconWalk } from "@wa-icons";
+    import { QUANTA_UI, WOKA_SPEED } from "../../Enum/EnvironmentVariable";
+    import { EditorToolName } from "../../Phaser/Game/MapEditor/MapEditorModeManager";
+    import { IconChevronUp, IconEye, IconWalk, IconX } from "@wa-icons";
 
     let filter = $state("");
     let selectFilters = writable<Array<string>>(new Array<string>());
@@ -253,11 +254,28 @@
         // Close the modal
         mapExplorationObjectSelectedStore.set(undefined);
     }
+
+    // quanta: as ExplorerMenu's "center on me" closes it
+    function closeExplorer() {
+        mapEditorModeStore.switchMode(false);
+        gameManager.getCurrentGameScene().getMapEditorModeManager()?.equipTool(EditorToolName.CloseMapEditor);
+    }
 </script>
 
 <div class="mapexplorer flex flex-col overflow-auto">
     <div class="header-container">
         <h3 class="text-l text-left">{$LL.mapEditor.explorer.title()}</h3>
+        <!-- quanta: WA's own close is in the editor's tool bar, which narrow screens hide -->
+        {#if QUANTA_UI}
+            <button
+                type="button"
+                class="quanta-explorer-close"
+                aria-label={$LL.actionbar.close()}
+                onclick={closeExplorer}
+            >
+                <IconX font-size="20" />
+            </button>
+        {/if}
     </div>
     <div class="flex flex-col gap-2 justify-center">
         <div class="flex *:w-full">

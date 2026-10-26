@@ -56,6 +56,7 @@ import {
     MAX_PER_GROUP,
     POSITION_DELAY,
     PUBLIC_MAP_STORAGE_PREFIX,
+    QUANTA_UI,
     UPLOADER_URL,
     WOKA_SPEED,
 } from "../../Enum/EnvironmentVariable";
@@ -221,6 +222,7 @@ import { areaPropertyVariablesManagerStore } from "../../Stores/AreaPropertyVari
 import { ApplicationManager } from "../../Chat/Applications/ApplicationManager";
 import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
 import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
+import { quantaRoomScript } from "../../quanta/roomScript";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
@@ -2386,7 +2388,10 @@ export class GameScene extends DirtyScene {
             throw new Error("No connection found when joining room");
         }
 
-        if (gameManager.currentStartedRoom.backgroundColor != undefined) {
+        // quanta: around the map, the room's own black ground (quanta-ui.css), not the sign-in screens' colour.
+        if (QUANTA_UI) {
+            this.cameras.main.setBackgroundColor("#101217");
+        } else if (gameManager.currentStartedRoom.backgroundColor != undefined) {
             this.cameras.main.setBackgroundColor(gameManager.currentStartedRoom.backgroundColor);
         }
 
@@ -4249,7 +4254,9 @@ ${escapedMessage}
             return [];
         }
 
-        return script.split("\n").map((scriptSplit) => new URL(scriptSplit, this.mapUrlFile).toString());
+        return script
+            .split("\n")
+            .map((scriptSplit) => quantaRoomScript(new URL(scriptSplit, this.mapUrlFile).toString()));
     }
 
     private loadNextGameFromExitUrl(exitUrl: string): Promise<void> {
