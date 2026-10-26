@@ -221,6 +221,7 @@ import { areaPropertyVariablesManagerStore } from "../../Stores/AreaPropertyVari
 import { ApplicationManager } from "../../Chat/Applications/ApplicationManager";
 import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
 import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
+import { quantaRoomScript } from "../../quanta/roomScript";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
@@ -4249,7 +4250,9 @@ ${escapedMessage}
             return [];
         }
 
-        return script.split("\n").map((scriptSplit) => new URL(scriptSplit, this.mapUrlFile).toString());
+        return script
+            .split("\n")
+            .map((scriptSplit) => quantaRoomScript(new URL(scriptSplit, this.mapUrlFile).toString()));
     }
 
     private loadNextGameFromExitUrl(exitUrl: string): Promise<void> {
