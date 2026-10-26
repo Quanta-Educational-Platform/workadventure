@@ -24,6 +24,7 @@
     import SayPopUp from "../PopUp/SayPopUp.svelte";
     import Button from "../UI/Button.svelte";
     import { gameManager } from "../../Phaser/Game/GameManager";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { IconPencil, IconXIcon } from "@wa-icons";
 
     let emoteDataLoading = $state(false);
@@ -277,13 +278,16 @@
                         onmouseleave={() => (showSayBubbleTooltip = false)}
                         onclick={() => {
                             popupStore.addPopup(SayPopUp, { type: "say" }, "say");
+                            // quanta: the picker gives way to the message box, which opens where it was
+                            if (QUANTA_UI) activeSecondaryZoneActionBarStore.set(undefined);
                             analyticsClient.trackAdminEvent("bubble.say.opened");
                         }}
                         data-testid="say-bubble-button"
                     >
                         {$LL.say.type.say()}
                     </button>
-                    {#if showSayBubbleTooltip}
+                    <!-- quanta: no help card with its sample picture over the dock -->
+                    {#if showSayBubbleTooltip && !QUANTA_UI}
                         <div class="absolute top-1/3 left-0 m-auto w-2 h-1">
                             <HelpTooltip
                                 title={$LL.say.type.say()}
@@ -300,13 +304,16 @@
                         onmouseleave={() => (showThinkBubbleTooltip = false)}
                         onclick={() => {
                             popupStore.addPopup(SayPopUp, { type: "think" }, "say");
+                            // quanta: the picker gives way to the message box, which opens where it was
+                            if (QUANTA_UI) activeSecondaryZoneActionBarStore.set(undefined);
                             analyticsClient.trackAdminEvent("bubble.think.opened");
                         }}
                         data-testid="think-bubble-button"
                     >
                         {$LL.say.type.think()}
                     </button>
-                    {#if showThinkBubbleTooltip}
+                    <!-- quanta: no help card with its sample picture over the dock -->
+                    {#if showThinkBubbleTooltip && !QUANTA_UI}
                         <div class="absolute top-1/3 right-[40%] m-auto w-2 h-1">
                             <HelpTooltip
                                 title={$LL.say.type.think()}

@@ -1,5 +1,7 @@
 <script lang="ts">
     import { fly } from "svelte/transition";
+    import { QUANTA_UI } from "../Enum/EnvironmentVariable";
+    import { gameManager } from "../Phaser/Game/GameManager";
     import { chatVisibilityStore, INITIAL_SIDEBAR_WIDTH, INITIAL_SIDEBAR_WIDTH_MOBILE } from "../Stores/ChatStore";
     import { isMediaBreakpointUp } from "../Utils/BreakpointsUtils";
     import { blocker } from "../Utils/screenBlocker";
@@ -95,10 +97,17 @@
     const isChatBarInFullScreen = () => {
         return sideBarWidth === document.documentElement.clientWidth;
     };
+
+    // quanta: no chat at all in a room whose platform turned chat off, not even the proximity chat; the
+    // shortcut and the bubble's own prompts open nothing (and leave no space for a panel).
+    const chatTurnedOff = QUANTA_UI && !gameManager.getCurrentGameScene().room.isChatEnabled;
+    $effect(() => {
+        if (chatTurnedOff && $chatVisibilityStore) chatVisibilityStore.set(false);
+    });
 </script>
 
 <svelte:window {onresize} />
-{#if $chatVisibilityStore}
+{#if $chatVisibilityStore && !chatTurnedOff}
     <section
         bind:this={container}
         id="chat"
