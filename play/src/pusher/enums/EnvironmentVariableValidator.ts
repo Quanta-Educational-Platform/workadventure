@@ -434,6 +434,18 @@ export const EnvironmentVariables = z.object({
         .describe("Port for the Room API gRPC server. Defaults to 50051"),
     ROOM_API_SECRET_KEY: z.string().optional().describe("Secret key for Room API authentication"),
 
+    // quanta: Google Meet-style call controls
+    QUANTA_UI: BoolAsString.optional()
+        .transform((val) => toBool(val, false))
+        .describe("Dock the call controls at the bottom like Google Meet, with device trays. Defaults to false"),
+    QUANTA_URL: z
+        .string()
+        .url()
+        .optional()
+        .describe(
+            "The Quanta this server works for: rooms load Quanta's room script from it, whichever Quanta made their map",
+        ),
+
     // Map editor related environment variables
     ENABLE_MAP_EDITOR: BoolAsString.optional()
         .transform((val) => toBool(val, false))
