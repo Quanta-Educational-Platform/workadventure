@@ -1,7 +1,9 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { mapEditorModeStore, mapExplorationModeStore } from "../../Stores/MapEditorStore";
+    import { coWebsites, coWebsitesSize, windowSize } from "../../Stores/CoWebsiteStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { EditorToolName } from "../../Phaser/Game/MapEditor/MapEditorModeManager";
     import { BUTTON_ZOOM_FACTOR_PER_SECOND, BUTTON_ZOOM_STEP_FACTOR } from "../../Phaser/Game/CameraZoomUtils";
@@ -13,6 +15,11 @@
     }
 
     let { mapEditorRightOffset = 0 }: Props = $props();
+
+    // quanta: a website open beside the map (landscape) takes the right of the screen; stay in the map's corner.
+    let besideWebsite = $derived(
+        QUANTA_UI && $coWebsites.length > 0 && $windowSize.width > $windowSize.height ? $coWebsitesSize.width : 0,
+    );
 
     // Keep click and long-press as the same gesture: a press always starts with one smooth zoom step,
     // then turns into continuous zoom if the user keeps the pointer down.
@@ -116,7 +123,8 @@
 
 <div
     class="fixed bottom-2 mobile:bottom-24 bg-contrast/80 rounded pointer-events-auto p-1 backdrop-blur hover:bg-contrast/100"
-    style:right={`calc(${mapEditorRightOffset}px + 0.5rem)`}
+    style:right={`calc(${mapEditorRightOffset + besideWebsite}px + ${QUANTA_UI ? "24px" : "0.5rem"})`}
+    style:bottom={QUANTA_UI ? "120px" /* quanta: inside the map's corner, above the docked controls */ : undefined}
     data-testid="actions-explorer"
 >
     <div class="flex flex-col justify-center gap-2">
