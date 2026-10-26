@@ -34,6 +34,10 @@
     import { FileListener } from "../Phaser/FileUpload/FileListener";
     import { isStructuredCloneSupported } from "../Utils/BrowserCompatibility";
     import { gameSceneIsLoadedStore } from "../Stores/GameSceneStore";
+    import QuantaDock from "../quanta/QuantaDock.svelte";
+    import { clipDomLayer } from "../quanta/domLayerClip";
+    import { roomControlsVisibleStore } from "../quanta/roomControlsVisible";
+    import { QUANTA_UI } from "../Enum/EnvironmentVariable";
     import GameOverlay from "./GameOverlay.svelte";
     import CoWebsitesContainer from "./EmbedScreens/CoWebsitesContainer.svelte";
     import BrowserNotSupported from "./BrowserNotSupported/BrowserNotSupported.svelte";
@@ -211,6 +215,7 @@
         };
 
         game = new Game(config);
+        if (QUANTA_UI) stopDomLayerClip = clipDomLayer(game);
 
         stopBootPump = startBackgroundBootPump(game);
 
@@ -257,6 +262,7 @@
 
     let canvasSizeUnsubscriber: Unsubscriber;
     let stopBootPump: (() => void) | undefined;
+    let stopDomLayerClip: (() => void) | undefined;
     onMount(() => {
         canvasSizeUnsubscriber = canvasSize.subscribe(({ width, height }) => {
             if (width < 1 || height < 1) {
@@ -270,6 +276,7 @@
     onDestroy(() => {
         canvasSizeUnsubscriber?.();
         stopBootPump?.();
+        stopDomLayerClip?.();
         if (canvas && handleCanvasClick) {
             canvas.removeEventListener("click", handleCanvasClick);
         }
@@ -311,4 +318,9 @@
             </div>
         {/if}
     </div>
+    <!-- quanta: the docked controls belong to the window, not the map: they stay whole beside a wide website and over a
+         full-screen one. -->
+    {#if QUANTA_UI && game && $roomControlsVisibleStore}
+        <QuantaDock />
+    {/if}
 {/if}
