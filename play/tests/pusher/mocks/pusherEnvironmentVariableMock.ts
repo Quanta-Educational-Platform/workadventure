@@ -125,6 +125,8 @@ export const FRONT_ENVIRONMENT_VARIABLES: FrontConfigurationInterface = {
     JITSI_URL: undefined,
     JITSI_PRIVATE_MODE: false,
     ENABLE_MAP_EDITOR,
+    QUANTA_UI: false,
+    QUANTA_URL: undefined,
     PUBLIC_MAP_STORAGE_PREFIX: undefined,
     MAX_USERNAME_LENGTH: 10,
     MAX_PER_GROUP: 4,

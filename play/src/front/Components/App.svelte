@@ -34,6 +34,8 @@
     import { FileListener } from "../Phaser/FileUpload/FileListener";
     import { isStructuredCloneSupported } from "../Utils/BrowserCompatibility";
     import { gameSceneIsLoadedStore } from "../Stores/GameSceneStore";
+    import QuantaDock from "../quanta/QuantaDock.svelte";
+    import { QUANTA_UI } from "../Enum/EnvironmentVariable";
     import GameOverlay from "./GameOverlay.svelte";
     import CoWebsitesContainer from "./EmbedScreens/CoWebsitesContainer.svelte";
     import BrowserNotSupported from "./BrowserNotSupported/BrowserNotSupported.svelte";
@@ -311,4 +313,9 @@
             </div>
         {/if}
     </div>
+    <!-- quanta: the docked controls belong to the window, not the map: they stay whole beside a wide website and over a
+         full-screen one. -->
+    {#if QUANTA_UI && game && $gameSceneIsLoadedStore}
+        <QuantaDock />
+    {/if}
 {/if}
