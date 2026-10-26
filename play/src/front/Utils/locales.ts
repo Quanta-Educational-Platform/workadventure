@@ -3,7 +3,7 @@ import type { Locales } from "../../i18n/i18n-types";
 import { baseLocale, isLocale, locales } from "../../i18n/i18n-util";
 import { loadLocaleAsync } from "../../i18n/i18n-util.async";
 import { setLocale } from "../../i18n/i18n-svelte";
-import { FALLBACK_LOCALE } from "../Enum/EnvironmentVariable";
+import { FALLBACK_LOCALE, QUANTA_UI } from "../Enum/EnvironmentVariable";
 import { languageKey, localUserStore } from "../Connection/LocalUserStore";
 
 let fallbackLocale: Locales = baseLocale;
@@ -56,8 +56,15 @@ export const localeDetector = async () => {
             const exist = localUserStore.getLanguage();
             const fallbackLocale = getFallbackLocale();
             let detectedLocale: Locales = fallbackLocale;
+            // quanta: the platform around the room passes its user's language (?lang=uk), which wins
+            const requested = QUANTA_UI ? new URLSearchParams(window.location.search).get("lang") : null;
+            const requestedLocale = requested
+                ? locales.find((l) => l === requested || l.startsWith(requested + "-"))
+                : undefined;
 
-            if (exist) {
+            if (requestedLocale) {
+                detectedLocale = requestedLocale;
+            } else if (exist) {
                 const localStorageDetector = initLocalStorageDetector(languageKey);
                 detectedLocale = detectLocale(fallbackLocale, locales, localStorageDetector);
             } else {

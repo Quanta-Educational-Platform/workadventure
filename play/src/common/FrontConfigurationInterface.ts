@@ -11,6 +11,10 @@ export interface FrontConfigurationInterface {
     JITSI_URL: string | undefined;
     JITSI_PRIVATE_MODE: boolean;
     ENABLE_MAP_EDITOR: boolean;
+    // quanta: Google Meet-style call controls docked at the bottom, and a menu without WA's help and logout.
+    QUANTA_UI: boolean;
+    // quanta: the Quanta this server works for, which serves the rooms' script (quanta/roomScript.ts).
+    QUANTA_URL: string | undefined;
     PUBLIC_MAP_STORAGE_PREFIX: string | undefined;
     MAX_USERNAME_LENGTH: number;
     MAX_PER_GROUP: number;
