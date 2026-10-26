@@ -105,6 +105,7 @@ Environment variables for the Play service (frontend and pusher).
 | `ROOM_API_BIND_HOST` | No | Bind host for the Room API gRPC server. Defaults to `[::]`. |
 | `ROOM_API_PORT` | No | Port for the Room API gRPC server. Defaults to 50051 |
 | `ROOM_API_SECRET_KEY` | No | Secret key for Room API authentication |
+| `QUANTA_UI` | No | Dock the call controls at the bottom like Google Meet, with device trays. Defaults to false |
 | `ENABLE_MAP_EDITOR` | No | Enable the built-in map editor. Defaults to false |
 | `MAP_EDITOR_ALLOWED_USERS` | No | Comma-separated list of user IDs allowed to edit maps |
 | `MAP_EDITOR_ALLOW_ALL_USERS` | No | If set to true, all users can edit the map. If set to false, only the users in MAP_EDITOR_ALLOWED_USERS or users with the "admin" or "editor" tag can edit the map. Note: this setting is ignored if an Admin API is configured. |
