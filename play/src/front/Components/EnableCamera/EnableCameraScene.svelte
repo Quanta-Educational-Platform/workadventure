@@ -14,6 +14,7 @@
         requestedMicrophoneState,
         speakerSelectedStore,
         localStreamStore,
+        rawLocalStreamStore,
     } from "../../Stores/MediaStore";
     import type { Game } from "../../Phaser/Game/Game";
     import { LL, locale } from "../../../i18n/i18n-svelte";
@@ -42,7 +43,9 @@
     let legals = gameManager.currentStartedRoom?.legals ?? {};
 
     let selectedCamera: string | undefined = $state(undefined);
+    let selectedCameraLabel: string | undefined = $state(undefined);
     let selectedMicrophone: string | undefined = $state(undefined);
+    let selectedMicrophoneLabel: string | undefined = $state(undefined);
 
     let legalStrings: string[] = [];
     if (legals?.termsOfUseUrl) {
@@ -105,35 +108,20 @@
         };
     }
 
-    let stream: MediaStream | undefined;
-
-    const unsubscribeLocalStreamStore = localStreamStore.subscribe((value) => {
-        if (value.type === "success") {
-            stream = value.stream;
-
-            if (stream !== undefined) {
-                const videoTracks = stream.getVideoTracks();
-                if (videoTracks.length > 0) {
-                    selectedCamera = videoTracks[0].getSettings().deviceId;
-                } else {
-                    selectedCamera = undefined;
-                }
-                const audioTracks = stream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    selectedMicrophone = audioTracks[0].getSettings().deviceId;
-                } else {
-                    selectedMicrophone = undefined;
-                }
-            }
-        } else {
-            stream = undefined;
-            selectedCamera = undefined;
-            selectedMicrophone = undefined;
-        }
+    // The devices in use, read from the unprocessed stream: noise suppression and camera backgrounds replace its tracks
+    // with processed ones, whose deviceId names no device in the lists.
+    const unsubscribeRawLocalStreamStore = rawLocalStreamStore.subscribe((value) => {
+        const rawStream = value.type === "success" ? value.stream : undefined;
+        const videoTrack = rawStream?.getVideoTracks()[0];
+        selectedCamera = videoTrack?.getSettings().deviceId;
+        selectedCameraLabel = videoTrack?.label;
+        const audioTrack = rawStream?.getAudioTracks()[0];
+        selectedMicrophone = audioTrack?.getSettings().deviceId;
+        selectedMicrophoneLabel = audioTrack?.label;
     });
 
     onDestroy(() => {
-        unsubscribeLocalStreamStore();
+        unsubscribeRawLocalStreamStore();
     });
 
     onMount(() => {
@@ -222,6 +210,7 @@
                     onselectdevice={handleSelectMicrophone}
                     deviceList={$microphoneListStore ?? []}
                     selectedDevice={selectedMicrophone}
+                    selectedLabel={selectedMicrophoneLabel}
                 >
                     {#snippet icon()}
                         <IconMicrophoneOn font-size="24" />
@@ -241,6 +230,7 @@
                     onselectdevice={handleSelectCamera}
                     deviceList={$cameraListStore ?? []}
                     selectedDevice={selectedCamera}
+                    selectedLabel={selectedCameraLabel}
                 >
                     {#snippet icon()}
                         <IconCamera font-size="24" />
