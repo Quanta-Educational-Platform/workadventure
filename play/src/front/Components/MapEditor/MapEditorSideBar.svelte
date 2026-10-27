@@ -10,6 +10,7 @@
     import { mapEditorActivated, mapEditorActivatedForThematics } from "../../Stores/MenuStore";
     import { isMediaBreakpointUp } from "../../Utils/BreakpointsUtils";
     import ArrowBarRight from "../Icons/ArrowBarRight.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import type { WorkAdventureComponent } from "../../../types/component";
     import { IconX, IconTexture, IconLamp, IconMapSearch, IconSettings, IconTrash } from "@wa-icons";
 
@@ -80,9 +81,15 @@
     }
 
     let sectionSideBarContainer: HTMLElement;
-    let isMobile = $state(isMediaBreakpointUp("md"));
+    // quanta: a phone, not a narrow window: the room beside a lesson is narrow on any laptop, and its editors need
+    // every tool there.
+    const checkMobile = () =>
+        QUANTA_UI
+            ? window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 768
+            : isMediaBreakpointUp("md");
+    let isMobile = $state(checkMobile());
     const resizeObserver = new ResizeObserver(() => {
-        isMobile = isMediaBreakpointUp("md");
+        isMobile = checkMobile();
     });
 
     onMount(() => {
