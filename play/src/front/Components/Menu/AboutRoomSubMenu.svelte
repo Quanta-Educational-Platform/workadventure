@@ -4,6 +4,7 @@
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { LL } from "../../../i18n/i18n-svelte";
     import Button from "../UI/Button.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
     let gameScene = gameManager.getCurrentGameScene();
 
@@ -60,6 +61,16 @@
                     audioCopyright = Array.from(new Set([...audioCopyright, propertyAudioCopyright.value]));
                 }
             }
+        }
+        // quanta: the room editor's furniture is placed as entities, not tiles, so the map names none of it.
+        if (QUANTA_UI) {
+            tilesetCopyright = Array.from(
+                new Set([
+                    ...tilesetCopyright,
+                    "Modern Interiors, Modern Office and Modern Exterior by LimeZu (limezu.itch.io)",
+                    "Furniture collections and Woka characters by WorkAdventure (workadventu.re)",
+                ]),
+            );
         }
     });
 </script>
