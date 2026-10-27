@@ -6,7 +6,7 @@
     import { derived, get } from "svelte/store";
     import { analyticsClient } from "../../../Administration/AnalyticsClient";
     import { connectionManager } from "../../../Connection/ConnectionManager";
-    import { ENABLE_OPENID, SENTRY_DSN_FRONT } from "../../../Enum/EnvironmentVariable";
+    import { ENABLE_OPENID, QUANTA_UI, SENTRY_DSN_FRONT } from "../../../Enum/EnvironmentVariable";
     import { gameManager } from "../../../Phaser/Game/GameManager";
     import { EnableCameraScene, EnableCameraSceneName } from "../../../Phaser/Login/EnableCameraScene";
     import { LoginScene, LoginSceneName } from "../../../Phaser/Login/LoginScene";
@@ -18,6 +18,7 @@
     import { enableCameraSceneVisibilityStore } from "../../../Stores/MediaStore";
     import type { RightMenuItem } from "../../../Stores/MenuStore";
     import {
+        additionalRightButtonsMenu,
         openedMenuStore,
         rightActionBarMenuItems,
         showMenuItem,
@@ -189,9 +190,12 @@
         </ActionBarButton>
 
         <HeaderMenuItem label={$LL.menu.sub.settings()} />
-        <ActionBarButton label={$LL.actionbar.editCamMic()} onclick={openEnableCameraScene}>
-            <CamSettingsIcon />
-        </ActionBarButton>
+        <!-- quanta: the dock's device trays replace it -->
+        {#if !QUANTA_UI}
+            <ActionBarButton label={$LL.actionbar.editCamMic()} onclick={openEnableCameraScene}>
+                <CamSettingsIcon />
+            </ActionBarButton>
+        {/if}
 
         {#if SENTRY_DSN_FRONT != undefined && connectionManager.currentRoom?.isIssueReportEnabled}
             <ActionBarButton label={$LL.actionbar.issueReport.menuAction()} onclick={openFeedbackScene}>
@@ -218,7 +222,8 @@
 
         <AdditionalMenuItems menu="profileMenu" />
 
-        {#each $rightActionBarMenuItemsInBurgerMenu ?? [] as button (button.id)}
+        <!-- quanta: the docked controls have no right-hand bar, so its items are here; the room script's own buttons (a recording pill) stay on screen in the dock's corner -->
+        {#each (QUANTA_UI ? $rightActionBarMenuItems.filter((item) => !$additionalRightButtonsMenu.some((custom) => custom.id === item.id)) : $rightActionBarMenuItemsInBurgerMenu) ?? [] as button (button.id)}
             {@const ButtonComponent = button.component}
             <ButtonComponent {...button.props} />
         {/each}
@@ -242,36 +247,39 @@
             </button>
         {/if}
 
-        <button
-            onclick={() => {
-                onboardingStore.restart();
-                openedMenuStore.close("profileMenu");
-            }}
-            class="group flex p-2 gap-2 items-center hover:bg-white/10 transition-all cursor-pointer font-bold text-sm w-full pointer-events-auto text-start rounded"
-        >
-            <div class="transition-all w-6 h-6 aspect-square text-center flex items-center justify-center">
-                <IconHelpCircle height="20" width="20" class="text-white" />
-            </div>
-            <div class="text-start leading-4 text-white flex items-center">
-                {$LL.menu.profile.helpAndTips()}
-            </div>
-        </button>
-
-        {#if ENABLE_OPENID && $userIsConnected}
+        <!-- quanta: Quanta has its own help, and signing out of Quanta signs out of the room -->
+        {#if !QUANTA_UI}
             <button
                 onclick={() => {
-                    analyticsClient.trackAdminEvent("auth.logout_clicked");
-                    connectionManager.logout();
+                    onboardingStore.restart();
+                    openedMenuStore.close("profileMenu");
                 }}
-                class="group flex p-2 gap-2 items-center hover:bg-danger-600 transition-all cursor-pointer font-bold text-sm w-full pointer-events-auto text-start rounded"
+                class="group flex p-2 gap-2 items-center hover:bg-white/10 transition-all cursor-pointer font-bold text-sm w-full pointer-events-auto text-start rounded"
             >
                 <div class="transition-all w-6 h-6 aspect-square text-center flex items-center justify-center">
-                    <IconLogout height="20" width="20" class="text-danger-800 group-hover:text-white" />
+                    <IconHelpCircle height="20" width="20" class="text-white" />
                 </div>
-                <div class="text-start leading-4 text-danger-800 group-hover:text-white flex items-center">
-                    {$LL.menu.profile.logout()}
+                <div class="text-start leading-4 text-white flex items-center">
+                    {$LL.menu.profile.helpAndTips()}
                 </div>
             </button>
+
+            {#if ENABLE_OPENID && $userIsConnected}
+                <button
+                    onclick={() => {
+                        analyticsClient.trackAdminEvent("auth.logout_clicked");
+                        connectionManager.logout();
+                    }}
+                    class="group flex p-2 gap-2 items-center hover:bg-danger-600 transition-all cursor-pointer font-bold text-sm w-full pointer-events-auto text-start rounded"
+                >
+                    <div class="transition-all w-6 h-6 aspect-square text-center flex items-center justify-center">
+                        <IconLogout height="20" width="20" class="text-danger-800 group-hover:text-white" />
+                    </div>
+                    <div class="text-start leading-4 text-danger-800 group-hover:text-white flex items-center">
+                        {$LL.menu.profile.logout()}
+                    </div>
+                </button>
+            {/if}
         {/if}
     </div>
 </div>

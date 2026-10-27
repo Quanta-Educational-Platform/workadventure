@@ -56,6 +56,7 @@ import {
     MAX_PER_GROUP,
     POSITION_DELAY,
     PUBLIC_MAP_STORAGE_PREFIX,
+    QUANTA_UI,
     UPLOADER_URL,
     WOKA_SPEED,
 } from "../../Enum/EnvironmentVariable";
@@ -221,6 +222,8 @@ import { areaPropertyVariablesManagerStore } from "../../Stores/AreaPropertyVari
 import { ApplicationManager } from "../../Chat/Applications/ApplicationManager";
 import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
 import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
+import { quantaRoomScript } from "../../quanta/roomScript";
+import { withQuantaWamDefaults } from "../../quanta/wamDefaults";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
@@ -2386,7 +2389,10 @@ export class GameScene extends DirtyScene {
             throw new Error("No connection found when joining room");
         }
 
-        if (gameManager.currentStartedRoom.backgroundColor != undefined) {
+        // quanta: around the map, the room's own black ground (quanta-ui.css), not the sign-in screens' colour.
+        if (QUANTA_UI) {
+            this.cameras.main.setBackgroundColor("#101217");
+        } else if (gameManager.currentStartedRoom.backgroundColor != undefined) {
             this.cameras.main.setBackgroundColor(gameManager.currentStartedRoom.backgroundColor);
         }
 
@@ -2555,7 +2561,7 @@ export class GameScene extends DirtyScene {
                 iframeListener,
                 this.remotePlayersRepository,
                 this,
-                this.wamFile?.settings,
+                withQuantaWamDefaults(this.wamFile?.settings),
                 connection.getAllTags(),
             );
 
@@ -2581,14 +2587,14 @@ export class GameScene extends DirtyScene {
 
         const broadcastService = new BroadcastService(
             this._spaceRegistry,
-            this.wamFile?.settings,
+            withQuantaWamDefaults(this.wamFile?.settings),
             this.connection.getAllTags(),
             this.abortController.signal,
         );
         this._broadcastService = broadcastService;
 
         const megaphoneSpaceName = WAMSettingsUtils.getMegaphoneUrl(
-            this.getGameMap().getWamFile()?.getWam()?.settings,
+            withQuantaWamDefaults(this.getGameMap().getWamFile()?.getWam()?.settings),
             new URL(this.roomUrl).host,
             this.roomUrl,
         );
@@ -2601,7 +2607,7 @@ export class GameScene extends DirtyScene {
                     this.getGameMap().getWamFile()?.getWam()?.settings?.megaphone?.audienceVideoFeedbackActivated ??
                     false,
                 canRecord: WAMSettingsUtils.canStartRecordingMegaphone(
-                    this.getGameMap().getWamFile()?.getWam()?.settings,
+                    withQuantaWamDefaults(this.getGameMap().getWamFile()?.getWam()?.settings),
                     this.connection.getAllTags(),
                     localUserStore.isLogged(),
                 ),
@@ -2609,7 +2615,7 @@ export class GameScene extends DirtyScene {
         }
         megaphoneCanBeUsedStore.set(
             WAMSettingsUtils.canUseMegaphone(
-                this.getGameMap().getWamFile()?.getWam()?.settings,
+                withQuantaWamDefaults(this.getGameMap().getWamFile()?.getWam()?.settings),
                 this.connection.getAllTags(),
             ),
         );
@@ -4249,7 +4255,9 @@ ${escapedMessage}
             return [];
         }
 
-        return script.split("\n").map((scriptSplit) => new URL(scriptSplit, this.mapUrlFile).toString());
+        return script
+            .split("\n")
+            .map((scriptSplit) => quantaRoomScript(new URL(scriptSplit, this.mapUrlFile).toString()));
     }
 
     private loadNextGameFromExitUrl(exitUrl: string): Promise<void> {

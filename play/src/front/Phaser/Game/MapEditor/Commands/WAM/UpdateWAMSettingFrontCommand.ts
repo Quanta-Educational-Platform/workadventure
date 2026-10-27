@@ -10,6 +10,7 @@ import type { FrontCommandInterface } from "../FrontCommandInterface";
 import type { RoomConnection } from "../../../../../Connection/RoomConnection";
 import { localUserStore } from "../../../../../Connection/LocalUserStore";
 import { megaphoneCanBeUsedStore, megaphoneSpaceSettingsStore } from "../../../../../Stores/MegaphoneStore";
+import { withQuantaWamDefaults } from "../../../../../quanta/wamDefaults";
 
 export class UpdateWAMSettingFrontCommand extends UpdateWAMSettingCommand implements FrontCommandInterface {
     public constructor(
@@ -64,12 +65,13 @@ export class UpdateWAMSettingFrontCommand extends UpdateWAMSettingCommand implem
 
         const message: UpdateWAMSettingsMessage["message"] = this.updateWAMSettingsMessage.message;
         if (message?.$case === "updateMegaphoneSettingMessage" || message?.$case === "updateRecordingSettingMessage") {
-            const megaphoneSettings = MegaphoneSettings.optional().parse(this.wam.settings?.megaphone);
+            const settings = withQuantaWamDefaults(this.wam.settings);
+            const megaphoneSettings = MegaphoneSettings.optional().parse(settings?.megaphone);
 
-            megaphoneCanBeUsedStore.set(WAMSettingsUtils.canUseMegaphone(this.wam.settings, this.userTags));
+            megaphoneCanBeUsedStore.set(WAMSettingsUtils.canUseMegaphone(settings, this.userTags));
 
             const megaphoneSpaceName = WAMSettingsUtils.getMegaphoneUrl(
-                this.wam.settings,
+                settings,
                 new URL(this.roomUrl).host,
                 this.roomUrl,
             );
@@ -80,7 +82,7 @@ export class UpdateWAMSettingFrontCommand extends UpdateWAMSettingCommand implem
                     spaceName: megaphoneSpaceName,
                     audienceVideoFeedbackActivated: megaphoneSettings.audienceVideoFeedbackActivated ?? false,
                     canRecord: WAMSettingsUtils.canStartRecordingMegaphone(
-                        this.wam.settings,
+                        settings,
                         this.userTags,
                         localUserStore.isLogged(),
                     ),

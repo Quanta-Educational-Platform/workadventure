@@ -23,6 +23,7 @@ import {
     createBackgroundTransformer,
 } from "../WebRtc/BackgroundProcessor/createBackgroundTransformer";
 import { LL } from "../../i18n/i18n-svelte";
+import { quantaCameraAwakeStore } from "../quanta/cameraAwake";
 import { currentRoomStore } from "./CurrentRoomStore";
 import { gameSceneIsLoadedStore } from "./GameSceneStore";
 import { MediaStreamConstraintsError } from "./Errors/MediaStreamConstraintsError";
@@ -539,6 +540,7 @@ export const mediaStreamConstraintsStore = derived(
         batchGetUserMediaStore,
         inBackgroundSettingsStore,
         isLiveStreamingAudioStore,
+        quantaCameraAwakeStore,
     ],
     (
         [
@@ -557,6 +559,7 @@ export const mediaStreamConstraintsStore = derived(
             $batchGetUserMediaStore,
             $inBackgroundSettingsStore,
             $isLiveStreamingAudioStore,
+            $quantaCameraAwakeStore,
         ],
         set,
     ) => {
@@ -617,7 +620,8 @@ export const mediaStreamConstraintsStore = derived(
                 $myCameraStore === false ||
                 isInExternalService ||
                 shouldDisableCameraForPrivacy ||
-                isEnergySaving ||
+                // quanta: not for the camera inside the platform's frame (quanta/cameraAwake.ts)
+                (isEnergySaving && !$quantaCameraAwakeStore) ||
                 isUnavailableStatus
             ) {
                 currentVideoConstraint = false;

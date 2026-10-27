@@ -1,4 +1,5 @@
 import { get } from "svelte/store";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
 import { codecPerformance, demotedCodecStore, retryGranted, type CodecDirection } from "./CodecPerformance";
 import { isAndroid, isIOS } from "./DeviceUtils";
 
@@ -34,8 +35,10 @@ export function preferredVideoCodecs(
     transport: "P2P" | "Livekit",
 ): VideoCodec[] {
     const mobile = isAndroid() || isIOS();
+    // quanta: lessons are recorded with LiveKit's track egress, which can't write AV1: screen shares in it go VP9.
+    const av1 = !(QUANTA_UI && transport === "Livekit");
     const candidates: VideoCodec[] =
-        category === "screenSharing" && quality !== "low" ? ["av1", "vp9", "h264"] : ["vp9", "h264"];
+        category === "screenSharing" && quality !== "low" && av1 ? ["av1", "vp9", "h264"] : ["vp9", "h264"];
     if (transport === "Livekit") {
         candidates.push("vp8");
     }
