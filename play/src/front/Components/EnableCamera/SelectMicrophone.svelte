@@ -10,13 +10,30 @@
     interface Props {
         selectedDevice?: string;
         deviceList: MediaDeviceInfo[];
+        selectedLabel?: string;
         onselectdevice?: (deviceId: string | undefined) => void;
         icon?: Snippet;
         title?: Snippet;
         widget?: Snippet;
     }
 
-    let { selectedDevice = undefined, deviceList, onselectdevice, icon, title, widget }: Props = $props();
+    let {
+        selectedDevice = undefined,
+        deviceList,
+        selectedLabel,
+        onselectdevice,
+        icon,
+        title,
+        widget,
+    }: Props = $props();
+
+    // The device in use can be missing from the list, which is only re-read on "devicechange" (a Bluetooth headset
+    // switching profile, ids read before permission was granted): show it anyway rather than an empty card.
+    let devices = $derived(
+        selectedDevice && !deviceList.some((device) => device.deviceId === selectedDevice)
+            ? [...deviceList, { deviceId: selectedDevice, label: selectedLabel ?? "" } as MediaDeviceInfo]
+            : deviceList,
+    );
 </script>
 
 <div
@@ -80,7 +97,7 @@
                     {/if}
                 </div>
             </div>
-            {#each deviceList ?? [] as device (device.deviceId)}
+            {#each devices as device (device.deviceId)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div

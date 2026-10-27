@@ -34,7 +34,16 @@
     import Select from "../Input/Select.svelte";
     import InputCheckbox from "../Input/InputCheckbox.svelte";
     import Button from "../UI/Button.svelte";
-    import { IconAlertTriangle, IconInfoCircle, IconMessageShare, IconMusicShare, IconSpeakerPhone } from "@wa-icons";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { QL } from "../../quanta/i18n";
+    import {
+        IconAlertTriangle,
+        IconChevronRight,
+        IconInfoCircle,
+        IconMessageShare,
+        IconMusicShare,
+        IconSpeakerPhone,
+    } from "@wa-icons";
 
     let inputSendTextActive = $state(false);
     let uploadAudioActive = $state(false);
@@ -188,6 +197,7 @@
 >
     <div
         class="h-full md:h-auto md:top-auto md:left-auto md:right-auto md:bottom-auto bg-contrast/80 backdrop-blur rounded-md max-h-screen overflow-y-auto w-full lg:w-11/12"
+        data-quanta-global={QUANTA_UI || undefined}
     >
         <!-- transition:fly={{ x: 1000, duration: 500 }} -->
         <!-- <div class="bg-contrast/80 ml-2 -right-20 top-4 transition-all backdrop-blur rounded-lg p-2 aspect-square">
@@ -234,7 +244,39 @@
             </div>
         </header>
         <div class="px-5 h-full">
-            {#if !$displayedMegaphoneScreenStore && !inputSendTextActive && !uploadAudioActive}
+            {#if !$displayedMegaphoneScreenStore && !inputSendTextActive && !uploadAudioActive && QUANTA_UI}
+                <!-- quanta: what each does in a line, only what this person may use, no tutorial videos. -->
+                <div class="qgm-options">
+                    {#if $megaphoneCanBeUsedStore}
+                        <button type="button" class="qgm-option" onclick={activateLiveMessage}>
+                            <span class="qgm-icon"><IconSpeakerPhone font-size="22" /></span>
+                            <span class="qgm-text">
+                                <span class="qgm-title">{$LL.megaphone.modal.liveMessage.title()}</span>
+                                <span class="qgm-hint">{$QL.globalLiveHint()}</span>
+                            </span>
+                            <IconChevronRight font-size="20" />
+                        </button>
+                    {/if}
+                    {#if $userIsAdminStore}
+                        <button type="button" class="qgm-option" onclick={activateInputText}>
+                            <span class="qgm-icon"><IconMessageShare font-size="22" /></span>
+                            <span class="qgm-text">
+                                <span class="qgm-title">{$LL.megaphone.modal.textMessage.title()}</span>
+                                <span class="qgm-hint">{$QL.globalTextHint()}</span>
+                            </span>
+                            <IconChevronRight font-size="20" />
+                        </button>
+                        <button type="button" class="qgm-option" onclick={activateUploadAudio}>
+                            <span class="qgm-icon"><IconMusicShare font-size="22" /></span>
+                            <span class="qgm-text">
+                                <span class="qgm-title">{$LL.megaphone.modal.audioMessage.title()}</span>
+                                <span class="qgm-hint">{$QL.globalAudioHint()}</span>
+                            </span>
+                            <IconChevronRight font-size="20" />
+                        </button>
+                    {/if}
+                </div>
+            {:else if !$displayedMegaphoneScreenStore && !inputSendTextActive && !uploadAudioActive}
                 <div class="flex flex-col md:flex-row md:justify-center h-full">
                     <div
                         id="content-liveMessage"
@@ -397,9 +439,12 @@
                             </div>
                         </div>
                     {/if}
-                    <div class="flex justify-center">
-                        <InputCheckbox label={$LL.menu.globalMessage.warning()} bind:value={broadcastToWorld} />
-                    </div>
+                    <!-- quanta: a room's message stays in the room; the world is every course's room. -->
+                    {#if !QUANTA_UI}
+                        <div class="flex justify-center">
+                            <InputCheckbox label={$LL.menu.globalMessage.warning()} bind:value={broadcastToWorld} />
+                        </div>
+                    {/if}
                     <div class="flex justify-center">
                         <section class="centered-column">
                             <Button
@@ -426,7 +471,8 @@
                     </div>
 
                     <div class="flex flex-col md:flex-row justify-center">
-                        <div class="flex flex-col mr-5">
+                        <!-- quanta: the preview only with a camera to show, not an empty frame. -->
+                        <div class="flex flex-col mr-5" hidden={QUANTA_UI && !stream}>
                             <video
                                 class="h-full w-full md:object-cover rounded"
                                 class:object-contain={stream}

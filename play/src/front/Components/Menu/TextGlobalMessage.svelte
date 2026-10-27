@@ -5,6 +5,7 @@
     import { gameManager } from "../../Phaser/Game/GameManager";
     import type { PlayGlobalMessageInterface } from "../../Connection/ConnexionModels";
     import { LL } from "../../../i18n/i18n-svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
     //toolbar
     const toolbarOptions = [
@@ -71,8 +72,10 @@
             placeholder: $LL.menu.globalMessage.enter(),
             theme: "snow",
             modules: {
-                toolbar: toolbarOptions,
+                // quanta: a plain message box, so no formatting by shortcut or paste either.
+                toolbar: QUANTA_UI ? false : toolbarOptions,
             },
+            ...(QUANTA_UI ? { formats: [] } : {}),
         });
         menuInputFocusStore.set(true);
     });
