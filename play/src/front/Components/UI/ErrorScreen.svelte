@@ -1,6 +1,7 @@
 <script lang="ts">
     import { fly } from "svelte/transition";
     import { onDestroy } from "svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { errorScreenStore } from "../../Stores/ErrorScreenStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { connectionManager } from "../../Connection/ConnectionManager";
@@ -25,6 +26,16 @@
     }
 
     let logoErrorSrc = $derived(startRoom?.loginSceneLogo ?? logoImg);
+    // quanta: only the platform's images (served by the admin API's host); WA's own artwork is served from this origin,
+    // by path or, through Vite's relative base, as a full URL
+    const platformImage = (src: string | undefined) => {
+        if (!src) return undefined;
+        try {
+            return new URL(src, window.location.href).origin !== window.location.origin ? src : undefined;
+        } catch {
+            return undefined;
+        }
+    };
 
     function click() {
         if (errorScreen?.type === "unauthorized") connectionManager.logout();
@@ -67,7 +78,8 @@
             <!-- <div class="logo" bind:this={logoErrorParent} />
             <div class="icon" bind:this={imageErrorParent} /> -->
             <div class="logo">
-                {#if logoErrorSrc && $errorScreenStore.type !== "reconnecting"}
+                <!-- quanta: no WA logo; a room that refuses entry never loads the platform's branding -->
+                {#if logoErrorSrc && $errorScreenStore.type !== "reconnecting" && (!QUANTA_UI || platformImage(errorScreen?.imageLogo))}
                     <img
                         src={errorScreen?.imageLogo ?? logoErrorSrc}
                         alt="Logo error"
@@ -77,27 +89,38 @@
                     />
                 {/if}
             </div>
-            <div class="icon">
-                <img
-                    src={errorScreen?.image ?? startRoom?.errorSceneLogo ?? errorGif}
-                    alt="Error"
-                    style="height:125px; max-width:100%;"
-                    draggable="false"
-                />
-            </div>
+            <!-- quanta: an empty image from the admin API means none, not a broken one -->
+            {#if !QUANTA_UI || platformImage(errorScreen?.image) || platformImage(startRoom?.errorSceneLogo)}
+                <div class="icon">
+                    <img
+                        src={(QUANTA_UI
+                            ? platformImage(errorScreen?.image) || platformImage(startRoom?.errorSceneLogo)
+                            : undefined) ??
+                            errorScreen?.image ??
+                            startRoom?.errorSceneLogo ??
+                            errorGif}
+                        alt="Error"
+                        style="height:125px; max-width:100%;"
+                        draggable="false"
+                    />
+                </div>
+            {/if}
             {#if $errorScreenStore.type !== "retry"}<h2 class="mt-10">{$errorScreenStore.title}</h2>{/if}
             {#if $errorScreenStore.subtitle}<p>{$errorScreenStore.subtitle}</p>{/if}
             {#if $errorScreenStore.type !== "retry" && $errorScreenStore.type !== "reconnecting"}<p class="code">
                     Code : {$errorScreenStore.code}
                 </p>{/if}
-            <div class="details flex flex-row items-center justify-center content-center gap-2">
-                <span class="whitespace-pre-line">{detailsStylized}</span>
-                {#if $errorScreenStore.type === "retry"}
-                    <div class="loading"></div>
-                {:else if $errorScreenStore.type === "reconnecting"}
-                    <LoaderIcon />
-                {/if}
-            </div>
+            <!-- quanta: not WA's "new version of WorkAdventure" line (the subtitle says it) nor its never-ending wait -->
+            {#if !QUANTA_UI || $errorScreenStore.code !== "NEW_VERSION"}
+                <div class="details flex flex-row items-center justify-center content-center gap-2">
+                    <span class="whitespace-pre-line">{detailsStylized}</span>
+                    {#if $errorScreenStore.type === "retry"}
+                        <div class="loading"></div>
+                    {:else if $errorScreenStore.type === "reconnecting"}
+                        <LoaderIcon />
+                    {/if}
+                </div>
+            {/if}
             <div class="flex gap-2">
                 {#if ($errorScreenStore.type === "retry" && $errorScreenStore.canRetryManual) || $errorScreenStore.type === "unauthorized"}
                     <Button
@@ -111,7 +134,8 @@
                     >
                         {$errorScreenStore.buttonTitle}
                     </Button>
-                    {#if $userIsConnected}
+                    <!-- quanta: signing out of the platform signs out of the room -->
+                    {#if $userIsConnected && !QUANTA_UI}
                         <Button type="button" size="lg" variant="secondary" class="button" onclick={logout}>
                             {$LL.menu.profile.logout()}
                         </Button>

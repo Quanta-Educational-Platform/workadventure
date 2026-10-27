@@ -80,6 +80,8 @@
 
     function closeMapMenu() {
         openedMenuStore.close("mapMenu");
+        // quanta: these items sit in the ⋮ menu (QUANTA_UI), which stays open over the editor otherwise.
+        openedMenuStore.close("profileMenu");
     }
 
     async function goToPersonalDesk() {
