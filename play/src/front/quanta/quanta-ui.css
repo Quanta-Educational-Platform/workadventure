@@ -1,0 +1,1843 @@
+/* quanta: WA's own menus and popups in the dock's slate (QUANTA_UI adds html.quanta-ui). */
+
+/* WA's design-system scale (design-system theme.css, HSL triples): same lightness steps, less blue. */
+/* WA's accent, which it builds from the admin API's primaryColor: Quanta's button grey (its dark theme's
+   --primary), here too so the room never depends on that setting. Higher specificity than WA's :root. */
+html.quanta-ui {
+    --secondary-50: 220 13% 95%;
+    --secondary-100: 220 13% 95%;
+    --secondary-200: 225 9% 91%;
+    --secondary-300: 214 10% 86%;
+    --secondary-400: 216 11% 82%;
+    --secondary-500: 217 10% 78%;
+    --secondary: 217 10% 75%;
+    --secondary-600: 215 7% 68%;
+    --secondary-700: 220 4% 55%;
+    --secondary-800: 214 3% 41%;
+    --secondary-900: 216 4% 27%;
+    --secondary-1000: 210 3% 14%;
+    --secondary-1100: 0 0% 0%;
+}
+
+/* Quanta's typeface (Fira Sans, loaded in svelte.ts) throughout the room's interface, on every element: WA's
+   design system writes its own faces (Roboto Condensed on buttons, Oswald on titles) into its classes. */
+html.quanta-ui,
+html.quanta-ui body,
+html.quanta-ui *:not(code, pre, kbd, samp) {
+    font-family: "Fira Sans", system-ui, sans-serif;
+}
+
+/* Quanta's two corner radii (its globals.css): whatever is pressed is a pill, a square one a circle; what holds a
+   value is a 6px rectangle. WA's 4-12px corners on buttons, chips and fields become one or the other. Panels keep
+   their own, larger corners below. Placed first, so the rules after it that shape a particular button win. */
+html.quanta-ui .btn,
+html.quanta-ui .chip,
+html.quanta-ui button:is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl):not(.w-full) {
+    border-radius: 9999px;
+}
+
+html.quanta-ui :is(.input-text, .input-select, .input-tags, .input-number),
+html.quanta-ui :is(.input-text-sm, .input-text-xs, .input-select-sm, .input-select-xs),
+html.quanta-ui button.w-full:is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl):not(.btn) {
+    border-radius: 6px;
+}
+
+/* Headings in plain case: WA's design system sets every h1-h6 in capitals (Quanta's headings never are). */
+html.quanta-ui :is(h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6) {
+    text-transform: none;
+}
+
+/* On that light grey, labels are dark. */
+html.quanta-ui .btn.btn-secondary:not(.btn-ghost, .btn-border) .btn-label,
+html.quanta-ui .btn.btn-secondary:not(.btn-ghost, .btn-border) .btn-icon {
+    color: #1b1e23;
+}
+
+html.quanta-ui {
+    --contrast-100: 220 14% 88%;
+    --contrast-200: 220 14% 76%;
+    --contrast-300: 220 16% 65%;
+    --contrast-400: 220 12% 40%;
+    --contrast-500: 220 12% 34%;
+    --contrast-600: 220 13% 26%;
+    --contrast: 222 16% 12%;
+    --contrast-800: 222 16% 12%;
+    --contrast-900: 222 18% 9%;
+    --contrast-1000: 222 20% 7%;
+    --contrast-1100: 222 22% 5%;
+}
+
+/* The ⋮ menu as Meet's: an opaque surface, plain rows of icon and label, groups split by lines, no headings. */
+html.quanta-ui [data-testid="profile-menu"] {
+    width: 288px;
+    padding: 8px 0;
+    border-radius: 12px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    color: #e3e3e3;
+}
+
+html.quanta-ui [data-testid="profile-menu"] > div {
+    max-height: calc(100vh - 140px);
+}
+
+html.quanta-ui [data-testid="profile-menu"] button {
+    min-height: 44px;
+    margin: 0;
+    padding: 0 16px;
+    gap: 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #e3e3e3;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+html.quanta-ui [data-testid="profile-menu"] button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui [data-testid="profile-menu"] button svg {
+    color: #c4c7c5;
+}
+
+/* Rows without an icon (buttons added by the room script) line up with the labels of the others. */
+html.quanta-ui [data-testid="profile-menu"] button.gradient {
+    padding-left: 56px;
+}
+
+html.quanta-ui [data-testid="profile-menu"] button.gradient::before {
+    display: none;
+}
+
+/* Section headings become dividers; the first one (above the statuses) goes. */
+html.quanta-ui [data-testid="profile-menu"] .uppercase.text-xxs {
+    height: 1px;
+    margin: 8px 0;
+    padding: 0;
+    overflow: hidden;
+    background: #3a3f48;
+    font-size: 0;
+}
+
+html.quanta-ui [data-testid="profile-menu"] > div > div:first-of-type .uppercase.text-xxs:first-of-type {
+    display: none;
+}
+
+html.quanta-ui [data-testid="profile-menu"] .status-button {
+    min-height: 40px;
+}
+
+/* The status dot takes an icon's width, so every label starts at the same place. */
+html.quanta-ui [data-testid="profile-menu"] .status-button > div:first-child {
+    width: 24px;
+    display: flex;
+    justify-content: center;
+}
+
+/* WA's panels (chat, settings, popups, emoji picker) are see-through over the map; the dock and menu are solid.
+   The solid slate matches the menu. Lighter tints (/50 and below, e.g. names over video) stay see-through. */
+html.quanta-ui :is(.bg-contrast\/75, .bg-contrast\/80, .bg-contrast\/85, .bg-contrast\/90) {
+    background-color: #1d2027;
+}
+
+html.quanta-ui
+    :is(.bg-contrast\/75, .bg-contrast\/80, .bg-contrast\/85, .bg-contrast\/90):is(
+        .backdrop-blur,
+        .backdrop-blur-sm,
+        .backdrop-blur-md,
+        .backdrop-blur-lg,
+        .backdrop-blur-xl
+    ) {
+    backdrop-filter: none;
+}
+
+/* The chat (and people) sidebar: a solid side panel, as in Meet. */
+html.quanta-ui #chat.chatWindow {
+    background-color: #1d2027;
+    backdrop-filter: none;
+}
+
+/* Zoom and explore: a column the width of the Chat button below it, in the dock's surface. */
+html.quanta-ui [data-testid="actions-explorer"] {
+    width: 48px;
+    padding: 4px;
+    border-radius: 24px;
+    background: #181b21;
+    backdrop-filter: none;
+}
+
+html.quanta-ui [data-testid="actions-explorer"] .group {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 9999px;
+    color: #eceef1;
+}
+
+html.quanta-ui [data-testid="actions-explorer"] .group:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui [data-testid="actions-explorer"] .group > div {
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: #e3e3e3;
+    backdrop-filter: none;
+    color: #1f1f1f;
+    font-size: 12px;
+}
+
+/* Notices (no sound from the microphone, connection trouble...): a solid card like Meet's, text first and
+   the actions at its end, without WA's coloured bar and see-through panel. */
+/* Inside the map's window (12px from the frame), 12px from its corner like the room's own corner buttons, not
+   against its edge; the stack itself sits 8px from the frame's right. 14px between cards with its 8px gap. */
+html.quanta-ui :is(.toast-container, [data-testid="raised-hands-dock"]) {
+    margin: 6px 16px 0 0;
+}
+
+html.quanta-ui :is(.toast-container, [data-testid="raised-hands-dock"]):first-child {
+    margin-top: 24px;
+}
+
+/* Never wider than the map beside the map editor (which can leave it under 200px): the stack keeps 12px inside
+   the window on the left too, and its cards wrap rather than run off the room's edge. */
+html.quanta-ui [data-toast-stack] {
+    left: 24px;
+    /* Its width is set by its two edges, so the cards can ask how much room the map leaves them. */
+    container: toasts / inline-size;
+}
+
+/* Beside the map editor in a narrow room: compact cards, smaller text and a full-width button that keeps its label
+   on one line, rather than a wide card squeezed. */
+@container toasts (max-width: 300px) {
+    /* The compact button is 36px tall and 10px in: 18 + 10. */
+    html.quanta-ui [data-toast-stack] .toast-container > div:last-child {
+        border-radius: 28px;
+    }
+
+    html.quanta-ui [data-toast-stack] .toast-container > div:last-child > .flex.items-center.p-4 {
+        padding: 12px 14px 0;
+    }
+
+    html.quanta-ui [data-toast-stack] .toast-container .responsive-message p {
+        font-size: 14px;
+        line-height: 20px;
+    }
+
+    html.quanta-ui [data-toast-stack] .toast-container .buttons-wrapper {
+        padding: 10px 10px 10px;
+    }
+
+    html.quanta-ui [data-toast-stack] .toast-container .buttons-wrapper button {
+        flex: 1 1 100%;
+        min-height: 36px;
+        padding: 0 10px;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+}
+
+html.quanta-ui [data-toast-stack] > * {
+    max-width: calc(100% - 16px);
+    min-width: 0;
+}
+
+html.quanta-ui .toast-container > div:last-child {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+html.quanta-ui .toast-container :is(p, span) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+html.quanta-ui .toast-container .responsive-message {
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* WA's pop-ups enlarge every .responsive-message by 1.2 under 768px (scale, 24px type), notices and the room's
+   pop-ups included: in a room beside a lesson their text outgrew the card. */
+html.quanta-ui :is(.toast-container, .popup-container) .responsive-message {
+    scale: none;
+    padding-bottom: 0;
+}
+
+/* Phones: the window is 8px from the frame. */
+@media (max-width: 480px) {
+    html.quanta-ui [data-toast-stack] {
+        left: 16px;
+    }
+
+    html.quanta-ui :is(.toast-container, [data-testid="raised-hands-dock"]) {
+        margin-right: 8px;
+    }
+
+    html.quanta-ui :is(.toast-container, [data-testid="raised-hands-dock"]):first-child {
+        margin-top: 16px;
+    }
+}
+
+html.quanta-ui .toast-container > div:first-child {
+    display: none;
+}
+
+/* Its corner nests the button's pill (40px tall, 12px in): 20 + 12. */
+html.quanta-ui .toast-container > div:last-child {
+    max-width: min(380px, 100%);
+    border-radius: 32px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui .toast-container .responsive-message,
+html.quanta-ui .toast-container .responsive-message p {
+    text-align: start;
+    font-size: 15px;
+    line-height: 22px;
+    color: #eceef1;
+}
+
+html.quanta-ui .toast-container > div:last-child > .flex.items-center.p-4 {
+    justify-content: flex-start;
+    padding: 16px 20px 4px;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper {
+    /* safe: a button wider than a narrow card overflows to its end, not out past its start. */
+    justify-content: safe flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px 12px;
+    background: transparent;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper > * {
+    margin: 0;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button {
+    flex: none;
+    max-width: 100%;
+    min-height: 40px;
+    padding: 8px 20px;
+    white-space: normal;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button,
+html.quanta-ui .toast-container .buttons-wrapper button * {
+    color: #c9d5ea !important;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button:last-child,
+html.quanta-ui .toast-container .buttons-wrapper button:last-child * {
+    color: #1d2b45 !important;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button:hover {
+    background: rgba(201, 213, 234, 0.08);
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button:last-child {
+    background: #c9d5ea;
+    color: #1d2b45;
+}
+
+html.quanta-ui .toast-container .buttons-wrapper button:last-child:hover {
+    background: #d8e1f0;
+}
+
+/* Chat: a floating panel like the other cards, its header on the left, the message box an outlined pill. */
+html.quanta-ui #chat.chatWindow {
+    margin: 12px 0 12px 12px;
+    height: calc(100% - 24px);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:first-child > div {
+    border: 0;
+    padding: 12px 8px 4px 24px;
+}
+
+/* The back button's slot, empty in a room opened straight from the dock. */
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:first-child > div > div:empty {
+    display: none;
+}
+
+html.quanta-ui #chat [data-testid="roomName"],
+html.quanta-ui #chat .text-md.font-bold {
+    text-align: start;
+    font-size: 18px;
+    font-weight: 400;
+    color: #eceef1;
+}
+
+html.quanta-ui #chat .message:has(> span.border) {
+    padding: 0 16px;
+}
+
+html.quanta-ui #chat .message > span.border {
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 12px;
+    background: #21252c;
+    color: #a7adb7;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+html.quanta-ui #chat [data-testid="messageInput"] {
+    padding: 13px 4px 13px 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 15px;
+}
+
+html.quanta-ui #chat [data-testid="messageInput"]:empty::before {
+    color: #a7adb7;
+}
+
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child {
+    width: auto;
+    margin: 8px 12px 12px;
+    padding: 0 4px;
+    border: 1px solid #8e918f;
+    border-radius: 25px;
+    background: transparent;
+}
+
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child > button {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+    color: #c4c7c5;
+}
+
+html.quanta-ui #chat [data-testid="sendMessageButton"] {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: #c9d5ea;
+    color: #1d2b45;
+}
+
+/* Tailwind's !important utilities sit in a layer, which beats unlayered !important: override inside it. */
+@layer utilities {
+    html.quanta-ui #chat [data-testid="messageInput"] {
+        background: transparent !important;
+    }
+
+    html.quanta-ui #chat #resize-bar {
+        width: 4px !important;
+        height: 40px !important;
+        background: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    html.quanta-ui #chat #resize-bar:hover {
+        background: rgba(255, 255, 255, 0.4) !important;
+    }
+}
+
+/* Video tiles: name labels as slate pills; the speaker's in the dock's "on" colour instead of WA's yellow. */
+html.quanta-ui .responsive-dimension > div {
+    border-radius: 9999px;
+}
+
+html.quanta-ui .responsive-dimension > div > div {
+    padding-right: 12px;
+}
+
+html.quanta-ui .responsive-dimension :is(.bg-secondary\/50, .bg-secondary\/90) {
+    background-color: #c9d5ea;
+    color: #1d2b45;
+}
+
+/* The bar under the tiles that resizes them: a quiet grip, brighter on hover. */
+html.quanta-ui .drag-handle {
+    height: 4px;
+    width: 120px;
+    outline: 0;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+html.quanta-ui .drag-handle:hover,
+html.quanta-ui .drag-handle:active {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+/* Dialogs and pop-ups in the room (already connected, follow requests, invitations...): solid slate cards like
+   the notices, plain titles, WA's yellow main button in the dock's "on" colour with the notices' corners.
+   The entry screens keep Quanta's own yellow. */
+html.quanta-ui [role="alertdialog"] {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: none;
+}
+
+html.quanta-ui [role="alertdialog"] > [role="document"] {
+    max-width: 440px;
+    padding: 24px;
+    border-radius: 20px;
+    background: #1d2027;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+html.quanta-ui :is([role="alertdialog"], .popup-container) :is(h1, h2, h3) {
+    margin: 0;
+    font-family: inherit;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: #eceef1;
+}
+
+html.quanta-ui [role="alertdialog"] p,
+html.quanta-ui [role="alertdialog"] label {
+    font-size: 15px;
+    line-height: 22px;
+    color: #c4c7c5;
+}
+
+html.quanta-ui [role="alertdialog"] .mt-6.flex.justify-center {
+    justify-content: flex-end;
+}
+
+html.quanta-ui .popup-container {
+    border-radius: 16px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui .popup-container .responsive-message {
+    text-align: start;
+    font-size: 15px;
+    line-height: 22px;
+    color: #eceef1;
+}
+
+html.quanta-ui .popup-container > .flex.items-center.p-4 {
+    justify-content: flex-start;
+    padding: 18px 20px 6px;
+}
+
+/* Say / Think has no buttons below: a pill 12px round its 40px pills, so its 32px ends nest theirs. */
+html.quanta-ui .popup-container > .flex.items-center.p-4:has([data-testid="say-popup"]) {
+    padding: 12px;
+}
+
+html.quanta-ui .popup-container:has([data-testid="say-popup"]) {
+    min-height: 0;
+    border-radius: 32px;
+}
+
+/* Pop-ups above the dock keep clear of the zoom column on either side (12px window inset, 12px, 48px, 12px). */
+html.quanta-ui .popup-container {
+    max-width: calc(100vw - 168px);
+}
+
+@media (max-width: 480px) {
+    html.quanta-ui .popup-container {
+        max-width: calc(100vw - 32px);
+    }
+}
+
+html.quanta-ui .popup-container .buttons-wrapper {
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px 12px;
+    background: transparent;
+}
+
+html.quanta-ui .popup-container .buttons-wrapper > * {
+    margin: 0;
+}
+
+html.quanta-ui :is([role="alertdialog"], .popup-container, #chat) .btn {
+    height: 40px;
+    padding: 0 20px;
+    border-radius: 9999px;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+html.quanta-ui :is([role="alertdialog"], .popup-container, #chat) .btn.btn-secondary:not(.btn-ghost, .btn-border) {
+    border: 0;
+    background: #c9d5ea;
+}
+
+html.quanta-ui :is([role="alertdialog"], .popup-container, #chat) .btn.btn-secondary:not(.btn-ghost, .btn-border),
+html.quanta-ui :is([role="alertdialog"], .popup-container, #chat) .btn.btn-secondary:not(.btn-ghost, .btn-border) * {
+    color: #1d2b45 !important;
+}
+
+html.quanta-ui
+    :is([role="alertdialog"], .popup-container, #chat)
+    .btn.btn-secondary:not(.btn-ghost, .btn-border):hover {
+    background: #d8e1f0;
+}
+
+html.quanta-ui :is([role="alertdialog"], .popup-container, #chat) .btn:is(.btn-ghost, .btn-border) {
+    color: #c9d5ea;
+}
+
+/* Error screens (no access, room not found...): a plain heading instead of WA's capitals. */
+html.quanta-ui main.errorScreen h2 {
+    margin-top: 0;
+    font-family: inherit;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+html.quanta-ui main.errorScreen p {
+    font-size: 16px;
+    line-height: 24px;
+}
+
+/* The buttons (Refresh, Retry...) keep clear of the text above them. */
+html.quanta-ui main.errorScreen .flex-col > .flex.gap-2:last-child {
+    margin-top: 24px;
+}
+
+/* Sliders in the room (a tile's volume): the dock's "on" colour instead of WA's yellow, like the settings slider. */
+html.quanta-ui .input-range.input-range-secondary {
+    height: 4px;
+    background: #3a3f48;
+}
+
+html.quanta-ui .input-range.input-range-secondary .input-range-slider {
+    background: #c9d5ea;
+}
+
+html.quanta-ui .input-range.input-range-secondary .input-range-btn {
+    width: 20px;
+    height: 20px;
+    border: 0;
+    background: #c9d5ea;
+}
+
+html.quanta-ui .input-range.input-range-secondary .input-range-dot {
+    display: none;
+}
+
+/* Someone's profile card (click their avatar): a slate card, the name in plain case, a round close
+   button and the actions as the notices' buttons. */
+html.quanta-ui [data-testid="actions-menu"] {
+    margin-top: 12px;
+    border-radius: 16px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui [data-testid="actions-menu"] h3 {
+    font-family: inherit;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+html.quanta-ui [data-testid="actions-menu"] .close-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+    background: transparent;
+    backdrop-filter: none;
+}
+
+html.quanta-ui [data-testid="actions-menu"] .close-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui [data-testid="actions-menu"] > div > div:last-child {
+    gap: 8px;
+    padding: 0 12px 12px;
+    background: transparent;
+}
+
+html.quanta-ui [data-testid="actions-menu"] .btn {
+    height: 40px;
+    border-radius: 9999px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+@layer utilities {
+    html.quanta-ui [data-testid="actions-menu"] .btn {
+        background: #2b3038 !important;
+    }
+
+    html.quanta-ui [data-testid="actions-menu"] .btn:hover {
+        background: #353b45 !important;
+    }
+}
+
+/* The teacher's raised-hands panel: a slate card like the notices, without WA's yellow stripe; "Lower all"
+   is the main button, each "Lower hand" a quiet one. */
+html.quanta-ui [data-testid="raised-hands-dock"] {
+    width: 320px;
+}
+
+html.quanta-ui [data-testid="raised-hands-dock"] > div:first-child {
+    display: none;
+}
+
+html.quanta-ui [data-testid="raised-hands-dock"] > div:last-child {
+    border-radius: 16px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui [data-testid="raised-hands-dock-toggle"] {
+    min-height: 52px;
+    padding: 0 12px 0 16px;
+    gap: 10px;
+}
+
+html.quanta-ui [data-testid="raised-hands-dock-toggle"] > span.grow {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-testid="raised-hands-dock-toggle"] .notification {
+    background: #c9d5ea;
+}
+
+html.quanta-ui [data-testid="raised-hands-dock-toggle"] .notification,
+html.quanta-ui [data-testid="raised-hands-dock-toggle"] .notification * {
+    color: #1d2b45 !important;
+}
+
+/* Names in full, on two lines if they must: a teacher has to know whose hand it is. */
+html.quanta-ui [data-testid="raised-hands-panel"] span.truncate {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 18px;
+}
+
+html.quanta-ui #raised-hands-dock-body {
+    padding: 0 12px 12px;
+}
+
+html.quanta-ui [data-testid="raised-hands-panel"] .uppercase {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 13px;
+    font-weight: 500;
+    color: #a7adb7;
+}
+
+html.quanta-ui [data-testid="raised-hands-panel"] > div > div:has(> .btn) {
+    min-height: 44px;
+}
+
+html.quanta-ui [data-testid="raised-hands-panel"] .btn {
+    height: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-testid="raised-hands-panel"] .btn,
+html.quanta-ui [data-testid="raised-hands-panel"] .btn * {
+    background: #2b3038;
+    color: #eceef1 !important;
+}
+
+html.quanta-ui [data-testid="raised-hands-panel"] .btn[data-testid="panel-lower-all-hands"],
+html.quanta-ui [data-testid="raised-hands-panel"] .btn[data-testid="panel-lower-all-hands"] * {
+    background: #c9d5ea;
+    color: #1d2b45 !important;
+}
+
+/* Buttons the room script puts in the corner (Quanta's recording pill, "Course Content" in a tab of its own): chips
+   in the dock's panel colour and the zoom controls' size (48px, a 40px button inside), without WA's glow and tinted
+   border in the script's colour. The recording one gets a red dot for its colour. */
+html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button] > div {
+    padding: 4px;
+    border-radius: 9999px;
+    background: #181b21;
+    backdrop-filter: none;
+}
+
+html.quanta-ui [data-testid="quanta-room-buttons"] button {
+    height: 40px;
+    gap: 8px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 9999px;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: #eceef1 !important;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-testid="quanta-room-buttons"] button::before {
+    display: none;
+}
+
+html.quanta-ui [data-testid="quanta-room-buttons"] button:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button="quanta-recording"] button {
+    padding: 0 16px 0 14px;
+}
+
+html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button="quanta-recording"] button::before {
+    content: "";
+    display: block;
+    position: static;
+    width: 9px;
+    height: 9px;
+    flex: none;
+    border-radius: 9999px;
+    filter: none;
+    opacity: 1;
+    background: var(--bg-color, #f2675c);
+    animation: quanta-rec 2s ease-in-out infinite;
+}
+
+@keyframes quanta-rec {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+/* An enlarged camera or screen share, and the full-screen one, stay inside the map's window, above the dock. */
+html.quanta-ui .presentation-layout {
+    top: 12px;
+    right: 12px;
+    bottom: 96px;
+    left: 12px;
+    width: auto;
+    height: auto;
+}
+
+html.quanta-ui .quanta-fullscreen-media {
+    inset: 12px 12px 96px;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    border-radius: 16px;
+    background: #1d2027;
+}
+
+/* Behind a full-screen video the map is hidden: at some window sizes its edge showed through a hairline gap. */
+html.quanta-ui #game:has(.quanta-fullscreen-media) > canvas {
+    visibility: hidden;
+}
+
+/* Its participants column too, with the window's corners. */
+html.quanta-ui .quanta-fullscreen-list {
+    top: 12px;
+    right: 12px;
+    height: calc(100% - 108px);
+    overflow: hidden;
+    border-radius: 0 16px 16px 0;
+}
+
+@media (max-width: 480px) {
+    html.quanta-ui .presentation-layout {
+        top: 8px;
+        right: 8px;
+        bottom: 84px;
+        left: 8px;
+    }
+
+    html.quanta-ui .quanta-fullscreen-media {
+        inset: 8px 8px 84px;
+        border-radius: 14px;
+    }
+
+    html.quanta-ui .quanta-fullscreen-list {
+        top: 8px;
+        right: 8px;
+        height: calc(100% - 92px);
+        border-radius: 0 14px 14px 0;
+    }
+}
+
+/* WA's pop-ups at the bottom (room access, invitations, Say) open above the dock, 12px above the room's lower edge,
+   level with the zoom column's foot. */
+html.quanta-ui .popups {
+    margin-bottom: 108px;
+}
+
+/* A banner from the room script ("recording started"): a notice-style card above the dock, its colour as a dot. */
+html.quanta-ui .warningMain {
+    bottom: 102px;
+}
+
+html.quanta-ui .warningMain > div {
+    border-radius: 16px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui .warningMain > div > div > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    font-size: 15px;
+    color: #eceef1 !important;
+}
+
+html.quanta-ui .warningMain > div > div > div.absolute {
+    display: none;
+}
+
+html.quanta-ui .warningMain > div > div {
+    padding: 14px 20px;
+}
+
+/* The map on a backdrop, as in Meet: a rounded window 12px from the edges that stops 12px above the dock
+   (12px below it + 72px tall), with the room's slate around it. Only clipped, so the game's size,
+   coordinates and clicks are WA's own. */
+html.quanta-ui #game {
+    background: #101217;
+}
+
+html.quanta-ui #game.game-scene-loaded > canvas {
+    clip-path: inset(12px 12px 96px 12px round 16px);
+}
+
+/* On phones the dock is 68px tall, 8px from the bottom (QuantaDock.svelte). */
+@media (max-width: 480px) {
+    html.quanta-ui #game.game-scene-loaded > canvas {
+        clip-path: inset(8px 8px 84px 8px round 14px);
+    }
+}
+
+/* A website opened beside the map (a co-website) is a second rounded window on the same backdrop: 12px from the
+   edges and from the map, above the dock where the two sit side by side. Padded rather than clipped, so the page
+   keeps its whole height. */
+html.quanta-ui #cowebsites-container {
+    padding: 12px 12px 96px 0;
+    background: #101217;
+    backdrop-filter: none;
+}
+
+html.quanta-ui #cowebsites-container > div:first-child {
+    border-radius: 16px;
+    overflow: hidden;
+    background: #1d2027;
+}
+
+/* Portrait: the website above the map, the map's own 12px below it. */
+@media (orientation: portrait) {
+    html.quanta-ui #cowebsites-container {
+        padding: 12px 12px 0;
+    }
+}
+
+/* Full screen, WA lifts it above everything (z-index 1000); the dock stays above it. */
+html.quanta-ui #cowebsites-container.cowebsite-fullscreen {
+    padding: 12px 12px 96px;
+    z-index: 940;
+}
+
+@media (max-width: 480px) {
+    html.quanta-ui #cowebsites-container {
+        padding: 8px 8px 0;
+    }
+
+    html.quanta-ui #cowebsites-container.cowebsite-fullscreen {
+        padding: 8px 8px 84px;
+    }
+}
+
+/* The page fills its window below the tabs: WA indents it 12px from the start (landscape) or the bottom (portrait),
+   which left a strip of the frame beside it. */
+html.quanta-ui #cowebsites-container > div:first-child > div:last-child {
+    margin: 0;
+}
+
+/* The drag handle sits in the gap between the map's window and this one, not on this window's edge. */
+html.quanta-ui #cowebsites-container > .cursor-col-resize {
+    inset-inline-start: -8px;
+}
+
+html.quanta-ui #cowebsites-container > .cursor-row-resize {
+    top: 10px;
+}
+
+/* Its tabs: WA draws the open one white with dark text, which the slate retint left dark on dark. */
+html.quanta-ui #cowebsites-container .tab {
+    color: #eceef1;
+}
+
+html.quanta-ui #cowebsites-container .tab.bg-white {
+    background: #2f343d;
+}
+
+html.quanta-ui #cowebsites-container .tab.bg-white:hover {
+    background: #383e48;
+}
+
+html.quanta-ui #cowebsites-container .tab .text-contrast,
+html.quanta-ui #cowebsites-container .tab.text-contrast {
+    color: #eceef1;
+}
+
+html.quanta-ui #cowebsites-container .tab .stroke-contrast {
+    stroke: #eceef1;
+}
+
+html.quanta-ui #cowebsites-container .tab button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* WA's map editor panels ("Explore the room", adding objects, areas, the bin) and its tool column: windows like a
+   website's, 12px inside the map's window (itself 12px from the frame) and ending 12px above its bottom, rounded,
+   in the dialogs' slate, never against the window's edge. WA's width
+   (set inline, from its resize) stays; its full-height resize handle goes. "Explore the room" also gets a plain
+   title, filter chips that wrap instead of scrolling, and quieter rows. */
+html.quanta-ui #map-editor-right {
+    height: auto;
+    margin: 24px 24px 0 0;
+    /* WA sets the width once, from its own resize: a room made narrower around it (beside a lesson) would end up
+       all panel. The window's insets, the tool column and its gap, and 200px of map (enough for a notice) stay in
+       sight. MainLayout.svelte reserves the same width. */
+    max-width: max(200px, calc(100vw - 328px));
+}
+
+html.quanta-ui #map-editor-right .sidebar {
+    height: calc(100dvh - 132px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 20px 16px;
+    border-radius: 16px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+html.quanta-ui #map-editor-right :is(.drag-handle, .resize-handle) {
+    display: none;
+}
+
+/* A tool without a panel (the room's settings, a dialog) leaves no empty slot that squeezes the tool column. */
+html.quanta-ui #map-editor-right:not(:has(.sidebar)) {
+    display: none;
+}
+
+html.quanta-ui #map-editor-container .side-bar-container {
+    flex-shrink: 0;
+}
+
+/* The tool column, and its way out of the editor, at every width: WA keeps it for wide screens (md) unless the
+   panel is collapsed. */
+html.quanta-ui #map-editor-container > div.hidden {
+    display: block;
+}
+
+/* Its icons centred whatever their size (the collapse arrow is 20px in a 24px box, and sat to its left). */
+html.quanta-ui #map-editor-container .side-bar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Then the column itself keeps the panel's distance from the window's edge. */
+html.quanta-ui #map-editor-container:not(:has(#map-editor-right .sidebar)) .side-bar-container {
+    margin-right: 24px;
+}
+
+html.quanta-ui #map-editor-container {
+    max-height: calc(100dvh - 96px);
+}
+
+html.quanta-ui #map-editor-container > div:first-child {
+    max-height: calc(100dvh - 132px);
+    margin-top: 24px;
+    overflow-y: auto;
+    scrollbar-width: none;
+}
+
+/* Level with the panel beside it, not WA's 96px down: so it fits above the dock on a short window. */
+html.quanta-ui #map-editor-container .side-bar {
+    padding-top: 0;
+}
+
+/* Its close and collapse buttons are circles and the tools a capsule, like the zoom column, not rounded boxes. */
+html.quanta-ui #map-editor-container .side-bar .close-window,
+html.quanta-ui #map-editor-container .side-bar > div.p-2 {
+    border-radius: 9999px;
+}
+
+html.quanta-ui .mapexplorer {
+    overflow-x: hidden;
+}
+
+html.quanta-ui .mapexplorer .header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 12px;
+}
+
+html.quanta-ui .mapexplorer .quanta-explorer-close {
+    width: 40px;
+    height: 40px;
+    margin: -8px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: #eceef1;
+    cursor: pointer;
+}
+
+html.quanta-ui .mapexplorer .quanta-explorer-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui .mapexplorer .header-container h3 {
+    margin: 0;
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+html.quanta-ui .mapexplorer .overflow-x-scroll {
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow: visible;
+}
+
+html.quanta-ui .mapexplorer .add-property-button {
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background-color: #262a31;
+}
+
+html.quanta-ui .mapexplorer .add-property-button:hover {
+    background-color: #2f343d;
+}
+
+/* The active filter, which WA marks with an inline blue (kept as written or as rgb() by the browser). */
+html.quanta-ui .mapexplorer .add-property-button:is([style*="4156f6" i], [style*="65, 86, 246"]) {
+    background-color: #b9bec6 !important;
+}
+
+html.quanta-ui .mapexplorer .add-property-button:is([style*="4156f6" i], [style*="65, 86, 246"]) :is(svg, .text-white) {
+    color: #1b1e23 !important;
+}
+
+html.quanta-ui .mapexplorer :is(.entities, .areas) {
+    padding: 10px 8px;
+    border-radius: 12px;
+    color: #a7adb7;
+}
+
+html.quanta-ui .mapexplorer :is(.entities, .areas) > div > img {
+    width: 28px;
+}
+
+html.quanta-ui .mapexplorer :is(.entities, .areas) .bg-white.text-secondary {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 9999px;
+    background: #2f343d;
+    color: #eceef1;
+    font-size: 13px;
+}
+
+/* The emoji picker above the dock: the dock's panel and round buttons. Each emoji a 44px button with its keyboard
+   number as a small badge (WA's 2.5x zoom on hover goes); Edit, Say and Think as the dock's pill buttons. Colour emoji
+   fonts first, so a system's monochrome symbol font doesn't draw them as outlines. */
+/* The same 12px everywhere: around the panel, above and below its divider; WA's row padding doubled it under the
+   Say/Think row. */
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar {
+    padding: 12px;
+    border-radius: 24px;
+    background: #181b21;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > div:first-child > div:first-child {
+    gap: 4px;
+    padding: 0;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 9999px;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji:hover {
+    background: #2b3038;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji.bg-secondary {
+    background: #b9bec6;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar div.emoji {
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 22px;
+    line-height: 1;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji:hover div.emoji {
+    transform: scale(1.15);
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji > div:last-child {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    padding: 0;
+    color: #a7adb7;
+    font-size: 10px;
+    line-height: 1;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar .bottom-action-button::before {
+    background: #2b3038;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar .bottom-action-button .btn {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 9999px;
+    color: #eceef1;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > .h-\[1px\] {
+    margin: 12px 4px 0;
+    background: #2b3038;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > .justify-between {
+    padding: 12px 0 0;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > .justify-between button {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 9999px;
+    background: #2b3038;
+    color: #eceef1;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > .justify-between button:hover {
+    background: #383e48;
+}
+
+/* Global messages (a settings tab, WA's own form), cut to a note for everyone in this room: one plain message box and
+   Send. Without WA's rich-text toolbar, its Audio tab (a teacher speaks instead) and "Broadcast to all rooms of the
+   world" (here that would reach the workspace's other course rooms); left unticked, the note stays in this room. */
+html.quanta-ui [data-testid="quanta-settings"] .global-message-subOptions,
+html.quanta-ui [data-testid="quanta-settings"] .global-message-content + div > label,
+html.quanta-ui [data-testid="quanta-settings"] .ql-toolbar.ql-snow {
+    display: none;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .ql-container.ql-snow {
+    font-family: inherit;
+    border: 1px solid #2b3038;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .section-input-send-text .ql-editor {
+    min-height: 140px;
+    background-color: #262a31;
+    color: #eceef1;
+    font-family: inherit;
+    font-size: 15px;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .ql-editor.ql-blank::before {
+    color: #a7adb7;
+    font-style: normal;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .global-message-content + div > section {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .global-message-content + div > section button {
+    height: 40px;
+    padding: 0 24px;
+    border-radius: 9999px;
+    background: #b9bec6;
+    color: #1b1e23;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-testid="quanta-settings"] .global-message-content + div > section button:hover {
+    background: #c9cdd3;
+}
+
+/* The video tiles start inside the map's window, not on the backdrop above it. */
+html.quanta-ui #cameras-container {
+    margin-top: 24px;
+}
+
+/* The camera check before entering: the settings dialog's language. A plain title without WA's paragraph of
+   filler, slate cards, the chosen device as a raised row instead of a white card, quiet "Edit" buttons. */
+html.quanta-ui .enableCameraScene h2 {
+    font-family: inherit;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+html.quanta-ui .enableCameraScene section.mb-4 > p {
+    display: none;
+}
+
+html.quanta-ui .enableCameraScene .bg-white\/10 {
+    border-radius: 20px;
+    background: #1d2027;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary {
+    border: 1px solid #3a3f48;
+    background: #262a32;
+    color: #eceef1;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary .rounded-full.border {
+    border-color: #b9bec6;
+    background: #b9bec6;
+    color: #1b1e23;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary .rounded-full.border svg {
+    color: #1b1e23;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary :is(.bg-gray-300, .bg-white\/20, [class*="bg-neutral"]) {
+    background: #3a3f48;
+    color: #c4c7c5;
+}
+
+html.quanta-ui .enableCameraScene .btn {
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 9999px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+html.quanta-ui .enableCameraScene .btn.btn-secondary:not(.btn-ghost, .btn-border) {
+    background: #2b3038;
+}
+
+html.quanta-ui .enableCameraScene .btn.btn-secondary:not(.btn-ghost, .btn-border) .btn-label {
+    color: #eceef1;
+}
+
+/* Its bottom bar: solid, and "Save" as the main button at a normal size. */
+html.quanta-ui .enableCameraScene .fixed.bottom-0 {
+    background: #15171b;
+    backdrop-filter: none;
+}
+
+html.quanta-ui .enableCameraScene .fixed.bottom-0 .btn.btn-secondary {
+    height: 48px;
+    max-width: 360px;
+    border-radius: 9999px;
+    background: #b9bec6;
+    font-size: 16px;
+}
+
+html.quanta-ui .enableCameraScene .fixed.bottom-0 .btn.btn-secondary .btn-label {
+    color: #1b1e23;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary .btn {
+    background: #353b45;
+}
+
+html.quanta-ui .enableCameraScene .bg-white.text-secondary .btn svg {
+    color: #eceef1;
+}
+
+html.quanta-ui [data-testid="actions-explorer"] {
+    transition: opacity 0.15s;
+}
+
+html.quanta-ui.quanta-tray-open [data-testid="actions-explorer"] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Say / Think (the emoji picker's buttons open it): a switch in the dock's style instead of a dropdown, and the
+   message box like the room's other fields. */
+html.quanta-ui [data-testid="say-popup"] .quanta-say-type {
+    display: inline-flex;
+    flex: none;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: #262a31;
+}
+
+html.quanta-ui [data-testid="say-popup"] .quanta-say-type > button {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+html.quanta-ui [data-testid="say-popup"] .quanta-say-type > button:hover {
+    color: #fff;
+}
+
+html.quanta-ui [data-testid="say-popup"] .quanta-say-type > button[aria-pressed="true"] {
+    background: #c9d5ea;
+    color: #1b1e23;
+}
+
+/* Shrinks with the pop-up in a narrow room (WA sets a 320px minimum) instead of spilling past its edge: the
+   message field gives way, not the card (focusing a field wider than the card scrolled the close button off it). */
+html.quanta-ui [data-testid="say-popup"] {
+    min-width: 0;
+}
+
+html.quanta-ui [data-testid="say-popup"] > div:last-child {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+html.quanta-ui [data-testid="say-popup"] > div:last-child > div {
+    min-width: 0;
+}
+
+html.quanta-ui [data-testid="say-popup"] [data-testid="btn-close-say-popup"] {
+    flex: none;
+    background: #262a31;
+}
+
+html.quanta-ui [data-testid="say-popup"] [data-testid="btn-close-say-popup"]:hover {
+    background: #2b3038;
+}
+
+html.quanta-ui [data-testid="say-popup"] input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    border: 0;
+    border-radius: 999px;
+    background: #262a31;
+    padding: 0 14px;
+    font-size: 15px;
+    color: #fff;
+}
+
+html.quanta-ui [data-testid="say-popup"] input:focus {
+    outline: 2px solid #c9d5ea;
+    outline-offset: 0;
+}
+
+/* WA's avatar picker and builder: on the room's dark ground rather than inside WA's blue band, a slate card of the
+   band's height, its actions (customize, back, continue) pills. */
+@layer utilities {
+    html.quanta-ui .mobile-webkit.bg-contrast.w-screen {
+        margin-top: 0 !important;
+        height: 100% !important;
+    }
+}
+
+html.quanta-ui .mobile-webkit.bg-contrast.w-screen {
+    background: #1d2027;
+}
+
+html.quanta-ui .mobile-webkit.bg-contrast.w-screen > .mobile-webkit {
+    /* Over the scene's own !important fill-available. */
+    max-height: min(70vh, calc(100% - 32px)) !important;
+    border-radius: 16px;
+    background: #181b21;
+    backdrop-filter: none;
+}
+
+html.quanta-ui .mobile-webkit .border-t-white\/10 > button.w-full.rounded {
+    border-radius: 9999px;
+}
+
+/* Continue and Finish on that light grey: dark labels, as on the room's other primary buttons. */
+html.quanta-ui .mobile-webkit .border-t-white\/10 > button.bg-secondary {
+    color: #1d2b45;
+}
+
+/* The editor's room settings: a slate dialog like Settings, plain-case headings, its sections as rounded rows
+   without dividers, and no second "close" under the cross. */
+/* Corners nest the close button's 40px circle, 12px in (20 + 12). */
+html.quanta-ui .configure-my-room {
+    border-radius: 32px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui .configure-my-room > .close-window {
+    top: 12px;
+    right: 12px;
+}
+
+html.quanta-ui .configure-my-room > .close-window button {
+    width: 40px;
+    height: 40px;
+}
+
+html.quanta-ui .configure-my-room h3 {
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.3;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+html.quanta-ui .configure-my-room .menu {
+    padding: 12px;
+    border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui .configure-my-room .menu h3 {
+    padding: 8px 12px 12px;
+}
+
+html.quanta-ui .configure-my-room .menu ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 0;
+}
+
+html.quanta-ui .configure-my-room .menu ul li {
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 9999px;
+    font-size: 15px;
+}
+
+html.quanta-ui .configure-my-room .menu ul li:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+html.quanta-ui .configure-my-room .menu ul li.selected {
+    background: #2b3038;
+}
+
+/* Its form scrolls as one column: WA's wrapping column flex sent a tall form into a second column, out of sight. */
+html.quanta-ui .configure-my-room .content {
+    flex-wrap: nowrap;
+}
+
+html.quanta-ui .configure-my-room > div:last-child:not(.close-window) {
+    display: none;
+}
+
+/* "Send global message": a slate dialog of the Settings dialog's width, plain-case headings, its three options
+   as rows (GlobalCommunicationModal.svelte), the way back a pill. Its corners nest, 12px apart at every level:
+   dialog 32px, the close button's circle and the rows 20px, the rows' icon tiles 8px. */
+html.quanta-ui [data-quanta-global] {
+    width: calc(100% - 48px);
+    max-width: 640px;
+    height: auto;
+    padding: 12px;
+    border-radius: 32px;
+    background: #1d2027;
+    backdrop-filter: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* The close button keeps the corner (12px in) when the title has the way back under it. */
+html.quanta-ui [data-quanta-global] header {
+    align-items: flex-start;
+    min-height: 40px;
+    margin-bottom: 12px;
+    padding: 0;
+}
+
+html.quanta-ui [data-quanta-global] header > div:first-child {
+    gap: 8px;
+    padding: 0 0 0 12px;
+}
+
+/* The title's row is the close button's height, so the two share a centre line. */
+html.quanta-ui [data-quanta-global] header > div:first-child > h2 {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    margin: 0;
+}
+
+html.quanta-ui [data-quanta-global] #btn-chat button {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+}
+
+html.quanta-ui [data-quanta-global] > .px-5 {
+    padding: 0;
+}
+
+html.quanta-ui [data-quanta-global] :is(h2, h3, h4) {
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+html.quanta-ui [data-quanta-global] header a {
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 13px;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-option {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 12px 16px 12px 12px;
+    border: 0;
+    border-radius: 20px;
+    background: #262a31;
+    color: #eceef1;
+    text-align: left;
+    cursor: pointer;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-option:hover {
+    background: #2b3038;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-option:focus-visible {
+    outline: 2px solid #c9d5ea;
+    outline-offset: 2px;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-icon {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #2b3038;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+html.quanta-ui [data-quanta-global] .qgm-hint {
+    font-size: 13px;
+    color: #a7adb7;
+}
+
+/* Its megaphone, text and audio screens: one column that never scrolls sideways, the heading's icon beside it,
+   fields like Settings', and Send / Start as the room's primary pill. */
+html.quanta-ui [data-quanta-global] {
+    overflow-x: hidden;
+}
+
+html.quanta-ui [data-quanta-global] :is(#active-liveMessage, #active-globalMessage) {
+    gap: 16px;
+    padding: 0 12px 12px;
+}
+
+html.quanta-ui [data-quanta-global] :is(#active-liveMessage, #active-globalMessage) h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+}
+
+html.quanta-ui [data-quanta-global] :is(#active-liveMessage, #active-globalMessage) h3 svg {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+}
+
+html.quanta-ui [data-quanta-global] #active-liveMessage > .flex.flex-col.md\:flex-row {
+    flex-direction: column;
+    gap: 16px;
+}
+
+html.quanta-ui [data-quanta-global] #active-liveMessage > .flex.flex-col.md\:flex-row > div {
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+}
+
+html.quanta-ui [data-quanta-global] #active-liveMessage video {
+    border-radius: 20px;
+}
+
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-container,
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-toolbar {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #262a31;
+}
+
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-container {
+    border-radius: 0 0 6px 6px;
+}
+
+/* Quill's editor paints WA's navy over the field and sets its placeholder in italics. */
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-editor {
+    background: transparent;
+}
+
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-editor.ql-blank::before {
+    color: rgba(255, 255, 255, 0.45);
+    font-style: normal;
+}
+
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-toolbar {
+    border-radius: 6px 6px 0 0;
+}
+
+html.quanta-ui [data-quanta-global] #active-globalMessage .ql-container:only-child,
+html.quanta-ui [data-quanta-global] #active-globalMessage .input-send-text:only-child {
+    border-radius: 6px;
+}
+
+html.quanta-ui [data-quanta-global] .section-input-send-audio .w-\[50em\] {
+    width: 100%;
+    max-width: 100%;
+}
+
+html.quanta-ui [data-quanta-global] :is(.centered-column, #active-liveMessage > div:last-child) .btn:not(.btn-danger) {
+    height: 44px;
+    padding: 0 24px;
+    border: 0;
+    border-radius: 9999px;
+    background: #c9d5ea;
+}
+
+html.quanta-ui
+    [data-quanta-global]
+    :is(.centered-column, #active-liveMessage > div:last-child)
+    .btn:not(.btn-danger)
+    :is(.btn-label, span) {
+    color: #1d2b45 !important;
+    font-weight: 500;
+}
+
+html.quanta-ui [data-quanta-global] :is(.centered-column, #active-liveMessage > div:last-child) .btn:disabled {
+    background: #2b3038;
+}
+
+html.quanta-ui
+    [data-quanta-global]
+    :is(.centered-column, #active-liveMessage > div:last-child)
+    .btn:disabled
+    :is(.btn-label, span) {
+    color: #a7adb7 !important;
+}
+
+/* The audio screen lines up with the text one: heading and drop area from the left, not centred. */
+html.quanta-ui [data-quanta-global] #active-globalMessage > .flex.flex-col.items-center {
+    align-items: stretch;
+}
+
+/* The room settings in a narrow room (beside a lesson): clear of the editor's tool column on the right, the
+   sections as a row of tabs above the form rather than a squeezed column beside it. */
+@media (max-width: 760px) {
+    html.quanta-ui .configure-my-room {
+        width: calc(100vw - 208px);
+        min-width: 300px;
+    }
+
+    html.quanta-ui .configure-my-room > div.flex-wrap {
+        flex-direction: column;
+        flex-wrap: nowrap;
+    }
+
+    html.quanta-ui .configure-my-room .menu {
+        width: 100%;
+        min-width: 0;
+        border-right: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    html.quanta-ui .configure-my-room .menu ul {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    html.quanta-ui .configure-my-room .menu ul li svg {
+        display: none;
+    }
+
+    html.quanta-ui .configure-my-room .content {
+        width: 100%;
+    }
+}

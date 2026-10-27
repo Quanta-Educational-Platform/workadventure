@@ -59,6 +59,24 @@ describe("openIDClient.checkTokenAuthWithRefresh", () => {
         expect(result.encryptedRefreshToken).toBe(encryptedRefreshToken);
     });
 
+    it("refreshes when the provider answers the expired access token with 403, as Supabase does", async () => {
+        const encryptedRefreshToken = (openIDClient as unknown as { encrypt: (t: string) => string }).encrypt(
+            "refresh-1",
+        );
+        const forbidden = Object.assign(new Error("expected 200 OK, got: 403 Forbidden"), {
+            response: { statusCode: 403 },
+        });
+        const userinfo = vi.fn().mockRejectedValueOnce(forbidden).mockResolvedValueOnce({ sub: "user-1" });
+        const refresh = vi.fn().mockResolvedValue({ access_token: "access-2" });
+        stubClient({ userinfo, refresh });
+
+        const result = await openIDClient.checkTokenAuthWithRefresh("access-1", encryptedRefreshToken);
+
+        expect(refresh).toHaveBeenCalledWith("refresh-1");
+        expect(result.refreshed).toBe(true);
+        expect(result.accessToken).toBe("access-2");
+    });
+
     it("stores the rotated refresh token when the provider issues a new one", async () => {
         const encryptedRefreshToken = (openIDClient as unknown as { encrypt: (t: string) => string }).encrypt(
             "refresh-1",

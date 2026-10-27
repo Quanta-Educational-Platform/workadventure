@@ -14,6 +14,7 @@ import type { CompanionTextureDescriptionInterface } from "../Companion/Companio
 import { CompanionTextures } from "../Companion/CompanionTextures";
 import { collectionsSizeStore, selectedCollection } from "../../Stores/SelectCharacterSceneStore";
 import { connectionManager } from "../../Connection/ConnectionManager";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 import { ResizableScene } from "./ResizableScene";
 
 import Sprite = Phaser.Physics.Arcade.Sprite;
@@ -25,6 +26,8 @@ export const SelectCompanionSceneName = "SelectCompanionScene";
 
 export class SelectCompanionScene extends ResizableScene {
     private selectedCompanion!: Sprite | null;
+    // quanta: the companion before the picker opened, which Back keeps.
+    private previousCompanionTextureId: string | null = null;
     private companions: Array<Sprite> = new Array<Sprite>();
     private companionModels!: CompanionTextureDescriptionInterface[];
     private companionCurrentCollection!: CompanionTextureDescriptionInterface[];
@@ -99,12 +102,15 @@ export class SelectCompanionScene extends ResizableScene {
         this.input.keyboard?.on("keydown-RIGHT", this.moveToRight.bind(this));
         this.input.keyboard?.on("keydown-LEFT", this.moveToLeft.bind(this));
 
+        this.previousCompanionTextureId = localUserStore.getCompanionTextureId();
         localUserStore.setCompanionTextureId(null);
         gameManager.setCompanionTextureId(null);
 
         this.createCurrentCompanion();
         this.updateSelectedCompanion();
-        if (gameManager.currentStartedRoom.backgroundColor != undefined) {
+        if (QUANTA_UI) {
+            this.cameras.main.setBackgroundColor("#1d2027");
+        } else if (gameManager.currentStartedRoom.backgroundColor != undefined) {
             this.cameras.main.setBackgroundColor(gameManager.currentStartedRoom.backgroundColor);
         }
     }
@@ -131,6 +137,13 @@ export class SelectCompanionScene extends ResizableScene {
         gameManager.setCompanionTextureId(null);
         await connectionManager.saveCompanionTexture(null);
 
+        this.closeScene();
+    }
+
+    /** quanta: back to the room with the companion from before, nothing saved. */
+    public cancel(): void {
+        localUserStore.setCompanionTextureId(this.previousCompanionTextureId);
+        gameManager.setCompanionTextureId(this.previousCompanionTextureId);
         this.closeScene();
     }
 
