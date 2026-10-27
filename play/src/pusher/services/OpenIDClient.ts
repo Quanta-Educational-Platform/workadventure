@@ -296,7 +296,14 @@ function isExpiredTokenError(err: unknown): boolean {
         return false;
     }
     const { error, response } = err as { error?: unknown; response?: { statusCode?: unknown } };
-    return error === "invalid_token" || error === "invalid_grant" || response?.statusCode === 401;
+    // Supabase's userinfo answers an expired access token with 403 rather than 401; a refresh that fails still sends
+    // the user to the login screen as before.
+    return (
+        error === "invalid_token" ||
+        error === "invalid_grant" ||
+        response?.statusCode === 401 ||
+        response?.statusCode === 403
+    );
 }
 
 export const openIDClient = new OpenIDClient();

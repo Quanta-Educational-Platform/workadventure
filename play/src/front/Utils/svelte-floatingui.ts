@@ -28,6 +28,8 @@ export type ArrowAction = (node: HTMLElement) => {
 export function createFloatingUiActions(
     initOptions?: Partial<ComputePositionConfig>,
     offsetMainAxis = 0,
+    // quanta: how far from the window's edges the content is kept (the dock's emoji panel clears the zoom column).
+    shiftPadding = 5,
 ): [ReferenceAction, ContentAction, ArrowAction] {
     let cleanup: (() => void) | null = null;
     let referenceNode: Element | undefined;
@@ -39,7 +41,7 @@ export function createFloatingUiActions(
         if (referenceNode && contentNode) {
             const middlewares = [
                 flip(),
-                shift({ padding: 5, limiter: limitShift() }),
+                shift({ padding: shiftPadding, limiter: limitShift() }),
                 offset({ mainAxis: offsetMainAxis }),
             ];
             if (arrowNode) {
