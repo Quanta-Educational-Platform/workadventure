@@ -13,6 +13,7 @@
     import { currentPlayerLockableAreasStore } from "../../../Stores/CurrentPlayerAreaLockStore";
     import { currentPlayerGroupLockStateStore } from "../../../Stores/CurrentPlayerGroupStore";
     import { localUserStore } from "../../../Connection/LocalUserStore";
+    import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
     import LL from "../../../../i18n/i18n-svelte";
 
     import AppsMenuItem from "./AppsMenuItem.svelte";
@@ -74,7 +75,8 @@
 <!-- Single control for the whole "ask to speak" lifecycle: shown to raise the hand in every remote conversation
      (meeting room, megaphone audience, proximity bubble — a zone can turn it off), and kept on stage (green "live"
      state) once the floor is granted so the user can hand it back. See raiseHandAvailableStore. -->
-{#if !$inExternalServiceStore && $raiseHandAvailableStore}
+<!-- quanta: the docked controls have their own raise-hand button -->
+{#if !$inExternalServiceStore && $raiseHandAvailableStore && !(QUANTA_UI && inProfileMenu)}
     <RaiseHandMenuItem />
 {/if}
 
