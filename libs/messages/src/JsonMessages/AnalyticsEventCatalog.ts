@@ -1925,6 +1925,21 @@ export const ANALYTICS_EVENTS = {
   "map_explorer.zoom_out_clicked": signal(
     "The user zoomed out on the map explorer.",
   ),
+  "media.microphone.state_changed": event({
+    properties: z.object({ enabled: z.boolean() }),
+    description:
+      "The effective media capture state changed after entering a room.",
+  }),
+  "media.camera.state_changed": event({
+    properties: z.object({ enabled: z.boolean() }),
+    description:
+      "The effective media capture state changed after entering a room.",
+  }),
+  "meeting.screenshare.state_changed": event({
+    properties: z.object({ enabled: z.boolean() }),
+    description:
+      "The effective media capture state changed after entering a room.",
+  }),
   "media.camera.toggled": signal("The user turned their camera on or off."),
   "media.microphone.dwell": timedEvent({
     openableBy: "client",

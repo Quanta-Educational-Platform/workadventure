@@ -9,6 +9,7 @@
     import LL from "../../../i18n/i18n-svelte";
     import Input from "../Input/Input.svelte";
     import ButtonClose from "../Input/ButtonClose.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import PopUpContainer from "./PopUpContainer.svelte";
     import { IconSend } from "@wa-icons";
 
@@ -115,22 +116,34 @@
             size="md"
             dataTestId="btn-close-say-popup"
         />
-        <div class="flex-none w-24">
-            <Select
-                bind:value={type}
-                options={[
-                    {
-                        value: "say",
-                        label: $LL.say.type.say(),
-                    },
-                    {
-                        value: "think",
-                        label: $LL.say.type.think(),
-                    },
-                ]}
-                extraSelectClass="!mb-0"
-            />
-        </div>
+        {#if QUANTA_UI}
+            <!-- quanta: Say and Think as a switch in the dock's style, not a dropdown (quanta-ui.css) -->
+            <div class="quanta-say-type" role="group">
+                <button type="button" aria-pressed={type === "say"} onclick={() => (type = "say")}>
+                    {$LL.say.type.say()}
+                </button>
+                <button type="button" aria-pressed={type === "think"} onclick={() => (type = "think")}>
+                    {$LL.say.type.think()}
+                </button>
+            </div>
+        {:else}
+            <div class="flex-none w-24">
+                <Select
+                    bind:value={type}
+                    options={[
+                        {
+                            value: "say",
+                            label: $LL.say.type.say(),
+                        },
+                        {
+                            value: "think",
+                            label: $LL.say.type.think(),
+                        },
+                    ]}
+                    extraSelectClass="!mb-0"
+                />
+            </div>
+        {/if}
         <div class="flex flex-row gap-2">
             <!--            <MessageInput-->
             <!--                onkeydown={sendMessageOrEscapeLine}-->

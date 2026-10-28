@@ -130,7 +130,9 @@ export class AreasManager {
     private updateMapEditorOptionForSpecificAreas() {
         const userId = localUserStore.getLocalUser()?.uuid;
         const userTags = this.scene.connection?.getAllTags() ?? [];
-        const isGameMapHasSpecificAreas = this.gameMapAreas.isGameMapContainsSpecificAreas(userId, userTags);
+        const isGameMapHasSpecificAreas =
+            !userTags.includes("quanta-map-readonly") &&
+            this.gameMapAreas.isGameMapContainsSpecificAreas(userId, userTags);
         mapEditorActivatedForThematics.set(isGameMapHasSpecificAreas);
     }
 

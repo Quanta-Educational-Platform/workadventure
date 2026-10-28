@@ -148,6 +148,14 @@ describe("MapStorageServer entity edit permissions", () => {
         vi.restoreAllMocks();
     });
 
+    it.each([true, false])("workspace read-only denies area grants with full edit %s", async (userCanEdit) => {
+        await expectRefused(
+            { userCanEdit, connectedUserTags: [ZONE_TAG, "quanta-map-readonly"] },
+            deleteEntity("inside"),
+        );
+        await expectRefused({ userCanEdit, connectedUserTags: [ZONE_TAG, "quanta-map-readonly"] }, uploadFile);
+    });
+
     describe("delete", () => {
         it("refuses a visitor deleting an entity", async () => {
             await expectRefused(VISITOR, deleteEntity("inside"));

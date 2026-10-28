@@ -15,6 +15,7 @@ export class EntityPermissions {
         height: number = 0,
         floating: boolean = false,
     ): boolean {
+        if (this.userConnectedTags.includes("quanta-map-readonly")) return false;
         if (this.userCanEdit) {
             return true;
         }

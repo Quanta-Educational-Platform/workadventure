@@ -134,6 +134,9 @@ const mapStorageServer: MapStorageServer = {
                 const wamFile = await mapsManager.getOrLoadWamFile(mapKey);
 
                 const { connectedUserTags, userCanEdit, userUUID } = call.request;
+                if (connectedUserTags.includes("quanta-map-readonly")) {
+                    throw new Error("User is not allowed to edit: workspace policy disables map editing");
+                }
 
                 const gameMapAreas = wamFile.getGameMapAreas();
                 const entityPermissions = new EntityPermissions(gameMapAreas, connectedUserTags, userCanEdit, userUUID);

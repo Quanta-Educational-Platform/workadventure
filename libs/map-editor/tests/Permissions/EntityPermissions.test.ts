@@ -24,6 +24,13 @@ describe("EntityPermissions", () => {
     });
     const permissions = new EntityPermissions(wamFile.getGameMapAreas(), ["editor"], false);
 
+    it("workspace read-only overrides matching area tags and full editor rights", () => {
+        for (const canEdit of [true, false]) {
+            const locked = new EntityPermissions(wamFile.getGameMapAreas(), ["editor", "quanta-map-readonly"], canEdit);
+            expect(locked.canEdit({ x: 64, y: 116 }, 128, 32)).toBe(false);
+        }
+    });
+
     it("allows a wide entity fully inside the zone", () => {
         // 128x32 entity whose top-left corner is (0, 100).
         expect(permissions.canEdit({ x: 64, y: 116 }, 128, 32)).toBe(true);
