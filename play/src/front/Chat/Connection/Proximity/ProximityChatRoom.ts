@@ -65,6 +65,7 @@ import { CharacterLayerManager } from "../../../Phaser/Entity/CharacterLayerMana
 import { BubbleNotification as BasicNotification } from "../../../Notification/BubbleNotification";
 import { iceServersManager } from "../../../WebRtc/IceServersManager";
 import { analyticsClient } from "../../../Administration/AnalyticsClient";
+import { QUANTA_ROOM_CHAT_SPACE } from "../../../quanta/roomChatSpace";
 import { DEFAULT_PROXIMITY_SPACE_NAME, type ProximityChatRoomKind } from "./ProximityChatRoomManager";
 import { ProximityChatQuestion } from "./ProximityChatQuestion";
 import { canCreateProximityContent } from "./ProximityCreationPermissions";
@@ -211,6 +212,10 @@ export class ProximityChatRoom implements ChatRoom {
     isJoined = writable(false);
     isChatDisabled = writable(false);
     intentionallyClosed = writable(false);
+    /** quanta: the whole room's chat (quanta/roomChat.ts), not a conversation's. */
+    private get roomWide(): boolean {
+        return this.spaceName === QUANTA_ROOM_CHAT_SPACE;
+    }
     hasUserMessages = writable(false);
     readonly joinedMemberCount = derived(this.spaceUsersStore, (users) => users.size);
     // Files travel peer to peer: the sender uploads a copy to every recipient, which does not scale to a crowd.
@@ -1236,7 +1241,7 @@ export class ProximityChatRoom implements ChatRoom {
         this.usersUnsubscriber = this._space.usersStore.subscribe((users) => {
             this.users = users;
             this._currentMeetingParticipantsStore.set(this.mapSpaceUsersToMeetingParticipants(users));
-            if (!hasUserInProximityChat && users.size > 1) {
+            if (!hasUserInProximityChat && users.size > 1 && !this.roomWide) {
                 let name = this.unknownUserName;
                 // Let's find the first user that is not us
                 for (const user of users.values()) {
@@ -1277,8 +1282,13 @@ export class ProximityChatRoom implements ChatRoom {
             const lastMessage = this.messages.length > 0 ? this.messages[this.messages.length - 1] : undefined;
 
             // if the proximity chat is not open, open it to see the message
-            if (!get(this.intentionallyClosed)) {
-                chatVisibilityStore.set(true);
+            // quanta: the room's chat never opens on its own; read where it is open, unread elsewhere.
+            const readingRoomChat =
+                this.roomWide && get(chatVisibilityStore) && get(selectedRoomStore) === this;
+            if (readingRoomChat || (!this.roomWide && !get(this.intentionallyClosed))) {
+                if (!this.roomWide) {
+                    chatVisibilityStore.set(true);
+                }
                 chatNotificationStore.clearRoom(this.id);
             } else {
                 const previousCount = get(this.unreadMessagesCount);
@@ -1313,7 +1323,7 @@ export class ProximityChatRoom implements ChatRoom {
         this.saveChatState();
 
         const actualStatus = get(availabilityStatusStore);
-        if (!isAChatRoomIsVisible()) {
+        if (!isAChatRoomIsVisible() && !this.roomWide) {
             selectedRoomStore.set(this);
             navChat.switchToChat();
             if (
@@ -1359,24 +1369,27 @@ export class ProximityChatRoom implements ChatRoom {
         if (!isMeetingRoomChat) {
             this.addEnteringChatWithUsers(users);
             this.soundManager.playBubbleInSound();
-        } else {
+        } else if (!this.roomWide) {
             this.sendMessage(get(LL).chat.timeLine.youJoinedMeetingRoom(), "incoming", false);
             this.soundManager.playMeetingInSound();
         }
 
         // Request a screen wake lock so the device does not go to sleep while chatting (proximity or meeting room).
-        screenWakeLock
-            .requestWakeLock()
-            .then((release) => {
-                if (joinSignal.aborted || this._space !== spaceForThisJoin) {
-                    // The join attempt was aborted while we were acquiring the lock. Release it right away,
-                    // the cleanup code already ran and will not do it for us.
-                    release?.().catch((error) => console.error(error));
-                    return;
-                }
-                this.screenWakeRelease = release;
-            })
-            .catch((error) => console.error(error));
+        // quanta: not for the room's chat, which is joined for as long as the room is open.
+        if (!this.roomWide) {
+            screenWakeLock
+                .requestWakeLock()
+                .then((release) => {
+                    if (joinSignal.aborted || this._space !== spaceForThisJoin) {
+                        // The join attempt was aborted while we were acquiring the lock. Release it right away,
+                        // the cleanup code already ran and will not do it for us.
+                        release?.().catch((error) => console.error(error));
+                        return;
+                    }
+                    this.screenWakeRelease = release;
+                })
+                .catch((error) => console.error(error));
+        }
 
         await this.throwIfAborted(joinSignal, spaceForThisJoin);
 
@@ -1496,6 +1509,10 @@ export class ProximityChatRoom implements ChatRoom {
     }
 
     private sendJoinEvents(spaceName: string, players: MessageUserJoined[]): void {
+        // quanta: the room's chat is no meeting for the room's scripts.
+        if (this.roomWide) {
+            return;
+        }
         if (this.isDefaultProximityRoom()) {
             iframeListener.sendJoinProximityMeetingEvent(players);
         }
@@ -1718,7 +1735,9 @@ export class ProximityChatRoom implements ChatRoom {
         this._currentMeetingParticipantsStore.set([]);
 
         hideBubbleConfirmationModal();
-        iframeListener.sendLeaveMeetingEvent(spaceName);
+        if (!this.roomWide) {
+            iframeListener.sendLeaveMeetingEvent(spaceName);
+        }
         if (this.isDefaultProximityRoom()) {
             iframeListener.sendLeaveProximityMeetingEvent();
         }
@@ -1726,7 +1745,7 @@ export class ProximityChatRoom implements ChatRoom {
 
         if (!isMeetingRoomChat) {
             this.soundManager.playBubbleOutSound();
-        } else {
+        } else if (!this.roomWide) {
             this.soundManager.playMeetingOutSound();
         }
 

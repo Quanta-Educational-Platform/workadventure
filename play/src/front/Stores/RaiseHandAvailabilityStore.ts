@@ -1,5 +1,7 @@
 import { type Readable, derived } from "svelte/store";
 import type { SpaceInterface } from "../Space/SpaceInterface";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
+import { roomHandSpaceStore } from "../quanta/roomHand";
 import { isSpeakerStore, silentStore } from "./MediaStore";
 import { givenFloorSpaceStore, requestedMegaphoneStore } from "./MegaphoneStore";
 import { mediaSynchronizedSpacesStore } from "./PeerStore";
@@ -18,7 +20,8 @@ import { meetingRaiseHandStore, megaphoneRaiseHandSpacesStore } from "./RaiseHan
  *  - the room-level megaphone only while someone else is on air, and not while the local user broadcasts,
  *    and only when no other space qualifies: a hand raised in a bubble is meant for the bubble, not for
  *    the whole room listening to the megaphone;
- *  - the world space (no kind) never does.
+ *  - the world space (no kind) never does; quanta: under QUANTA_UI it does when nothing else qualifies, so a hand can
+ *    go up anywhere in the room (quanta/roomHand.ts).
  *
  * A space the hand is already up in always stays in the list, whatever the rules above now say (a bubble
  * formed during a megaphone live, an option turned off): the user must still be able to lower it.
@@ -30,8 +33,9 @@ export const raiseHandSpacesStore: Readable<SpaceInterface[]> = derived(
         megaphoneRaiseHandSpacesStore,
         requestedMegaphoneStore,
         requestedHandRaiseState,
+        roomHandSpaceStore,
     ],
-    ([$spaces, $meetingRaiseHand, $listenerSpaces, $broadcasting, $raisedIn], set) => {
+    ([$spaces, $meetingRaiseHand, $listenerSpaces, $broadcasting, $raisedIn, $roomSpace], set) => {
         const megaphones = $spaces.filter((space) => space.kind === "megaphone");
         const others = $spaces.filter(
             (space) =>
@@ -39,13 +43,23 @@ export const raiseHandSpacesStore: Readable<SpaceInterface[]> = derived(
                 (space.kind === "area" && $meetingRaiseHand) ||
                 (space.kind === "speaker_zone" && $listenerSpaces.has(space.getName())),
         );
-        const select = (liveMegaphones: SpaceInterface[]) =>
-            $spaces.filter(
+        const select = (liveMegaphones: SpaceInterface[]) => {
+            const selected = $spaces.filter(
                 (space) =>
                     others.includes(space) ||
                     (others.length === 0 && !$broadcasting && liveMegaphones.includes(space)) ||
                     $raisedIn.has(space.getName()),
             );
+            if (
+                QUANTA_UI &&
+                $roomSpace &&
+                !selected.includes($roomSpace) &&
+                (selected.length === 0 || $raisedIn.has($roomSpace.getName()))
+            ) {
+                selected.push($roomSpace);
+            }
+            return selected;
+        };
 
         if (megaphones.length === 0) {
             set(select([]));

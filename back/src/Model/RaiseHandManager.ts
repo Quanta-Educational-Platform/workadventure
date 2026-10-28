@@ -3,6 +3,7 @@ import type { SpaceUser } from "@workadventure/messages";
 import { FilterType } from "@workadventure/messages";
 import type { SpaceState } from "@workadventure/shared-utils";
 import type { SpaceStateHost } from "./SpaceStateHost";
+import { MODERATION_ADMINS_ONLY } from "../Enum/EnvironmentVariable";
 import { isAdmin } from "./SpaceStateHost";
 
 /**
@@ -91,9 +92,16 @@ export class RaiseHandManager {
     /**
      * Admins always moderate. In a proximity (ALL_USERS) space anyone may: whoever leads the discussion hands the
      * floor around. In a broadcast space only speakers may, and not a guest who was only given the floor.
+     * quanta: with MODERATION_ADMINS_ONLY, only admins, wherever.
      */
     private assertCanModerate(sender: SpaceUser): void {
-        if (isAdmin(sender) || this.space.filterType === FilterType.ALL_USERS) {
+        if (isAdmin(sender)) {
+            return;
+        }
+        if (MODERATION_ADMINS_ONLY) {
+            throw new Error("Only an admin can manage the floor");
+        }
+        if (this.space.filterType === FilterType.ALL_USERS) {
             return;
         }
         const isPromotedGuest = this.space

@@ -1,6 +1,7 @@
 import { type Readable, derived } from "svelte/store";
 import { FilterType } from "@workadventure/messages";
 import type { RaisedHandSection } from "../Space/SpaceInterface";
+import { MODERATION_ADMINS_ONLY } from "../Enum/EnvironmentVariable";
 import { raisedHandSectionsStore } from "./PeerStore";
 import { userIsAdminStore } from "./GameStore";
 
@@ -28,7 +29,8 @@ export function sectionRights(section: RaisedHandSection, isAdmin: boolean): Rai
     if (section.space.filterType === FilterType.ALL_USERS) {
         return { visible: true, canModerate: isAdmin, floorControls: false };
     }
-    const isHost = isAdmin || section.onAirHere;
+    // quanta: with MODERATION_ADMINS_ONLY a speaker who isn't an admin hosts nothing (the back refuses it too).
+    const isHost = isAdmin || (!MODERATION_ADMINS_ONLY && section.onAirHere);
     return { visible: isHost, canModerate: isHost, floorControls: isHost };
 }
 

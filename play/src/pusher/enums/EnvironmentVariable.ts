@@ -33,6 +33,7 @@ export const API_URL = env.API_URL;
 export const ADMIN_API_URL = env.ADMIN_API_URL;
 export const ADMIN_API_RETRY_DELAY = parseInt(process.env.ADMIN_API_RETRY_DELAY || "500");
 export const ADMIN_URL = env.ADMIN_URL;
+export const MODERATION_ADMINS_ONLY = env.MODERATION_ADMINS_ONLY;
 export const ADMIN_BO_URL = env.ADMIN_BO_URL || env.ADMIN_URL;
 export const AUTOLOGIN_URL = env.AUTOLOGIN_URL ?? env.ADMIN_URL + "/workadventure/login";
 export const ADMIN_API_TOKEN = env.ADMIN_API_TOKEN;
@@ -206,6 +207,7 @@ export const FRONT_ENVIRONMENT_VARIABLES: FrontConfigurationInterface = {
     ENABLE_MAP_EDITOR: env.ENABLE_MAP_EDITOR,
     QUANTA_UI: env.QUANTA_UI,
     QUANTA_URL: env.QUANTA_URL,
+    MODERATION_ADMINS_ONLY: env.MODERATION_ADMINS_ONLY,
     PUBLIC_MAP_STORAGE_PREFIX: env.PUBLIC_MAP_STORAGE_URL ? new URL(env.PUBLIC_MAP_STORAGE_URL).pathname : undefined,
     MAX_USERNAME_LENGTH: env.MAX_USERNAME_LENGTH,
     MAX_PER_GROUP: env.MAX_PER_GROUP,

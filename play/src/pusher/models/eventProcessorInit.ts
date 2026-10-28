@@ -1,3 +1,4 @@
+import { MODERATION_ADMINS_ONLY } from "../enums/EnvironmentVariable";
 import { EventProcessor } from "./EventProcessor";
 
 export const eventProcessor = new EventProcessor();
@@ -28,6 +29,9 @@ eventProcessor.registerPrivateEventProcessor("muteAudio", (event, sender) => {
 
     if (sender.tags.includes("admin")) {
         event.muteAudio.force = true;
+    } else if (MODERATION_ADMINS_ONLY) {
+        // quanta: not even a request to mute, from anyone but an admin.
+        throw new Error("Only admins can mute others");
     }
 
     return event;
@@ -45,6 +49,9 @@ eventProcessor.registerPrivateEventProcessor("muteVideo", (event, sender) => {
 
     if (sender.tags.includes("admin")) {
         event.muteVideo.force = true;
+    } else if (MODERATION_ADMINS_ONLY) {
+        // quanta: not even a request to mute, from anyone but an admin.
+        throw new Error("Only admins can mute others");
     }
 
     return event;

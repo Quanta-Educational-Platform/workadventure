@@ -105,6 +105,10 @@ export const EnvironmentVariables = z.object({
 Use "-1" for infinity.
 Note that anonymous players don't have any TTL limit because their data is stored in local storage, not in Redis database.
 `),
+    // quanta: staff-only moderation
+    MODERATION_ADMINS_ONLY: BoolAsString.optional()
+        .transform((val) => toBool(val, false))
+        .describe("Only admins (the `admin` tag) moderate others: lower their hands, give or take the floor, mute or ask to mute them. Defaults to false (WA lets anyone in a proximity bubble do so)"),
     ENABLE_CHAT: BoolAsString.optional()
         .transform((val) => toBool(val, true))
         .describe("Enable/disable the chat feature. Defaults to true"),

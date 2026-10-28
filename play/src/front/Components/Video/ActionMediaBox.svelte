@@ -1,10 +1,11 @@
 <script lang="ts">
-    import { type Writable, writable } from "svelte/store";
+    import { type Writable, readable, writable } from "svelte/store";
     import { FilterType } from "@workadventure/messages";
     import MicrophoneCloseSvg from "../images/microphone-close.svg";
     import NoVideoSvg from "../images/no-video.svg";
     import { LL } from "../../../i18n/i18n-svelte";
     import { requestVisitCardsStore, userIsAdminStore } from "../../Stores/GameStore";
+    import { MODERATION_ADMINS_ONLY } from "../../Enum/EnvironmentVariable";
     import { raisedHandsOrderStore } from "../../Stores/RaisedHandsStore";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { meetingOf } from "../../Administration/CurrentMeeting";
@@ -28,7 +29,10 @@
 
     let isMicrophoneEnabled = $derived(spaceUser.reactiveUser.microphoneState);
     let isVideoEnabled = $derived(spaceUser.reactiveUser.cameraState);
-    let canAskToMuteAudioOrTurnOffVideo = $derived(spaceUser.space.canAskToMuteAudioOrTurnOffVideo);
+    // quanta: with MODERATION_ADMINS_ONLY, nobody but an admin asks others to mute (the pusher refuses it too).
+    let canAskToMuteAudioOrTurnOffVideo = $derived(
+        MODERATION_ADMINS_ONLY ? readable(false) : spaceUser.space.canAskToMuteAudioOrTurnOffVideo,
+    );
     // Raise-hand state comes from the space state queue (not SpaceUser), so it is known even for a
     // listener whose SpaceUser the local user does not receive.
     let isHandRaised = $derived(

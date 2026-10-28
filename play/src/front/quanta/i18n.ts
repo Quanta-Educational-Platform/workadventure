@@ -30,6 +30,8 @@ const enUS = {
     globalLiveHint: "Talk to everyone in the room with your camera and microphone",
     globalTextHint: "Show a message at the top of everyone's screen",
     globalAudioHint: "Play an audio file for everyone in the room",
+    wholeRoom: "Whole room",
+    roomChat: "Room chat",
 };
 
 type Strings = Record<keyof typeof enUS, string>;
@@ -60,6 +62,8 @@ const dictionaries = {
         globalLiveHint: "تحدث إلى الجميع في الغرفة بالكاميرا والميكروفون",
         globalTextHint: "اعرض رسالة أعلى شاشة الجميع",
         globalAudioHint: "شغّل ملفًا صوتيًا للجميع في الغرفة",
+        wholeRoom: "الغرفة كلها",
+        roomChat: "دردشة الغرفة",
     },
     "ca-ES": {
         settingsAudio: "Àudio",
@@ -86,6 +90,8 @@ const dictionaries = {
         globalLiveHint: "Parla amb tothom de la sala amb la càmera i el micròfon",
         globalTextHint: "Mostra un missatge a la part superior de la pantalla de tothom",
         globalAudioHint: "Reprodueix un fitxer d'àudio per a tothom de la sala",
+        wholeRoom: "Tota la sala",
+        roomChat: "Xat de la sala",
     },
     "de-DE": {
         settingsAudio: "Audio",
@@ -112,6 +118,8 @@ const dictionaries = {
         globalLiveHint: "Sprich mit Kamera und Mikrofon zu allen im Raum",
         globalTextHint: "Zeige allen oben auf dem Bildschirm eine Nachricht",
         globalAudioHint: "Spiele allen im Raum eine Audiodatei vor",
+        wholeRoom: "Ganzer Raum",
+        roomChat: "Raum-Chat",
     },
     "dsb-DE": {
         settingsAudio: "Awdio",
@@ -138,6 +146,8 @@ const dictionaries = {
         globalLiveHint: "Powědaj z kameru a mikrofonom ze wšymi w rumje",
         globalTextHint: "Pokaž powěsć górjejce na wobrazowce wšych",
         globalAudioHint: "Wótgraj awdiodataju za wšych w rumje",
+        wholeRoom: "Ceła śpa",
+        roomChat: "Chat śpy",
     },
     "en-US": enUS,
     "es-ES": {
@@ -165,6 +175,8 @@ const dictionaries = {
         globalLiveHint: "Habla con todos en la sala con tu cámara y micrófono",
         globalTextHint: "Muestra un mensaje en la parte superior de la pantalla de todos",
         globalAudioHint: "Reproduce un archivo de audio para todos en la sala",
+        wholeRoom: "Toda la sala",
+        roomChat: "Chat de la sala",
     },
     "fr-FR": {
         settingsAudio: "Audio",
@@ -191,6 +203,8 @@ const dictionaries = {
         globalLiveHint: "Parlez à tout le monde dans la salle avec votre caméra et votre micro",
         globalTextHint: "Affichez un message en haut de l'écran de chacun",
         globalAudioHint: "Diffusez un fichier audio pour toute la salle",
+        wholeRoom: "Toute la salle",
+        roomChat: "Chat de la salle",
     },
     "hsb-DE": {
         settingsAudio: "Awdio",
@@ -217,6 +231,8 @@ const dictionaries = {
         globalLiveHint: "Rěčće z kameru a mikrofonom ze wšěmi w rumje",
         globalTextHint: "Pokazajće powěsć horjeka na wobrazowce wšěch",
         globalAudioHint: "Wothrajće awdiodataju za wšěch w rumje",
+        wholeRoom: "Cyła rumnosć",
+        roomChat: "Chat rumnosće",
     },
     "it-IT": {
         settingsAudio: "Audio",
@@ -243,6 +259,8 @@ const dictionaries = {
         globalLiveHint: "Parla a tutti nella stanza con videocamera e microfono",
         globalTextHint: "Mostra un messaggio in cima allo schermo di tutti",
         globalAudioHint: "Riproduci un file audio per tutti nella stanza",
+        wholeRoom: "Tutta la stanza",
+        roomChat: "Chat della stanza",
     },
     "ja-JP": {
         settingsAudio: "音声",
@@ -269,6 +287,8 @@ const dictionaries = {
         globalLiveHint: "カメラとマイクで部屋の全員に話しかけます",
         globalTextHint: "全員の画面上部にメッセージを表示します",
         globalAudioHint: "部屋の全員に音声ファイルを再生します",
+        wholeRoom: "ルーム全体",
+        roomChat: "ルームチャット",
     },
     "ko-KR": {
         settingsAudio: "오디오",
@@ -295,6 +315,8 @@ const dictionaries = {
         globalLiveHint: "카메라와 마이크로 방의 모든 사람에게 말합니다",
         globalTextHint: "모든 사람의 화면 상단에 메시지를 표시합니다",
         globalAudioHint: "방의 모든 사람에게 오디오 파일을 재생합니다",
+        wholeRoom: "방 전체",
+        roomChat: "방 채팅",
     },
     "nl-NL": {
         settingsAudio: "Audio",
@@ -321,6 +343,8 @@ const dictionaries = {
         globalLiveHint: "Spreek iedereen in de ruimte toe met je camera en microfoon",
         globalTextHint: "Toon een bericht bovenaan ieders scherm",
         globalAudioHint: "Speel een audiobestand af voor iedereen in de ruimte",
+        wholeRoom: "Hele ruimte",
+        roomChat: "Ruimtechat",
     },
     "pt-BR": {
         settingsAudio: "Áudio",
@@ -347,6 +371,8 @@ const dictionaries = {
         globalLiveHint: "Fale com todos na sala com sua câmera e microfone",
         globalTextHint: "Mostre uma mensagem no topo da tela de todos",
         globalAudioHint: "Toque um arquivo de áudio para todos na sala",
+        wholeRoom: "Sala inteira",
+        roomChat: "Chat da sala",
     },
     "th-TH": {
         settingsAudio: "เสียง",
@@ -373,6 +399,8 @@ const dictionaries = {
         globalLiveHint: "พูดกับทุกคนในห้องด้วยกล้องและไมโครโฟน",
         globalTextHint: "แสดงข้อความที่ด้านบนหน้าจอของทุกคน",
         globalAudioHint: "เล่นไฟล์เสียงให้ทุกคนในห้องฟัง",
+        wholeRoom: "ทั้งห้อง",
+        roomChat: "แชทของห้อง",
     },
     "uk-UA": {
         settingsAudio: "Звук",
@@ -399,6 +427,8 @@ const dictionaries = {
         globalLiveHint: "Говоріть до всіх у кімнаті з камерою та мікрофоном",
         globalTextHint: "Покажіть повідомлення вгорі екрана в усіх",
         globalAudioHint: "Відтворіть аудіофайл для всіх у кімнаті",
+        wholeRoom: "Уся кімната",
+        roomChat: "Чат кімнати",
     },
     "vi-VN": {
         settingsAudio: "Âm thanh",
@@ -425,6 +455,8 @@ const dictionaries = {
         globalLiveHint: "Nói với mọi người trong phòng bằng camera và micro",
         globalTextHint: "Hiển thị tin nhắn ở đầu màn hình của mọi người",
         globalAudioHint: "Phát tệp âm thanh cho mọi người trong phòng",
+        wholeRoom: "Cả phòng",
+        roomChat: "Trò chuyện trong phòng",
     },
     "zh-CN": {
         settingsAudio: "音频",
@@ -451,6 +483,8 @@ const dictionaries = {
         globalLiveHint: "用摄像头和麦克风向房间里的所有人讲话",
         globalTextHint: "在所有人屏幕顶部显示一条消息",
         globalAudioHint: "为房间里的所有人播放音频文件",
+        wholeRoom: "整个房间",
+        roomChat: "房间聊天",
     },
     "zh-TW": {
         settingsAudio: "音訊",
@@ -477,6 +511,8 @@ const dictionaries = {
         globalLiveHint: "用攝影機和麥克風向房間裡的所有人講話",
         globalTextHint: "在所有人螢幕頂部顯示一則訊息",
         globalAudioHint: "為房間裡的所有人播放音訊檔案",
+        wholeRoom: "整個房間",
+        roomChat: "房間聊天",
     },
 } satisfies Partial<Record<Locales, Strings>>;
 

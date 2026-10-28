@@ -438,6 +438,10 @@ export const EnvironmentVariables = z.object({
     QUANTA_UI: BoolAsString.optional()
         .transform((val) => toBool(val, false))
         .describe("Dock the call controls at the bottom like Google Meet, with device trays. Defaults to false"),
+    // quanta: staff-only moderation
+    MODERATION_ADMINS_ONLY: BoolAsString.optional()
+        .transform((val) => toBool(val, false))
+        .describe("Only admins (the `admin` tag) moderate others: lower their hands, give or take the floor, mute or ask to mute them. Defaults to false (WA lets anyone in a proximity bubble do so)"),
     QUANTA_URL: z
         .string()
         .url()
