@@ -224,6 +224,8 @@ import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
 import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
 import { quantaRoomScript } from "../../quanta/roomScript";
 import { applyQuantaWamDefaults } from "../../quanta/wamDefaults";
+import { startRoomHand } from "../../quanta/roomHand";
+import { joinRoomChat } from "../../quanta/roomChat";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
@@ -2515,6 +2517,9 @@ export class GameScene extends DirtyScene {
             )
             .then((space) => {
                 this.allUserSpace = space;
+                if (QUANTA_UI) {
+                    this.unsubscribers.push(startRoomHand(space));
+                }
                 worldUserProvider = new WorldUserProvider(space);
                 this._worldUserCounter.forward(worldUserProvider.userCount);
                 return gameManager.getChatConnection();
@@ -2572,6 +2577,9 @@ export class GameScene extends DirtyScene {
             "default",
         );
         this._proximityChatRoomManagerDeferred.resolve(this._proximityChatRoomManager);
+        if (QUANTA_UI && this._room.isChatEnabled) {
+            this.unsubscribers.push(joinRoomChat(this._proximityChatRoomManager, this.abortController.signal));
+        }
 
         this._proximityChatRoomDeferred.resolve(this._proximityChatRoom);
         this.proximitySpaceManager = new ProximitySpaceManager(this.connection, this._proximityChatRoomManager);

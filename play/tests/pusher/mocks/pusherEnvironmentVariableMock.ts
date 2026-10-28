@@ -10,6 +10,7 @@ export const API_URL = "http://api.test";
 export const ADMIN_API_URL: string | undefined = undefined;
 export const ADMIN_API_RETRY_DELAY = 500;
 export const ADMIN_URL: string | undefined = undefined;
+export const MODERATION_ADMINS_ONLY = false;
 export const ADMIN_BO_URL: string | undefined = undefined;
 export const AUTOLOGIN_URL = "http://admin.test/workadventure/login";
 export const ADMIN_API_TOKEN: string | undefined = undefined;
@@ -127,6 +128,7 @@ export const FRONT_ENVIRONMENT_VARIABLES: FrontConfigurationInterface = {
     ENABLE_MAP_EDITOR,
     QUANTA_UI: false,
     QUANTA_URL: undefined,
+    MODERATION_ADMINS_ONLY: false,
     PUBLIC_MAP_STORAGE_PREFIX: undefined,
     MAX_USERNAME_LENGTH: 10,
     MAX_PER_GROUP: 4,

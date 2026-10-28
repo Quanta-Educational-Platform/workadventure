@@ -15,6 +15,8 @@ export interface FrontConfigurationInterface {
     QUANTA_UI: boolean;
     // quanta: the Quanta this server works for, which serves the rooms' script (quanta/roomScript.ts).
     QUANTA_URL: string | undefined;
+    // quanta: only admins lower others' hands, give the floor, or mute or ask to mute others.
+    MODERATION_ADMINS_ONLY: boolean;
     PUBLIC_MAP_STORAGE_PREFIX: string | undefined;
     MAX_USERNAME_LENGTH: number;
     MAX_PER_GROUP: number;
