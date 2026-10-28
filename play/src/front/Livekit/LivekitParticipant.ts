@@ -92,6 +92,7 @@ export class LiveKitParticipant {
         private abortSignal: AbortSignal,
         private getLivekitRegion: () => string | undefined = () => undefined,
         private defaultVolume: number = get(volumeProximityDiscussionStore),
+        private getConnectionId: () => string | undefined = () => undefined,
     ) {
         incrementLivekitConnectionsCount();
         this.boundHandleTrackPublished = this.handleTrackPublished.bind(this);
@@ -614,6 +615,12 @@ export class LiveKitParticipant {
             statsStore,
             {
                 streamId: `${this.participant.sid}:${type}`,
+                getStreamId: () =>
+                    `${this.participant.sid}:${(type === "video" ? this._cameraPublication : this._screenSharePublication)?.trackSid ?? "unpublished"}:${type}`,
+                getConnectionId: this.getConnectionId,
+                getMediaTrackId: () =>
+                    (type === "video" ? this._cameraPublication : this._screenSharePublication)?.track?.mediaStreamTrack
+                        .id,
                 streamCategory: type === "video" ? "video" : "screenSharing",
                 transportType: "Livekit",
                 remoteSpaceUserId: this._spaceUser.spaceUserId,

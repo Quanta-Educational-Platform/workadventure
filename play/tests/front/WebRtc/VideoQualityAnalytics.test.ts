@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import {
     VideoQualityLimitationReason,
@@ -29,7 +29,105 @@ const context = {
     spaceName: "world.space",
 };
 
+afterEach(() => {
+    vi.useRealTimers();
+    window.capabilities = {};
+});
+
 describe("subscribeToVideoQualityAnalytics", () => {
+    it("samples normal streams every 30 seconds, including an immediate first sample at epoch zero", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        window.capabilities = { "api/analytics/events-batch": "v1" };
+        const store = writable(stats),
+            send = vi.fn();
+        const stop = subscribeToVideoQualityAnalytics(store, context, send);
+        for (let second = 1; second <= 90; second++) {
+            vi.advanceTimersByTime(1000);
+            store.set({ ...stats });
+        }
+        expect(send.mock.calls.map(([r]) => r.samples[0].clientEventTimeMs)).toEqual([0, 30000, 60000, 90000]);
+        expect(send.mock.calls.map(([r]) => r.samples[0].sampleSeq)).toEqual([0, 1, 2, 3]);
+        stop();
+    });
+
+    it("bounds a persistent incident to 30 seconds of 5-second samples and a 120-second cooldown", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        window.capabilities = { "api/analytics/events-batch": "v1" };
+        const store = writable(stats),
+            send = vi.fn();
+        const stop = subscribeToVideoQualityAnalytics(store, context, send);
+        for (let second = 1; second <= 180; second++) {
+            vi.advanceTimersByTime(1000);
+            store.set({ ...stats, fps: 0, expectedFps: 30 });
+        }
+        expect(send.mock.calls.map(([r]) => r.samples[0].clientEventTimeMs)).toEqual([
+            0, 5000, 10000, 15000, 20000, 25000, 30000, 60000, 90000, 120000, 125000, 130000, 135000, 140000, 145000,
+            150000, 180000,
+        ]);
+        stop();
+    });
+
+    it("does not treat a deliberately paused stream's resume counters as a new incident", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        window.capabilities = { "api/analytics/events-batch": "v1" };
+        const playback = {
+            statsId: "inbound",
+            timestampMs: 0,
+            framesDecoded: 0,
+            freezeCount: 0,
+            totalFreezesDuration: 0,
+        };
+        const store = writable<WebRtcStats>({ ...stats, playback }),
+            send = vi.fn();
+        const stop = subscribeToVideoQualityAnalytics(store, context, send);
+        for (let second = 1; second <= 60; second++) {
+            vi.advanceTimersByTime(1000);
+            store.set({
+                ...stats,
+                fps: second <= 6 ? 0 : 30,
+                expectedFps: second <= 5 ? 0 : 30,
+                playback: {
+                    ...playback,
+                    timestampMs: second * 1000,
+                    framesDecoded: second * 30,
+                    freezeCount: second > 5 ? 1 : 0,
+                    totalFreezesDuration: second > 5 ? 5 : 0,
+                },
+            });
+        }
+        expect(send.mock.calls.map(([r]) => r.samples[0].clientEventTimeMs)).toEqual([0, 30000, 60000]);
+        expect(send.mock.calls[1][0].samples[0].windowSeconds).toBeUndefined();
+        expect(send.mock.calls[2][0].samples[0]).toMatchObject({ windowSeconds: 30, freezeCount: 0 });
+        stop();
+    });
+
+    it("does not open incidents for a static screen share or replaced stream counters", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        window.capabilities = { "api/analytics/events-batch": "v1" };
+        const store = writable<WebRtcStats | undefined>(stats),
+            send = vi.fn();
+        const stop = subscribeToVideoQualityAnalytics(store, { ...context, streamCategory: "screenSharing" }, send);
+        for (let second = 1; second <= 60; second++) {
+            vi.advanceTimersByTime(1000);
+            if (second === 10) store.set(undefined);
+            store.set({
+                ...stats,
+                fps: 1,
+                playback: {
+                    statsId: second < 10 ? "old" : "new",
+                    timestampMs: second * 1000,
+                    framesDecoded: second,
+                    freezeCount: second,
+                },
+            });
+        }
+        expect(send.mock.calls.map(([r]) => r.samples[0].clientEventTimeMs)).toEqual([0, 30000, 60000]);
+        stop();
+    });
     it("does not emit reports without the generic analytics capability", () => {
         window.capabilities = {};
         const sendReport = vi.fn();
@@ -186,5 +284,25 @@ describe("subscribeToOutboundVideoQualityAnalytics", () => {
         );
 
         expect(sendReport).not.toHaveBeenCalled();
+    });
+
+    it("does not create incidents from disabled layers or invalid sender samples", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        window.capabilities = { "api/analytics/events-batch": "v1" };
+        const store = writable(senderStats),
+            send = vi.fn();
+        const stop = subscribeToOutboundVideoQualityAnalytics(store, context, send);
+        vi.advanceTimersByTime(5000);
+        store.set({ ...senderStats, fps: 0, activeLayers: 0, uploadLossRatio: 1 });
+        vi.advanceTimersByTime(5000);
+        store.set({ ...senderStats, fps: Number.NaN, uploadLossRatio: 1 });
+        vi.advanceTimersByTime(5000);
+        store.set(senderStats);
+        expect(send).toHaveBeenCalledTimes(1);
+        vi.advanceTimersByTime(15000);
+        store.set(senderStats);
+        expect(send).toHaveBeenCalledTimes(2);
+        stop();
     });
 });

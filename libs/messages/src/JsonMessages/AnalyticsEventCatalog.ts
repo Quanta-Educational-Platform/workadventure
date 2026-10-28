@@ -672,6 +672,8 @@ export const ANALYTICS_EVENTS = {
   "media.video_quality.sample": event({
     properties: z.object({
       streamId: z.string().describe("The WebRTC stream this sample measures."),
+      participantSid: z.string().nullable().optional().describe("LiveKit participant identifier, when available."),
+      trackSid: z.string().nullable().optional().describe("LiveKit publication identifier, when available."),
       connectionId: z
         .string()
         .nullable()
@@ -1926,17 +1928,17 @@ export const ANALYTICS_EVENTS = {
     "The user zoomed out on the map explorer.",
   ),
   "media.microphone.state_changed": event({
-    properties: z.object({ enabled: z.boolean() }),
+    properties: z.object({ enabled: z.boolean().describe("Whether microphone capture is enabled after the change.") }),
     description:
       "The effective media capture state changed after entering a room.",
   }),
   "media.camera.state_changed": event({
-    properties: z.object({ enabled: z.boolean() }),
+    properties: z.object({ enabled: z.boolean().describe("Whether camera capture is enabled after the change.") }),
     description:
       "The effective media capture state changed after entering a room.",
   }),
   "meeting.screenshare.state_changed": event({
-    properties: z.object({ enabled: z.boolean() }),
+    properties: z.object({ enabled: z.boolean().describe("Whether screen sharing is enabled after the change.") }),
     description:
       "The effective media capture state changed after entering a room.",
   }),

@@ -1,7 +1,8 @@
-import { register, collectDefaultMetrics } from "prom-client";
+import { register, collectDefaultMetrics, Gauge } from "prom-client";
 import type { Request, Response, Application } from "express";
 import Debug from "debug";
 import { PROMETHEUS_AUTHORIZATION_TOKEN, PROMETHEUS_PORT } from "../enums/EnvironmentVariable";
+import { analyticsEventsQueue } from "../services/AnalyticsEventsQueue";
 import { BaseHttpController } from "./BaseHttpController";
 
 const debug = Debug("pusher:requests");
@@ -9,6 +10,26 @@ const debug = Debug("pusher:requests");
 export class PrometheusController extends BaseHttpController {
     constructor(app: Application) {
         super(app);
+        const fields = [
+            "queueSize",
+            "activityQueueSize",
+            "diagnosticsQueueSize",
+            "droppedOnOverflow",
+            "droppedInvalid",
+            "droppedAfterSendFailure",
+            "batchesSent",
+            "eventsSent",
+            "flushErrors",
+        ] as const;
+        for (const field of fields) {
+            new Gauge({
+                name: `workadventure_analytics_${field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}`,
+                help: `Analytics transport ${field}; cumulative counters reset on process restart`,
+                collect() {
+                    this.set(analyticsEventsQueue.getStats()[field]);
+                },
+            });
+        }
         collectDefaultMetrics({
             gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5], // These are the default buckets.
         });

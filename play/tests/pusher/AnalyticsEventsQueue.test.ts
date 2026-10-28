@@ -143,6 +143,52 @@ describe("AnalyticsEventsQueue", () => {
         });
     });
 
+    it("retains activity when quality samples overflow the shared memory bound", async () => {
+        const post = vi.fn().mockResolvedValue(undefined);
+        const queue = new AnalyticsEventsQueue({ ...baseConfig, maxQueueSize: 2 }, post);
+        queue.setEnabled(true);
+        queue.enqueueEvent(event("important", "user.disconnected"), socketData());
+        for (let i = 0; i < 20; i++) {
+            queue.enqueue({
+                ...event(`sample-${i}`),
+                eventName: "media.video_quality.sample",
+                userUuid: "reporter",
+                userId: null,
+                spaceUserId: "space",
+                clientIp: null,
+                world: "world",
+                roomId: "room",
+                tabId: "tab",
+                tags: [],
+                clientEventTime: new Date().toISOString(),
+                pusherReceivedAt: new Date().toISOString(),
+            });
+        }
+        expect(queue.getStats()).toMatchObject({ queueSize: 2, activityQueueSize: 1, diagnosticsQueueSize: 1 });
+        await queue.flush();
+        expect((post.mock.calls[0][1] as AnalyticsEventsBatch).events.map((row) => row.eventId)).toEqual([
+            "important",
+            "sample-19",
+        ]);
+        queue.stop();
+    });
+
+    it("flushes full batches without waiting another interval under sustained browser load", async () => {
+        const post = vi.fn().mockResolvedValue(undefined);
+        const queue = new AnalyticsEventsQueue(
+            { ...baseConfig, maxQueueSize: 100, maxBatchSize: 10, flushIntervalMs: 60_000 },
+            post,
+        );
+        queue.setEnabled(true);
+        for (let i = 0; i < 40; i++) queue.enqueueEvent(event(`event-${i}`), socketData());
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(queue.getStats()).toMatchObject({ queueSize: 0, eventsSent: 40, droppedOnOverflow: 0 });
+        expect(post).toHaveBeenCalledTimes(4);
+        queue.stop();
+    });
+
     it("caps oversized properties on UTF-8 bytes rather than UTF-16 code units", async () => {
         const post = vi.fn().mockResolvedValue(undefined);
         const queue = new AnalyticsEventsQueue(baseConfig, post);
@@ -241,6 +287,27 @@ describe("AnalyticsEventsQueue", () => {
             flushErrors: 1,
             droppedInvalid: 0,
         });
+    });
+
+    it("does not start an automatic batch after the shutdown deadline", async () => {
+        vi.useFakeTimers();
+        const post = vi.fn(() => {
+            vi.setSystemTime(Date.now() + 11);
+            return Promise.resolve();
+        });
+        const queue = new AnalyticsEventsQueue({ ...baseConfig, flushIntervalMs: 60_000, maxBatchSize: 1 }, post);
+        try {
+            queue.setEnabled(true);
+            queue.enqueueEvent(event("first"), socketData());
+            queue.enqueueEvent(event("second"), socketData());
+            await queue.drain(10);
+            await Promise.resolve();
+            expect(post).toHaveBeenCalledTimes(1);
+            expect(queue.getStats().queueSize).toBe(1);
+        } finally {
+            queue.stop();
+            vi.useRealTimers();
+        }
     });
 
     it("drain() flushes pending events when called while a flush is in flight", async () => {
@@ -359,6 +426,27 @@ describe("AnalyticsEventsQueue", () => {
                 jitter: 0.07,
             }),
         });
+    });
+
+    it("bounds quality event IDs for long room identities and separates replacement connections", async () => {
+        const post = vi.fn().mockResolvedValue(undefined);
+        const queue = new AnalyticsEventsQueue(baseConfig, post);
+        queue.setEnabled(true);
+        const longSample = videoQualitySample({
+            streamId: `https://play.example/@/team/${"course".repeat(40)}_42`,
+            sessionId: "page-session",
+            connectionId: "connection-a",
+        });
+        queue.enqueueVideoQualityReport(
+            { samples: [longSample, longSample, { ...longSample, connectionId: "connection-b" }] },
+            socketData(),
+        );
+        await queue.flush();
+        const rows = (post.mock.calls[0][1] as AnalyticsEventsBatch).events;
+        expect(rows).toHaveLength(3);
+        expect(rows[0].eventId.length).toBeLessThan(100);
+        expect(rows[0].eventId).toBe(rows[1].eventId);
+        expect(rows[0].eventId).not.toBe(rows[2].eventId);
     });
 
     it("names the LiveKit transport by topology, as the catalog does", async () => {

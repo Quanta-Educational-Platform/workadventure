@@ -11,6 +11,7 @@ import type {
 // same table used to live on the catalog entries, which pulled ~166 live Zod
 // schemas into the browser to look one up.
 import { postHogEventKey, postHogIntervalKeys } from "@workadventure/messages/src/JsonMessages/AnalyticsPostHogKeys";
+import { diagnosticSessionId } from "../quanta/diagnosticContext";
 import { POSTHOG_API_KEY, POSTHOG_URL } from "../Enum/EnvironmentVariable";
 import { hasCapability } from "../Connection/Capabilities";
 import { liveMeetingContexts, openTimedEventPerMeeting } from "./CurrentMeeting";
@@ -206,11 +207,17 @@ class AnalyticsClient {
         options: { reopenOnReconnect?: boolean },
     ): EndTimedAnalyticsEvent {
         return this.canSendAdminAnalytics()
-            ? openTimedAnalyticsEvent(eventName, properties, this.sendTimedEventReport, options)
+            ? openTimedAnalyticsEvent(
+                  eventName,
+                  { ...properties, browserSessionId: diagnosticSessionId },
+                  this.sendTimedEventReport,
+                  options,
+              )
             : NO_INTERVAL;
     }
 
     private dispatchAdminEvent(event: AdminAnalyticsEvent): void {
+        event = { ...event, properties: { ...event.properties, browserSessionId: diagnosticSessionId } };
         if (!this.adminAnalyticsSender) {
             this.pendingAdminEvents.push(event);
             if (this.pendingAdminEvents.length > MAX_PENDING_ADMIN_EVENTS) {

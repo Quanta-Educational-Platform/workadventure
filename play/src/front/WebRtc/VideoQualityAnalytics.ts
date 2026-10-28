@@ -9,9 +9,15 @@ import {
 } from "@workadventure/messages";
 import type { WebRtcSenderStats, WebRtcStats } from "../Components/Video/WebRtcStats";
 import { hasCapability } from "../Connection/Capabilities";
+import { diagnosticSessionId } from "../quanta/diagnosticContext";
+import { createVideoExpectationTracker } from "../quanta/videoExpectations";
 import { VideoPlaybackWindow } from "./VideoPlaybackWindow";
 
-const VIDEO_ANALYTICS_SEND_INTERVAL_MS = 5_000;
+const VIDEO_ANALYTICS_SEND_INTERVAL_MS = 30_000;
+const INCIDENT_INTERVAL_MS = 5_000;
+const INCIDENT_WINDOW_MS = 30_000;
+const INCIDENT_COOLDOWN_MS = 120_000;
+const AFTER_PAUSE_MS = 10_000;
 
 export type VideoQualityAnalyticsContext = {
     streamId: string;
@@ -22,12 +28,15 @@ export type VideoQualityAnalyticsContext = {
     remoteUserUuid?: string;
     spaceName: string;
     connectionId?: string;
+    getConnectionId?: () => string | undefined;
+    getStreamId?: () => string;
+    getMediaTrackId?: () => string | undefined;
     livekitServerUrl?: string;
     // Read at each sample: LiveKit can move the client to another region when it reconnects
     getLivekitRegion?: () => string | undefined;
 };
 
-const sessionId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const sessionId = diagnosticSessionId;
 
 /**
  * Reports the quality of a video stream we receive.
@@ -37,8 +46,12 @@ export function subscribeToVideoQualityAnalytics(
     context: VideoQualityAnalyticsContext,
     sendReport: (message: VideoQualityReportMessage) => void,
 ): Unsubscriber {
-    const playback = new VideoPlaybackWindow();
-    return subscribeToSamples(
+    let playback = new VideoPlaybackWindow();
+    let lastFreezeCount: number | undefined;
+    let previousIdentity: string | undefined;
+    let lastPausedAt = Number.NEGATIVE_INFINITY;
+    const expectation = createVideoExpectationTracker();
+    const unsubscribe = subscribeToSamples(
         statsStore,
         context,
         sendReport,
@@ -63,8 +76,41 @@ export function subscribeToVideoQualityAnalytics(
                 ...playback.take(stats.playback, base.clientEventTimeMs),
             };
         },
-        (stats, now) => playback.observe(stats.expectedFps, now),
+        (stats, now) => {
+            if (stats) expectation.update(context.getMediaTrackId?.(), stats.expectedFps, now);
+            else expectation.clear();
+            const identity = stats
+                ? JSON.stringify([
+                      context.getConnectionId?.() ?? context.connectionId,
+                      context.getStreamId?.() ?? context.streamId,
+                      stats.playback?.statsId,
+                  ])
+                : undefined;
+            if (identity !== previousIdentity || !stats) {
+                playback = new VideoPlaybackWindow();
+                lastFreezeCount = undefined;
+                previousIdentity = identity;
+            }
+            if (stats) {
+                playback.observe(stats.expectedFps, now);
+                if (stats.expectedFps === 0) lastPausedAt = now;
+            }
+        },
+        (stats, now) => {
+            const freezes = stats.playback?.freezeCount;
+            const newFreeze = freezes !== undefined && lastFreezeCount !== undefined && freezes > lastFreezeCount;
+            lastFreezeCount = freezes;
+            if (now - lastPausedAt < AFTER_PAUSE_MS) return false;
+            const cameraStalled =
+                context.streamCategory === "video" && (newFreeze || ((stats.expectedFps ?? 15) >= 10 && stats.fps < 5));
+            return cameraStalled || stats.jitter > 0.1;
+        },
+        (stats) => stats.expectedFps !== 0 && isValidStats(stats),
     );
+    return () => {
+        unsubscribe();
+        expectation.clear();
+    };
 }
 
 /**
@@ -76,32 +122,40 @@ export function subscribeToOutboundVideoQualityAnalytics(
     context: VideoQualityAnalyticsContext,
     sendReport: (message: VideoQualityReportMessage) => void,
 ): Unsubscriber {
-    return subscribeToSamples(statsStore, context, sendReport, (stats, base) => {
-        if (!isValidSenderStats(stats)) {
-            return undefined;
-        }
-        return {
-            ...base,
-            direction: VideoQualityStreamDirection.VIDEO_QUALITY_STREAM_DIRECTION_OUTBOUND,
-            fps: stats.fps,
-            // The sender has no receive jitter
-            jitter: 0,
-            bandwidthBytesPerSecond: stats.bandwidth,
-            frameWidth: toUInt32(stats.frameWidth),
-            frameHeight: toUInt32(stats.frameHeight),
-            mimeType: stats.mimeType,
-            qualityLimitationReason: toLimitationReason(stats.qualityLimitationReason),
-            encoderImplementation: stats.encoderImplementation,
-            captureFps: stats.captureFps,
-            captureTargetFps: stats.captureTargetFps,
-            encodeMsPerFrame: stats.encodeMsPerFrame,
-            cpuLimitedRatio: stats.cpuLimitedRatio,
-            bandwidthLimitedRatio: stats.bandwidthLimitedRatio,
-            uploadRoundTripTimeMs: stats.uploadRoundTripTimeMs,
-            uploadLossRatio: stats.uploadLossRatio,
-            availableOutgoingBitrate: stats.availableOutgoingBitrate,
-        };
-    });
+    return subscribeToSamples(
+        statsStore,
+        context,
+        sendReport,
+        (stats, base) => {
+            if (!isValidSenderStats(stats)) {
+                return undefined;
+            }
+            return {
+                ...base,
+                direction: VideoQualityStreamDirection.VIDEO_QUALITY_STREAM_DIRECTION_OUTBOUND,
+                fps: stats.fps,
+                // The sender has no receive jitter
+                jitter: 0,
+                bandwidthBytesPerSecond: stats.bandwidth,
+                frameWidth: toUInt32(stats.frameWidth),
+                frameHeight: toUInt32(stats.frameHeight),
+                mimeType: stats.mimeType,
+                qualityLimitationReason: toLimitationReason(stats.qualityLimitationReason),
+                encoderImplementation: stats.encoderImplementation,
+                captureFps: stats.captureFps,
+                captureTargetFps: stats.captureTargetFps,
+                encodeMsPerFrame: stats.encodeMsPerFrame,
+                cpuLimitedRatio: stats.cpuLimitedRatio,
+                bandwidthLimitedRatio: stats.bandwidthLimitedRatio,
+                uploadRoundTripTimeMs: stats.uploadRoundTripTimeMs,
+                uploadLossRatio: stats.uploadLossRatio,
+                availableOutgoingBitrate: stats.availableOutgoingBitrate,
+            };
+        },
+        undefined,
+        (stats) => (stats.fps < 5 && stats.qualityLimitationReason === "cpu") || (stats.uploadLossRatio ?? 0) >= 0.05,
+        isValidSenderStats,
+    );
 }
 
 type BaseSample = Pick<
@@ -126,7 +180,9 @@ function subscribeToSamples<T>(
     sendReport: (message: VideoQualityReportMessage) => void,
     buildSample: (stats: T, base: BaseSample) => VideoQualitySampleMessage | undefined,
     // Sees every stats report, including the ones between two samples
-    onStats?: (stats: T, now: number) => void,
+    onStats?: (stats: T | undefined, now: number) => void,
+    isIncident?: (stats: T, now: number) => boolean,
+    shouldSample?: (stats: T) => boolean,
 ): Unsubscriber {
     // Video quality samples ride the generic analytics pipeline: the pusher turns each
     // one into a `media.video_quality.sample` event. Gating on the retired
@@ -137,24 +193,31 @@ function subscribeToSamples<T>(
     }
 
     let sampleSeq = 0;
-    let lastSentAt = 0;
+    let lastSentAt: number | undefined;
+    let incidentUntil = 0;
+    let incidentAllowedAt = 0;
 
     return statsStore.subscribe((stats) => {
-        if (!stats) {
-            return;
-        }
-
         const now = Date.now();
         onStats?.(stats, now);
-        if (now - lastSentAt < VIDEO_ANALYTICS_SEND_INTERVAL_MS) {
+        if (!stats || (shouldSample && !shouldSample(stats))) {
+            incidentUntil = 0;
+            return;
+        }
+        if (isIncident?.(stats, now) && now >= incidentAllowedAt) {
+            incidentUntil = now + INCIDENT_WINDOW_MS;
+            incidentAllowedAt = now + INCIDENT_COOLDOWN_MS;
+        }
+        const interval = now < incidentUntil ? INCIDENT_INTERVAL_MS : VIDEO_ANALYTICS_SEND_INTERVAL_MS;
+        if (lastSentAt !== undefined && now - lastSentAt < interval) {
             return;
         }
 
         const sample = buildSample(stats, {
             clientEventTimeMs: now,
             sampleSeq,
-            streamId: context.streamId,
-            connectionId: context.connectionId,
+            streamId: context.getStreamId?.() ?? context.streamId,
+            connectionId: context.getConnectionId?.() ?? context.connectionId,
             sessionId,
             remoteUserUuid: context.remoteUserUuid,
             remoteSpaceUserId: context.remoteSpaceUserId,
@@ -196,6 +259,7 @@ function isValidSenderStats(stats: WebRtcSenderStats): boolean {
         Number.isFinite(stats.bandwidth) &&
         Number.isFinite(stats.frameWidth) &&
         Number.isFinite(stats.frameHeight) &&
+        (stats.activeLayers === undefined || stats.activeLayers > 0) &&
         // A paused track encodes nothing: not worth a sample, unless the encoder is stalled by a limitation
         (stats.fps > 0 || stats.qualityLimitationReason !== "none")
     );

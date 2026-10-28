@@ -24,6 +24,8 @@ export type AnalyticsEventsQueueConfig = {
 
 export type AnalyticsEventsQueueStats = {
     queueSize: number;
+    activityQueueSize: number;
+    diagnosticsQueueSize: number;
     droppedOnOverflow: number;
     droppedInvalid: number;
     droppedAfterSendFailure: number;
@@ -60,6 +62,10 @@ export type AnalyticsEventsHttpPost = (
  */
 export class AnalyticsEventsQueue {
     private readonly queue: AnalyticsStoredEvent[] = [];
+    private readonly diagnostics: AnalyticsStoredEvent[] = [];
+    private immediateFlushQueued = false;
+    private stopped = false;
+    private draining = 0;
     private readonly endpointUrl: string | undefined;
     private readonly timer: NodeJS.Timeout | undefined;
     private isFlushing = false;
@@ -83,6 +89,7 @@ export class AnalyticsEventsQueue {
 
         if (this.hasAdminApiConfig() && config.flushIntervalMs > 0) {
             this.timer = setInterval(() => {
+                if (this.draining) return;
                 this.flush().catch((error) => {
                     this.logFlushError(error);
                 });
@@ -96,10 +103,12 @@ export class AnalyticsEventsQueue {
         this.enabled = enabled;
         if (!enabled) {
             this.queue.length = 0;
+            this.diagnostics.length = 0;
         }
     }
 
     public stop(): void {
+        this.stopped = true;
         if (this.timer) {
             clearInterval(this.timer);
         }
@@ -116,21 +125,26 @@ export class AnalyticsEventsQueue {
         }
 
         const deadline = Date.now() + timeoutMs;
-        // `isFlushing` too: flush() splices its batch out of the queue before
-        // awaiting the POST, so on the last batch the queue is already empty while
-        // the request is still in flight — and process.exit would cut it short.
-        while ((this.queue.length > 0 || this.isFlushing) && Date.now() < deadline) {
-            const lengthBefore = this.queue.length;
-            // eslint-disable-next-line no-await-in-loop
-            await this.flush(deadline);
-            // flush() splices maxBatchSize events; loop again until queue is empty.
-            // If nothing was sent (e.g. another flush is in flight), wait briefly and retry.
-            if (this.queue.length === lengthBefore) {
+        this.draining += 1;
+        try {
+            // `isFlushing` too: flush() splices its batch out of the queue before
+            // awaiting the POST, so on the last batch the queue is already empty while
+            // the request is still in flight — and process.exit would cut it short.
+            while ((this.pendingCount() > 0 || this.isFlushing) && Date.now() < deadline) {
+                const lengthBefore = this.pendingCount();
                 // eslint-disable-next-line no-await-in-loop
-                await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 50);
-                });
+                await this.flush(deadline);
+                // flush() splices maxBatchSize events; loop again until queue is empty.
+                // If nothing was sent (e.g. another flush is in flight), wait briefly and retry.
+                if (this.pendingCount() === lengthBefore) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 50);
+                    });
+                }
             }
+        } finally {
+            this.draining -= 1;
         }
     }
 
@@ -139,24 +153,49 @@ export class AnalyticsEventsQueue {
             return;
         }
 
-        // Drop the oldest rather than the newest: an interval that closed five minutes
-        // ago is less interesting than the one that just did, and a bounded queue is
-        // what keeps a wedged admin from turning into a memory leak.
-        if (this.queue.length >= this.config.maxQueueSize) {
-            this.queue.shift();
+        const diagnostic = event.eventName === "media.video_quality.sample";
+        if (this.pendingCount() >= this.config.maxQueueSize) {
+            // Quality samples cannot evict activity, device failures or reconnects.
+            if (this.diagnostics.length > 0) this.diagnostics.shift();
+            else if (diagnostic) {
+                this.droppedOnOverflow += 1;
+                return;
+            } else this.queue.shift();
             this.droppedOnOverflow += 1;
         }
+        (diagnostic ? this.diagnostics : this.queue).push(event);
+        this.scheduleFlush();
+    }
 
-        this.queue.push(event);
+    private pendingCount(): number {
+        return this.queue.length + this.diagnostics.length;
+    }
+
+    private scheduleFlush(): void {
+        if (
+            !this.timer ||
+            this.stopped ||
+            this.draining ||
+            this.immediateFlushQueued ||
+            this.pendingCount() < this.config.maxBatchSize
+        ) {
+            return;
+        }
+        this.immediateFlushQueued = true;
+        queueMicrotask(() => {
+            this.immediateFlushQueued = false;
+            if (!this.stopped && !this.draining) this.flush().catch((error) => this.logFlushError(error));
+        });
     }
 
     public async flush(deadline?: number): Promise<void> {
-        if (!this.canSend() || this.queue.length === 0 || this.isFlushing) {
+        if (!this.canSend() || this.pendingCount() === 0 || this.isFlushing) {
             return;
         }
 
         this.isFlushing = true;
         const batchEvents = this.queue.splice(0, this.config.maxBatchSize);
+        batchEvents.push(...this.diagnostics.splice(0, this.config.maxBatchSize - batchEvents.length));
         const batch: AnalyticsEventsBatch = {
             schemaVersion: SCHEMA_VERSION,
             sentAt: this.now().toISOString(),
@@ -174,12 +213,15 @@ export class AnalyticsEventsQueue {
             this.logFlushError(error);
         } finally {
             this.isFlushing = false;
+            this.scheduleFlush();
         }
     }
 
     public getStats(): AnalyticsEventsQueueStats {
         return {
-            queueSize: this.queue.length,
+            queueSize: this.pendingCount(),
+            activityQueueSize: this.queue.length,
+            diagnosticsQueueSize: this.diagnostics.length,
             droppedOnOverflow: this.droppedOnOverflow,
             droppedInvalid: this.droppedInvalid,
             droppedAfterSendFailure: this.droppedAfterSendFailure,

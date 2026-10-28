@@ -87,6 +87,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     private destroyed = false;
     private everConnected = false;
     private connectedAt: number | undefined;
+    private diagnosticConnectionId: string | undefined;
     // Set while livekit-client is reconnecting by itself, reported as media.livekit.reconnected once it is back
     private reconnecting:
         | { startedAt: number; kind: "resume" | "full"; previousRegion: string | undefined }
@@ -177,6 +178,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         await room.connect(this.serverUrl, this.token, {
             autoSubscribe: false,
         });
+        const roomSid = await room.getSid().catch(() => undefined);
+        this.diagnosticConnectionId = roomSid ? `${roomSid}:${room.localParticipant.sid}` : undefined;
         this.everConnected = true;
         this.connectedAt = Date.now();
         this.handleAudioPlaybackStatusChanged();
@@ -458,8 +461,14 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         return this.room?.engine?.latestJoinResponse?.serverInfo?.region || undefined;
     }
 
-    private connectionProperties(): { livekitServerUrl: string; livekitRegion: string | null } {
-        return { livekitServerUrl: this.serverUrl, livekitRegion: this.getRegion() ?? null };
+    private connectionProperties() {
+        return {
+            livekitServerUrl: this.serverUrl,
+            livekitRegion: this.getRegion() ?? null,
+            connectionId: this.diagnosticConnectionId ?? null,
+            livekitRoomName: this.room?.name ?? null,
+            participantSid: this.localParticipant?.sid ?? null,
+        };
     }
 
     private handleReconnecting(kind: "resume" | "full") {
@@ -1015,6 +1024,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
                 this._blockedUsersStore,
                 this.abortSignal,
                 () => this.getRegion(),
+                undefined,
+                () => this.diagnosticConnectionId,
             ),
         );
     }
@@ -1077,6 +1088,9 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             senderStats,
             {
                 streamId: `${this.localParticipant?.sid ?? "local"}:${streamCategory}:outbound`,
+                getStreamId: () =>
+                    `${this.localParticipant?.sid ?? "local"}:${this.localParticipant?.getTrackPublication(streamCategory === "video" ? Track.Source.Camera : Track.Source.ScreenShare)?.trackSid ?? "unpublished"}:${streamCategory}:outbound`,
+                getConnectionId: () => this.diagnosticConnectionId,
                 streamCategory,
                 transportType: "Livekit",
                 // The stream goes to the LiveKit server, not to a single remote user

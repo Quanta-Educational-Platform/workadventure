@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
     VideoQualityLimitationReason,
     VideoQualityRelayProtocol,
@@ -253,9 +254,22 @@ export class AnalyticsEventsQueue extends SharedAnalyticsEventsQueue {
             // arrival.
             source: "pusher",
             clientEventTimeMs: clientEventDate.getTime(),
-            eventId: `${socketData.userUuid}:${sample.streamId}:${sample.sampleSeq ?? clientEventDate.getTime()}`,
+            eventId: `quality:${createHash("sha256")
+                .update(
+                    JSON.stringify([
+                        socketData.userUuid,
+                        socketData.tabId,
+                        sample.sessionId,
+                        sample.connectionId,
+                        sample.streamId,
+                        sample.sampleSeq ?? clientEventDate.getTime(),
+                    ]),
+                )
+                .digest("hex")}`,
             properties: {
                 streamId: sample.streamId,
+                participantSid: sample.streamId.match(/^(PA_[A-Za-z0-9]+)/)?.[1] ?? null,
+                trackSid: sample.streamId.match(/:(TR_[A-Za-z0-9]+)/)?.[1] ?? null,
                 connectionId: sample.connectionId ?? null,
                 sessionId: sample.sessionId ?? null,
                 remoteUserUuid: sample.remoteUserUuid ?? null,

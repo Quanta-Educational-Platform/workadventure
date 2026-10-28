@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { diagnosticSessionId } from "../../../src/front/quanta/diagnosticContext";
 import { analyticsClient } from "../../../src/front/Administration/AnalyticsClient";
 import { meetingEnded, meetingStarted } from "../../../src/front/Administration/CurrentMeeting";
 
@@ -48,6 +49,7 @@ describe("AnalyticsClient admin analytics sink", () => {
                     eventName: "map_editor.property.added",
                     source: "front",
                     properties: {
+                        browserSessionId: diagnosticSessionId,
                         name: "openWebsite",
                         type: "area",
                     },
@@ -80,6 +82,7 @@ describe("AnalyticsClient admin analytics sink", () => {
                     eventName: "chat.message_sent",
                     source: "front",
                     properties: {
+                        browserSessionId: diagnosticSessionId,
                         chatContext: "room",
                     },
                 }),
@@ -140,6 +143,10 @@ describe("AnalyticsClient admin analytics sink", () => {
         const closes = events.filter((event) => event.eventName === "timed_event.close");
 
         expect(opens.map((event) => event.properties.properties.meetingId)).toEqual(["space-a", "space-b"]);
+        expect(opens.map((event) => event.properties.properties.browserSessionId)).toEqual([
+            diagnosticSessionId,
+            diagnosticSessionId,
+        ]);
         expect(closes).toHaveLength(1);
         expect(closes[0].properties.handle).toBe(opens[0].properties.handle);
 
@@ -281,14 +288,18 @@ describe("AnalyticsClient admin analytics sink", () => {
         analyticsClient.trackAdminEvent("bubble.say.opened");
 
         const rows = sendAdmin.mock.calls.flatMap(([message]) => message.events);
-        expect(rows.map((row) => row.properties)).toEqual([{ meetingId: "bubble-1" }, { meetingId: "area-2" }, {}]);
+        expect(rows.map((row) => row.properties)).toEqual([
+            { meetingId: "bubble-1", browserSessionId: diagnosticSessionId },
+            { meetingId: "area-2", browserSessionId: diagnosticSessionId },
+            { browserSessionId: diagnosticSessionId },
+        ]);
         expect(new Set(rows.map((row) => row.eventId)).size).toBe(3);
 
         // An action on one participant belongs to that participant's meeting alone.
         sendAdmin.mockClear();
         analyticsClient.trackAdminEvent("meeting.participant.kicked", { meetingId: "area-2" });
         expect(sendAdmin.mock.calls.flatMap(([message]) => message.events).map((row) => row.properties)).toEqual([
-            { meetingId: "area-2" },
+            { meetingId: "area-2", browserSessionId: diagnosticSessionId },
         ]);
 
         meetingEnded("bubble-1");
@@ -296,6 +307,6 @@ describe("AnalyticsClient admin analytics sink", () => {
         sendAdmin.mockClear();
         analyticsClient.trackAdminEvent("meeting.microphone.muted");
 
-        expect(sendAdmin.mock.calls[0][0].events[0].properties).toEqual({});
+        expect(sendAdmin.mock.calls[0][0].events[0].properties).toEqual({ browserSessionId: diagnosticSessionId });
     });
 });
