@@ -1245,10 +1245,12 @@
         display: flex;
     }
 
+    /* Under the zoom column (24px from the right, 48px wide) and level with the dock's buttons (12px from the
+       bottom, 12px padding). */
     .qd-side {
         position: absolute;
-        right: 16px;
-        bottom: 36px;
+        right: 24px;
+        bottom: 24px;
         display: flex;
         gap: 4px;
         pointer-events: auto;

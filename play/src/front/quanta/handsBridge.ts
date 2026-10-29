@@ -45,6 +45,14 @@ export function startHandsBridge(): () => void {
             if (last) window.parent.postMessage(JSON.parse(last), "*");
             return;
         }
+        // The platform's people list shows the same queue: its own card over the map would repeat it while open.
+        if (type === "quanta_wa_people_panel") {
+            document.documentElement.classList.toggle(
+                "quanta-people-open",
+                (event.data as { open?: unknown }).open === true,
+            );
+            return;
+        }
         if (type !== "quanta_wa_lower_all_hands" && type !== "quanta_wa_lower_hand") return;
         const target = (event.data as { id?: unknown }).id;
         const isAdmin = get(userIsAdminStore);

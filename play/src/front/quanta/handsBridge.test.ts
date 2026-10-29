@@ -72,3 +72,32 @@ it("reports order, identity and self; gates lower-one and lower-all and cleans u
     send("quanta_wa_lower_all_hands");
     expect(lowerHand).not.toHaveBeenCalled();
 });
+
+it("hides the room's own hands card only while the platform's people list is open", () => {
+    const parent = { postMessage: vi.fn() };
+    const events = new EventTarget();
+    const classes = new Set<string>();
+    vi.stubGlobal("window", {
+        parent,
+        addEventListener: events.addEventListener.bind(events),
+        removeEventListener: events.removeEventListener.bind(events),
+    });
+    vi.stubGlobal("document", {
+        documentElement: {
+            classList: { toggle: (name: string, on: boolean) => (on ? classes.add(name) : classes.delete(name)) },
+        },
+    });
+    const stop = startHandsBridge();
+    const send = (data: unknown, source: unknown = parent) => {
+        const event = new Event("message");
+        Object.assign(event, { source, data });
+        events.dispatchEvent(event);
+    };
+    send({ type: "quanta_wa_people_panel", open: true }, {});
+    expect(classes.has("quanta-people-open")).toBe(false);
+    send({ type: "quanta_wa_people_panel", open: true });
+    expect(classes.has("quanta-people-open")).toBe(true);
+    send({ type: "quanta_wa_people_panel", open: "yes" });
+    expect(classes.has("quanta-people-open")).toBe(false);
+    stop();
+});

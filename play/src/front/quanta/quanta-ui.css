@@ -716,6 +716,11 @@ html.quanta-ui [data-testid="actions-menu"] .btn {
 
 /* The teacher's raised-hands panel: a slate card like the notices, without WA's yellow stripe; "Lower all"
    is the main button, each "Lower hand" a quiet one. */
+/* The platform's people list is open and already lists the raised hands. */
+html.quanta-ui.quanta-people-open [data-testid="raised-hands-dock"] {
+    display: none;
+}
+
 html.quanta-ui [data-testid="raised-hands-dock"] {
     width: 320px;
 }
