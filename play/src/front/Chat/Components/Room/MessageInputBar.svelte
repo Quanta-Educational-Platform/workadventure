@@ -187,6 +187,12 @@
     });
 
     function sendMessageOrEscapeLine(keyDownEvent: KeyboardEvent) {
+        // Escape hands the keyboard back to the map, so arrows and WASD move the avatar again; the draft stays.
+        if (keyDownEvent.key === "Escape") {
+            keyDownEvent.preventDefault();
+            messageInput?.blur();
+            return;
+        }
         if (!$canSendMessages) {
             return;
         }

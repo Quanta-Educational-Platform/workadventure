@@ -2,9 +2,17 @@ import { derived, get } from "svelte/store";
 import { raisedHandSectionsStore } from "../Stores/PeerStore";
 import { userIsAdminStore } from "../Stores/GameStore";
 import { sectionRights } from "../Stores/RaisedHandsAdminVisibleStore";
+import { QUANTA_URL } from "../Enum/EnvironmentVariable";
 
 export function startHandsBridge(): () => void {
     if (window.parent === window) return () => {};
+    // The platform embedding the room, as the moderation bridge trusts it.
+    let parentOrigin: string | undefined;
+    try {
+        parentOrigin = new URL(document.referrer || QUANTA_URL || "").origin;
+    } catch {
+        /* No parent origin configured. */
+    }
 
     let last = "";
     const unsubscribe = derived([raisedHandSectionsStore, userIsAdminStore], ([sections, isAdmin]) => ({
@@ -47,6 +55,7 @@ export function startHandsBridge(): () => void {
         }
         // The platform's people list shows the same queue: its own card over the map would repeat it while open.
         if (type === "quanta_wa_people_panel") {
+            if (event.origin !== parentOrigin) return;
             document.documentElement.classList.toggle(
                 "quanta-people-open",
                 (event.data as { open?: unknown }).open === true,
@@ -69,5 +78,8 @@ export function startHandsBridge(): () => void {
     return () => {
         unsubscribe();
         window.removeEventListener("message", onMessage);
+        // A list closed while nothing listened must not leave the room's own card hidden; the platform tells the next
+        // bridge again when it reports hands.
+        document.documentElement.classList.remove("quanta-people-open");
     };
 }

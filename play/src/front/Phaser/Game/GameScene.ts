@@ -2347,7 +2347,9 @@ export class GameScene extends DirtyScene {
                             // bubble. Resumed here too, in case the switch failed half way.
                             outputSwitch.then(() => context.resume()).catch((e) => console.error(e));
                         } else {
-                            this.unregisterAudioContextPlaybackRetry = audioPlaybackStore.register(() => {
+                            // A second suspend must not orphan the first registration: the sound-blocked notice
+                            // stays until every registration is released, so it could never be dismissed.
+                            this.unregisterAudioContextPlaybackRetry ??= audioPlaybackStore.register(() => {
                                 context.resume().catch((e) => console.error(e));
                             });
                         }
