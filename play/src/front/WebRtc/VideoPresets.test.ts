@@ -51,6 +51,19 @@ describe("preferredVideoCodecs", () => {
         expect(preferredVideoCodecs("video", "high", "encode", 1280 * 720, "P2P")).toEqual(["vp9", "h264"]);
     });
 
+    it.each(["low", "recommended", "high"] as const)(
+        "keeps every LiveKit publication recordable at %s quality",
+        (quality) => {
+            for (const category of ["video", "screenSharing"] as const) {
+                expect(preferredVideoCodecs(category, quality, "encode", 1920 * 1080, "Livekit")).toEqual([
+                    "vp9",
+                    "h264",
+                    "vp8",
+                ]);
+            }
+        },
+    );
+
     it("drops a codec the browser remembers as not smooth at that size", () => {
         vi.mocked(codecPerformance).mockImplementation((_direction, codec, pixels) =>
             codec === "vp9" ? verdict(pixels <= 640 * 360) : verdict(false),
