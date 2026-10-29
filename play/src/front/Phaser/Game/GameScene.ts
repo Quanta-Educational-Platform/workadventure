@@ -90,7 +90,7 @@ import type { ItemFactoryInterface } from "../Items/ItemFactoryInterface";
 import { biggestAvailableAreaStore } from "../../Stores/BiggestAvailableAreaStore";
 import { playersStore } from "../../Stores/PlayersStore";
 import { emoteStore } from "../../Stores/EmoteStore";
-import { isHandRaisedStore, requestedHandRaiseState } from "../../Stores/RaiseHandStore";
+import { isHandRaisedStore } from "../../Stores/RaiseHandStore";
 import { raisedHandPlayerIdsStore } from "../../Stores/RaisedHandsStore";
 import { isInRemoteConversation } from "../../Stores/StreamableCollectionStore";
 import {
@@ -224,7 +224,7 @@ import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
 import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
 import { quantaRoomScript } from "../../quanta/roomScript";
 import { applyQuantaWamDefaults } from "../../quanta/wamDefaults";
-import { startRoomHand } from "../../quanta/roomHand";
+import { onHandConversationChanged, startRoomHand } from "../../quanta/roomHand";
 import { joinRoomChat } from "../../quanta/roomChat";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
@@ -2772,15 +2772,7 @@ export class GameScene extends DirtyScene {
             }),
         );
 
-        // Automatically lower the hand when leaving the conversation: the raise-hand button is only shown during a
-        // meeting, so a hand left raised on leave could otherwise no longer be lowered by the user.
-        this.unsubscribers.push(
-            isInRemoteConversation.subscribe((inConversation) => {
-                if (!inConversation) {
-                    requestedHandRaiseState.lowerAll();
-                }
-            }),
-        );
+        this.unsubscribers.push(isInRemoteConversation.subscribe(onHandConversationChanged));
         // A zone whose option says no needs no safety net: the hand is raised per space, so walking into such a
         // zone leaves the hand raised elsewhere (e.g. in the bubble) alone, and a space the hand is up in stays
         // offered by the button so it can still be lowered (see raiseHandSpacesStore).

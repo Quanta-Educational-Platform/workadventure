@@ -1854,3 +1854,17 @@ html.quanta-ui [data-quanta-global] #active-globalMessage > .flex.flex-col.items
         width: 100%;
     }
 }
+
+html.quanta-ui .quanta-chat-delete {
+    color: var(--quanta-muted, #a1a1aa);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    padding: 6px;
+    cursor: pointer;
+}
+html.quanta-ui .quanta-chat-delete:hover,
+html.quanta-ui .quanta-chat-delete:focus-visible {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+}

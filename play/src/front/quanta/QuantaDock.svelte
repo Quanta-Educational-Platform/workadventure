@@ -281,7 +281,6 @@
             notificationPlayingStore.playNotification(get(LL).notification.floorGivenBack(), "microphone-off.png");
             return;
         }
-        if ($silentStore) return;
         const spaces = $raiseHandSpacesStore;
         if (spaces.length === 1) {
             toggleHand(spaces[0].getName());
@@ -776,13 +775,12 @@
                     </div>
                 {/if}
 
-                <!-- Always there, as in Meet; WA only takes a raised hand inside a conversation. -->
                 {#if !$inExternalServiceStore}
                     {@const handLabel = $givenFloorSpaceStore
                         ? $LL.actionbar.help.giveBackFloor.title()
                         : $isHandRaisedStore
                           ? $QL.lowerHand()
-                          : !$silentStore && !$raiseHandAvailableStore
+                          : !$raiseHandAvailableStore
                             ? $QL.raiseHandUnavailable()
                             : $LL.actionbar.help.raiseHand.title()}
                     <button
@@ -790,7 +788,7 @@
                         class="qd-button"
                         class:on={$isHandRaisedStore && !$givenFloorSpaceStore}
                         class:live={$givenFloorSpaceStore !== undefined}
-                        disabled={!$givenFloorSpaceStore && ($silentStore || !$raiseHandAvailableStore)}
+                        disabled={!$givenFloorSpaceStore && !$raiseHandAvailableStore}
                         aria-pressed={$isHandRaisedStore}
                         aria-label={handLabel}
                         data-tip={handLabel}

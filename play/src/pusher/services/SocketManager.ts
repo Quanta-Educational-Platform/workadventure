@@ -59,6 +59,14 @@ import type { AxiosResponse } from "axios";
 import axios, { isAxiosError } from "axios";
 import type { WebSocket } from "uWebSockets.js";
 import { AbortError } from "@workadventure/shared-utils/src/Abort/AbortError";
+import {
+    joinModeratedRoom,
+    leaveModeratedRoom,
+    handleRoomChat,
+    publishRoomModeration,
+    publicRoomName,
+} from "../quanta/roomModeration";
+import { FRONT_ENVIRONMENT_VARIABLES } from "../enums/EnvironmentVariable";
 import { PusherRoom } from "../models/PusherRoom";
 import type { BackConnection } from "../models/Websocket/SocketData";
 
@@ -396,7 +404,12 @@ export class SocketManager implements ZoneEventListener {
         const message = noUndefined(joinRoomFrontMessage);
 
         socketData.viewport = message.viewportMessage;
-        socketData.name = message.name;
+        socketData.name = FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI ? publicRoomName(socketData) : message.name;
+        if (
+            FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI &&
+            !joinModeratedRoom(client, (socket, code, reason) => this.closeWebsocketConnection(socket, code, reason))
+        )
+            return;
         socketData.availabilityStatus = message.availabilityStatus;
 
         const streamToBack = socketData.backConnection;
@@ -442,6 +455,7 @@ export class SocketManager implements ZoneEventListener {
 
             const pusherRoom = await this.getOrCreateRoom(socketData.roomId);
             pusherRoom.join(client);
+            if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) publishRoomModeration(client);
         } catch (e) {
             Sentry.captureException(e);
             console.error(`An error occurred on "join_room" event`, e);
@@ -822,6 +836,7 @@ export class SocketManager implements ZoneEventListener {
     }
 
     leaveRoom(socket: PusherWebSocket): void {
+        if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) leaveModeratedRoom(socket);
         // leave previous room and world
         const socketData = socket.getUserData();
         try {
@@ -1664,6 +1679,7 @@ export class SocketManager implements ZoneEventListener {
         if (!socketData.userId) {
             throw new Error("User id not found");
         }
+        if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI && handleRoomChat(client, publicEvent)) return;
         space.forwarder.sendPublicEvent(publicEvent, socketData);
     }
 

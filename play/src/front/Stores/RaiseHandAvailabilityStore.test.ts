@@ -17,6 +17,13 @@ vi.mock("./PeerStore", async () => {
     return { mediaSynchronizedSpacesStore: w<unknown[]>([]) };
 });
 
+const mode = vi.hoisted(() => ({ quanta: false }));
+vi.mock("../Enum/EnvironmentVariable", () => ({
+    get QUANTA_UI() {
+        return mode.quanta;
+    },
+}));
+import { startRoomHand } from "../quanta/roomHand";
 import { isSpeakerStore, silentStore } from "./MediaStore";
 import { givenFloorSpaceStore, requestedMegaphoneStore } from "./MegaphoneStore";
 import { mediaSynchronizedSpacesStore } from "./PeerStore";
@@ -140,5 +147,31 @@ describe("raiseHandSpacesStore", () => {
         grantedFloor.set({});
         isSpeakerStore.set(true);
         expect(get(raiseHandAvailableStore)).toBe(true);
+    });
+});
+
+describe("Quanta room queue", () => {
+    afterEach(() => {
+        mode.quanta = false;
+        syncedSpaces.set([]);
+        isSpeakerStore.set(false);
+        silent.set(false);
+    });
+    it("always selects the world queue across bubbles, meetings, podiums and silent zones", () => {
+        mode.quanta = true;
+        const world = {
+            getName: () => "allWorldUser",
+            state: { raisedHandsStore: writable([]) },
+        } as unknown as SpaceInterface;
+        const stop = startRoomHand(world);
+        for (const spaces of [[], [bubble], [meeting], [listenerZone], [bubble, listenerZone]]) {
+            syncedSpaces.set(spaces);
+            expect(get(raiseHandSpacesStore)).toEqual([world]);
+        }
+        isSpeakerStore.set(true);
+        silent.set(true);
+        expect(get(raiseHandAvailableStore)).toBe(true);
+        stop();
+        expect(get(raiseHandSpacesStore)).toEqual([]);
     });
 });

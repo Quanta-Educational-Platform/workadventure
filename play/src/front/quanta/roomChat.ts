@@ -1,7 +1,7 @@
 // quanta: the whole room's text chat (QUANTA_UI, in a room whose platform turned chat on). WA's own room-wide chat
 // needs a Matrix server; this one is WA's proximity chat on a space everyone in the room joins, without the
 // bubble's side effects (ProximityChatRoom.roomWide): no media, sounds, status or meeting events, and it never opens
-// on its own. Nothing is kept: who joins later sees the messages from then on.
+// on its own. The pusher retains the current session’s recent messages.
 import { get } from "svelte/store";
 import { FilterType } from "@workadventure/messages";
 import type { ProximityChatRoomManager } from "../Chat/Connection/Proximity/ProximityChatRoomManager";

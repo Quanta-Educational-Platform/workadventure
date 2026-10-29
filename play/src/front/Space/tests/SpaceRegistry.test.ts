@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 globalThis.Phaser = Phaser;
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Subject } from "rxjs";
 import { get, writable } from "svelte/store";
 import { FilterType } from "@workadventure/messages";
@@ -65,10 +65,16 @@ vi.mock("../../Stores/ScreenSharingStore", () => {
     };
 });
 
-vi.mock(
-    "../../Enum/EnvironmentVariable.ts",
-    () => import("../../../../tests/front/mocks/frontEnvironmentVariableMock"),
-);
+const mode = vi.hoisted(() => ({ quanta: false }));
+afterEach(() => {
+    mode.quanta = false;
+});
+vi.mock("../../Enum/EnvironmentVariable.ts", async () => ({
+    ...(await import("../../../../tests/front/mocks/frontEnvironmentVariableMock")),
+    get QUANTA_UI() {
+        return mode.quanta;
+    },
+}));
 
 vi.mock("../../Stores/MegaphoneStore", () => {
     return {
@@ -254,6 +260,30 @@ describe("SpaceProviderInterface implementation", () => {
                     spaceName: space.getName(),
                     patch: JSON.stringify([{ op: "replace", path: "", value: { ...emptySpaceState(), ...state } }]),
                 });
+
+            it("uses only the room queue while other spaces come and go in Quanta", async () => {
+                mode.quanta = true;
+                const connection = new MockRoomConnectionForSpaces();
+                const registry = new SpaceRegistry(connection, new Subject());
+                const world = await registry.joinSpace(
+                    "allWorldUser",
+                    FilterType.ALL_USERS,
+                    [],
+                    new AbortController().signal,
+                );
+                const bubble = await registry.joinSpace(
+                    "bubble",
+                    FilterType.ALL_USERS,
+                    [],
+                    new AbortController().signal,
+                );
+                replaceState(connection, world, { raisedHands: [{ spaceUserId: "student", name: "Student", at: 1 }] });
+                replaceState(connection, bubble, { raisedHands: [{ spaceUserId: "other", name: "Other", at: 2 }] });
+                expect(get(registry.raisedHandSectionsStore).map((s) => s.space.getName())).toEqual(["allWorldUser"]);
+                await registry.leaveSpace(bubble);
+                expect(get(registry.raisedHandSectionsStore)[0].hands[0].spaceUserId).toBe("student");
+                await registry.destroy();
+            });
 
             it("should keep one section per space with a raised hand, never merging spaces", async () => {
                 const roomConnectionMock = new MockRoomConnectionForSpaces();

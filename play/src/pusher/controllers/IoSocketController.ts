@@ -436,6 +436,7 @@ export class IoSocketController {
                         roomId,
                         userId: undefined,
                         userUuid: userData.userUuid,
+                        quantaPublicName: userData.username?.trim().slice(0, 64) || "Guest",
                         isLogged,
                         ipAddress,
                         characterTextures,

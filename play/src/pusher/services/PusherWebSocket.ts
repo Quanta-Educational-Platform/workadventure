@@ -5,7 +5,7 @@ import {
     type ServerToClientMessage,
     type ClientToServerMessage,
     type BatchMessage,
-    type SubMessage,
+    SubMessage,
 } from "@workadventure/messages";
 import * as Sentry from "@sentry/node";
 import { CLIENT_DISCONNECTION_RETENTION_MS } from "../enums/EnvironmentVariable";
@@ -86,6 +86,24 @@ export class PusherWebSocket {
         }
 
         this.batchTimeout = setTimeout(() => this.flushBatch(), 100);
+    }
+
+    /** Bound chat batches together with retained replay frames and transport backpressure. */
+    public emitInBatchBounded(payload: SubMessage, maxBytes: number): boolean {
+        const pending = this.outgoingMessagesStore
+            .getAll()
+            .reduce((total, frame) => total + frame.payload.byteLength, 0);
+        const batch = this.batchedMessages.payload.reduce(
+            (total, item) => total + SubMessage.encode(item).finish().byteLength + 16,
+            0,
+        );
+        if (
+            this.isDisconnecting() ||
+            pending + batch + this.getBufferedAmount() + SubMessage.encode(payload).finish().byteLength + 16 > maxBytes
+        )
+            return false;
+        this.emitInBatch(payload);
+        return true;
     }
 
     /**

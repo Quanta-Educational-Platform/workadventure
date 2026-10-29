@@ -1,7 +1,4 @@
-// quanta: the raised hands, in the order they went up, for the participants list of the platform around the room;
-// and "Lower all hands" from there. Only inside the platform's frame, and lowering only where the local user may
-// (the back checks it too, RaiseHandManager.assertCanModerate).
-import { get } from "svelte/store";
+import { derived, get } from "svelte/store";
 import { raisedHandSectionsStore } from "../Stores/PeerStore";
 import { userIsAdminStore } from "../Stores/GameStore";
 import { sectionRights } from "../Stores/RaisedHandsAdminVisibleStore";
@@ -10,21 +7,30 @@ export function startHandsBridge(): () => void {
     if (window.parent === window) return () => {};
 
     let last = "";
-    const unsubscribe = raisedHandSectionsStore.subscribe((sections) => {
-        const isAdmin = get(userIsAdminStore);
+    const unsubscribe = derived([raisedHandSectionsStore, userIsAdminStore], ([sections, isAdmin]) => ({
+        sections,
+        isAdmin,
+    })).subscribe(({ sections, isAdmin }) => {
         // One entry per person (a hand raised in two spaces at once), ordered by when it first went up.
-        const raised = new Map<string, { name: string; at: number }>();
+        const raised = new Map<string, { id: string; name: string; at: number; self: boolean }>();
         for (const section of sections) {
             for (const hand of section.hands) {
                 const seen = raised.get(hand.spaceUserId);
-                if (!seen || hand.at < seen.at) raised.set(hand.spaceUserId, { name: hand.name, at: hand.at });
+                if (!seen || hand.at < seen.at)
+                    raised.set(hand.spaceUserId, {
+                        id: hand.spaceUserId,
+                        name: hand.name,
+                        at: hand.at,
+                        self: hand.spaceUserId === section.space.mySpaceUserId,
+                    });
             }
         }
-        const hands = [...raised.values()].sort((a, b) => a.at - b.at).map((hand) => hand.name);
+        const queue = [...raised.values()].sort((a, b) => a.at - b.at);
+        const hands = queue.map((hand) => hand.name);
         const canLowerAll = sections.some(
             (section) => section.hands.length > 0 && sectionRights(section, isAdmin).canModerate,
         );
-        const message = { type: "quanta_wa_hands", hands, canLowerAll };
+        const message = { type: "quanta_wa_hands", hands, queue, canLowerAll };
         const key = JSON.stringify(message);
         if (key === last) return;
         last = key;
@@ -39,11 +45,13 @@ export function startHandsBridge(): () => void {
             if (last) window.parent.postMessage(JSON.parse(last), "*");
             return;
         }
-        if (type !== "quanta_wa_lower_all_hands") return;
+        if (type !== "quanta_wa_lower_all_hands" && type !== "quanta_wa_lower_hand") return;
+        const target = (event.data as { id?: unknown }).id;
         const isAdmin = get(userIsAdminStore);
         for (const section of get(raisedHandSectionsStore)) {
             if (!sectionRights(section, isAdmin).canModerate) continue;
             for (const hand of section.hands) {
+                if (type === "quanta_wa_lower_hand" && hand.spaceUserId !== target) continue;
                 section.space.state.lowerHand(hand.spaceUserId).catch((error) => console.error(error));
             }
         }

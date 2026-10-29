@@ -20,8 +20,7 @@ import { meetingRaiseHandStore, megaphoneRaiseHandSpacesStore } from "./RaiseHan
  *  - the room-level megaphone only while someone else is on air, and not while the local user broadcasts,
  *    and only when no other space qualifies: a hand raised in a bubble is meant for the bubble, not for
  *    the whole room listening to the megaphone;
- *  - the world space (no kind) never does; quanta: under QUANTA_UI it does when nothing else qualifies, so a hand can
- *    go up anywhere in the room (quanta/roomHand.ts).
+ *  - quanta: QUANTA_UI uses only the world space, independent of media or zone membership.
  *
  * A space the hand is already up in always stays in the list, whatever the rules above now say (a bubble
  * formed during a megaphone live, an option turned off): the user must still be able to lower it.
@@ -36,6 +35,10 @@ export const raiseHandSpacesStore: Readable<SpaceInterface[]> = derived(
         roomHandSpaceStore,
     ],
     ([$spaces, $meetingRaiseHand, $listenerSpaces, $broadcasting, $raisedIn, $roomSpace], set) => {
+        if (QUANTA_UI) {
+            set($roomSpace ? [$roomSpace] : []);
+            return () => {};
+        }
         const megaphones = $spaces.filter((space) => space.kind === "megaphone");
         const others = $spaces.filter(
             (space) =>
@@ -50,14 +53,6 @@ export const raiseHandSpacesStore: Readable<SpaceInterface[]> = derived(
                     (others.length === 0 && !$broadcasting && liveMegaphones.includes(space)) ||
                     $raisedIn.has(space.getName()),
             );
-            if (
-                QUANTA_UI &&
-                $roomSpace &&
-                !selected.includes($roomSpace) &&
-                (selected.length === 0 || $raisedIn.has($roomSpace.getName()))
-            ) {
-                selected.push($roomSpace);
-            }
             return selected;
         };
 
@@ -86,6 +81,7 @@ export const raiseHandSpacesStore: Readable<SpaceInterface[]> = derived(
 export const raiseHandAvailableStore: Readable<boolean> = derived(
     [givenFloorSpaceStore, silentStore, isSpeakerStore, raiseHandSpacesStore],
     ([$givenFloorSpace, $silent, $isSpeaker, $raiseHandSpaces]) => {
+        if (QUANTA_UI) return $raiseHandSpaces.length > 0;
         if ($givenFloorSpace !== undefined) {
             return true;
         }

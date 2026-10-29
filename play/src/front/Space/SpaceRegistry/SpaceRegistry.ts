@@ -11,6 +11,8 @@ import type { VideoBox } from "../VideoBox";
 import { Space } from "../Space";
 import type { RoomConnection } from "../../Connection/RoomConnection";
 import { connectionManager } from "../../Connection/ConnectionManager";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { ROOM_HAND_SPACE_NAME } from "../../quanta/roomHand";
 import type { SpaceRegistryInterface } from "./SpaceRegistryInterface";
 /**
  * The subset of properties of RoomConnection that are used by the SpaceRegistry / Space / SpaceFilter class.
@@ -126,10 +128,11 @@ export class SpaceRegistry implements SpaceRegistryInterface {
         return derived(stores, (list) => list.some(Boolean)).subscribe(set);
     });
 
-    // The raised hands and floor holders of each space that has any, one section per space. They are never merged:
-    // a bubble member who also listens to the room megaphone must not see the megaphone's queue as the bubble's.
+    // Quanta uses the world queue even while media follows a bubble, area or podium.
     public readonly raisedHandSectionsStore: Readable<RaisedHandSection[]> = derived(this.spaces, ($spaces, set) => {
-        const spaces = Array.from($spaces.values());
+        const spaces = Array.from($spaces.values()).filter(
+            (space) => !QUANTA_UI || space.getName() === ROOM_HAND_SPACE_NAME,
+        );
         if (spaces.length === 0) {
             set([]);
             return () => {};

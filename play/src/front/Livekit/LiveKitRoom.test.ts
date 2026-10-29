@@ -96,7 +96,7 @@ vi.mock("livekit-client", async (importOriginal) => {
         LocalVideoTrack: FakeLocalTrack,
         LocalAudioTrack: FakeLocalTrack,
         // Codec support is probed through RTCRtpSender, which jsdom does not have
-        supportsAV1: () => false,
+        supportsAV1: () => true,
         supportsVP9: () => true,
         // As on Safari, where switching the audio output throws
         supportsAudioOutputSelection: () => false,

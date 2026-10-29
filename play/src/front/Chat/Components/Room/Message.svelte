@@ -63,6 +63,7 @@
         isQuotedMessage,
         type,
         isDeleted,
+        canDelete,
         isModified,
         reactions,
     } = $derived(message);
@@ -249,6 +250,15 @@
                 >
                     <MessageOptions {message} {messageRef} onOpenThread={openThread} />
                 </div>
+            {/if}
+
+            {#if message.type === "proximity" && $canDelete && !isQuotedMessage}
+                <button
+                    class="quanta-chat-delete"
+                    aria-label={$LL.chat.delete()}
+                    title={$LL.chat.delete()}
+                    onclick={() => message.remove()}><IconTrash font-size={16} /></button
+                >
             {/if}
 
             {#if hasThreadSummary && $threadSummary}

@@ -33,7 +33,7 @@ import { analyticsClient } from "../../../Administration/AnalyticsClient";
 import { scriptUtils } from "../../../Api/ScriptUtils";
 import { localUserStore } from "../../../Connection/LocalUserStore";
 import { Room } from "../../../Connection/Room";
-import { ADMIN_URL, JITSI_PRIVATE_MODE, JITSI_URL } from "../../../Enum/EnvironmentVariable";
+import { ADMIN_URL, JITSI_PRIVATE_MODE, JITSI_URL, QUANTA_UI } from "../../../Enum/EnvironmentVariable";
 import {
     audioManagerFileStore,
     audioManagerVisibilityStore,
@@ -200,8 +200,8 @@ export class AreasPropertiesListener {
                 continue;
             }
 
-            // Add new notification to show at the user that he entered a new area
-            if (areaData.name && areaData.name !== "") {
+            // Quanta classroom areas are system-managed (editors, audience, podium); their names aren't for students.
+            if (!QUANTA_UI && areaData.name && areaData.name !== "") {
                 notificationPlayingStore.playNotification(areaData.name, "icon-tool-area.png", areaData.id);
             }
 

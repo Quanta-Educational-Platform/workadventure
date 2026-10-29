@@ -14,6 +14,7 @@ import { Deferred } from "@workadventure/shared-utils";
 import type { ProximityPoll, ProximityQuestion, SpaceState } from "@workadventure/shared-utils";
 import { abortAny } from "@workadventure/shared-utils/src/Abort/AbortAny";
 import { type WAMSettings, WAMSettingsUtils } from "@workadventure/map-editor";
+import { applyRoomUpdate, roomSyncRetry, startModerationBridge } from "../../../quanta/moderationBridge";
 import type {
     AnyKindOfUser,
     ChatAttachmentRecipient,
@@ -103,8 +104,9 @@ export class ProximityChatMessage implements ChatMessage {
         public attachment?: ChatMessageAttachment,
     ) {}
 
+    onRemove?: () => void;
     remove(): void {
-        console.info("Function not implemented.");
+        this.onRemove?.();
     }
     edit(newContent: string): Promise<void> {
         console.info("Function not implemented.", newContent);
@@ -205,6 +207,7 @@ export class ProximityChatRoom implements ChatRoom {
     private spaceWatcherUserJoinedObserver: Subscription | undefined;
     private spaceWatcherUserLeftObserver: Subscription | undefined;
     private joinSpaceAbortController: AbortController | undefined;
+    private moderationBridgeAbortController: AbortController | undefined;
     areNotificationsMuted = writable(false);
     isRoomFolder = false;
     lastMessageTimestamp = 0;
@@ -339,7 +342,22 @@ export class ProximityChatRoom implements ChatRoom {
         );
     }
 
+    private sendRoomCommand(command: object): void {
+        this._space?.emitPublicMessage({
+            $case: "spaceMessage",
+            spaceMessage: {
+                message: JSON.stringify(command),
+                characterTextures: [],
+                name: "",
+            },
+        });
+    }
+
     sendMessage(message: string, action: ChatMessageType = "proximity", broadcast = true): void {
+        if (this.roomWide && action === "proximity") {
+            if (broadcast) this.sendRoomCommand({ op: "send", body: message });
+            return;
+        }
         // Create content message
         const newChatMessageContent = {
             body: message,
@@ -1266,7 +1284,71 @@ export class ProximityChatRoom implements ChatRoom {
         };
 
         this.spaceMessageSubscription?.unsubscribe();
+        this.moderationBridgeAbortController?.abort();
+        this.moderationBridgeAbortController = new AbortController();
+        const moderationSignal = abortAny([joinSignal, this.moderationBridgeAbortController.signal]);
+        let lastRoomMessageId: string | undefined;
+        let currentRoomSnapshot: ReturnType<typeof applyRoomUpdate>;
+        const retrySync = roomSyncRetry(() => this.sendRoomCommand({ op: "sync" }), moderationSignal);
+        const publishModeration = this.roomWide
+            ? startModerationBridge((command) => this.sendRoomCommand(command), moderationSignal)
+            : undefined;
         this.spaceMessageSubscription = this._space.observePublicEvent("spaceMessage").subscribe((event) => {
+            if (this.roomWide) {
+                if (event.sender !== "quanta-server") return;
+                try {
+                    const update: unknown = JSON.parse(event.spaceMessage.message);
+                    retrySync(update);
+                    const snapshot = applyRoomUpdate(currentRoomSnapshot, update);
+                    if (!snapshot) return;
+                    currentRoomSnapshot = snapshot;
+                    const newest = snapshot.messages.at(-1);
+                    if (
+                        lastRoomMessageId !== undefined &&
+                        newest &&
+                        Number(newest.id) > Number(lastRoomMessageId) &&
+                        newest.sender !== snapshot.self &&
+                        !(get(chatVisibilityStore) && get(selectedRoomStore) === this)
+                    ) {
+                        this.unreadMessagesCount.set(get(this.unreadMessagesCount) + 1);
+                        chatNotificationStore.addNotification(newest.name, newest.body.slice(0, 60), this, newest.id);
+                    }
+                    lastRoomMessageId = newest?.id ?? lastRoomMessageId ?? "0";
+                    this.messages.clear();
+                    for (const entry of snapshot.messages) {
+                        const message = new ProximityChatMessage(
+                            entry.id,
+                            { ...this.unknownUser, username: entry.name, spaceUserId: entry.sender },
+                            writable({ body: entry.body, url: undefined }),
+                            new Date(entry.at),
+                            entry.sender === snapshot.self,
+                            "proximity",
+                        );
+                        message.canDelete.set(snapshot.canModerate || message.isMyMessage);
+                        message.onRemove = () => this.sendRoomCommand({ op: "delete", id: entry.id });
+                        this.messages.push(message);
+                    }
+                    const notice =
+                        snapshot.notice ??
+                        (snapshot.muted.includes(snapshot.self) ? "Your chat is muted by the teacher." : undefined);
+                    if (notice)
+                        this.messages.push(
+                            new ProximityChatMessage(
+                                "quanta-notice",
+                                this.unknownUser,
+                                writable({ body: notice, url: undefined }),
+                                new Date(),
+                                false,
+                                "proximity",
+                            ),
+                        );
+                    this.hasUserMessages.set(snapshot.messages.length > 0);
+                    publishModeration?.(snapshot);
+                } catch (error) {
+                    console.warn("Invalid room chat snapshot", error);
+                }
+                return;
+            }
             if (isBlackListed(event.sender)) {
                 return;
             }
@@ -1283,8 +1365,7 @@ export class ProximityChatRoom implements ChatRoom {
 
             // if the proximity chat is not open, open it to see the message
             // quanta: the room's chat never opens on its own; read where it is open, unread elsewhere.
-            const readingRoomChat =
-                this.roomWide && get(chatVisibilityStore) && get(selectedRoomStore) === this;
+            const readingRoomChat = this.roomWide && get(chatVisibilityStore) && get(selectedRoomStore) === this;
             if (readingRoomChat || (!this.roomWide && !get(this.intentionallyClosed))) {
                 if (!this.roomWide) {
                     chatVisibilityStore.set(true);
@@ -1306,6 +1387,8 @@ export class ProximityChatRoom implements ChatRoom {
             }
             if (get(selectedRoomStore) == undefined) selectedRoomStore.set(this);
         });
+
+        if (this.roomWide) this.sendRoomCommand({ op: "sync" });
 
         this.spaceIsTypingSubscription?.unsubscribe();
         this.spaceIsTypingSubscription = this._space.observePublicEvent("spaceIsTyping").subscribe((event) => {
@@ -1544,6 +1627,7 @@ export class ProximityChatRoom implements ChatRoom {
         this.usersUnsubscriber?.();
         this.usersUnsubscriber = undefined;
         this.spaceMessageSubscription?.unsubscribe();
+        this.moderationBridgeAbortController?.abort();
         this.spaceMessageSubscription = undefined;
         this.spaceIsTypingSubscription?.unsubscribe();
         this.spaceIsTypingSubscription = undefined;
@@ -1798,6 +1882,7 @@ export class ProximityChatRoom implements ChatRoom {
         this.users = undefined;
 
         this.spaceMessageSubscription?.unsubscribe();
+        this.moderationBridgeAbortController?.abort();
         this.spaceIsTypingSubscription?.unsubscribe();
         this.spaceStateUnsubscriber?.();
         this.spaceStateUnsubscriber = undefined;
@@ -1902,6 +1987,7 @@ export class ProximityChatRoom implements ChatRoom {
 
     public destroy(): void {
         this.spaceMessageSubscription?.unsubscribe();
+        this.moderationBridgeAbortController?.abort();
         this.spaceIsTypingSubscription?.unsubscribe();
         this.spaceStateUnsubscriber?.();
         this.roomSidePanelUnsubscriber();
