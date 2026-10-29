@@ -97,12 +97,12 @@ export class UserInputManager {
         this.isInputDisabled = false;
         this.isRightClickDisabled = false;
         this.initKeyBoardEvent();
-        // quanta: inside the platform's frame, the arrow keys walk and nothing more. Uncaptured, a frame that doesn't
+        // quanta: inside the platform's frame, movement and page keys stay in the map. Uncaptured, a frame that doesn't
         // scroll hands them to the page around it, which scrolls while the woka walks. Released while controls are
         // disabled (a text field has focus), like every other capture.
         if (QUANTA_UI && window.parent !== window) {
-            const { UP, DOWN, LEFT, RIGHT } = Phaser.Input.Keyboard.KeyCodes;
-            this.scene.input.keyboard?.addCapture([UP, DOWN, LEFT, RIGHT]);
+            const { UP, DOWN, LEFT, RIGHT, PAGE_UP, PAGE_DOWN, HOME, END } = Phaser.Input.Keyboard.KeyCodes;
+            this.scene.input.keyboard?.addCapture([UP, DOWN, LEFT, RIGHT, PAGE_UP, PAGE_DOWN, HOME, END]);
         }
         this.bindInputEventHandlers();
         if (touchScreenManager.supportTouchScreen) {

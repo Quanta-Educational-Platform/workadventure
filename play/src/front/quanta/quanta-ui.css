@@ -214,9 +214,8 @@ html.quanta-ui [data-toast-stack] {
 /* Beside the map editor in a narrow room: compact cards, smaller text and a full-width button that keeps its label
    on one line, rather than a wide card squeezed. */
 @container toasts (max-width: 300px) {
-    /* The compact button is 36px tall and 10px in: 18 + 10. */
     html.quanta-ui [data-toast-stack] .toast-container > div:last-child {
-        border-radius: 28px;
+        border-radius: 16px;
     }
 
     html.quanta-ui [data-toast-stack] .toast-container > div:last-child > .flex.items-center.p-4 {
@@ -229,12 +228,13 @@ html.quanta-ui [data-toast-stack] {
     }
 
     html.quanta-ui [data-toast-stack] .toast-container .buttons-wrapper {
-        padding: 10px 10px 10px;
+        flex: 1 1 100%;
+        padding: 8px 10px 10px;
     }
 
     html.quanta-ui [data-toast-stack] .toast-container .buttons-wrapper button {
         flex: 1 1 100%;
-        min-height: 36px;
+        min-height: 32px;
         padding: 0 10px;
         font-size: 14px;
         white-space: nowrap;
@@ -293,34 +293,42 @@ html.quanta-ui .toast-container > div:first-child {
     display: none;
 }
 
-/* Its corner nests the button's pill (40px tall, 12px in): 20 + 12. */
+/* A compact card with the room's 16px corners (its chat, the people list): the message and its action on one line
+   when they fit, the action wrapping under it when they don't. */
 html.quanta-ui .toast-container > div:last-child {
-    max-width: min(380px, 100%);
-    border-radius: 32px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    max-width: min(420px, 100%);
+    border-radius: 16px;
     background: #1d2027;
     backdrop-filter: none;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 html.quanta-ui .toast-container .responsive-message,
 html.quanta-ui .toast-container .responsive-message p {
     text-align: start;
-    font-size: 15px;
-    line-height: 22px;
+    font-size: 14px;
+    line-height: 20px;
     color: #eceef1;
 }
 
 html.quanta-ui .toast-container > div:last-child > .flex.items-center.p-4 {
+    flex: 1 1 180px;
+    min-width: 0;
     justify-content: flex-start;
-    padding: 16px 20px 4px;
+    padding: 12px 16px;
 }
 
 html.quanta-ui .toast-container .buttons-wrapper {
+    flex: 0 0 auto;
+    margin-left: auto;
     /* safe: a button wider than a narrow card overflows to its end, not out past its start. */
     justify-content: safe flex-end;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 8px 12px 12px;
+    gap: 4px;
+    padding: 8px 10px 8px 0;
     background: transparent;
 }
 
@@ -331,13 +339,13 @@ html.quanta-ui .toast-container .buttons-wrapper > * {
 html.quanta-ui .toast-container .buttons-wrapper button {
     flex: none;
     max-width: 100%;
-    min-height: 40px;
-    padding: 8px 20px;
-    white-space: normal;
+    min-height: 32px;
+    padding: 6px 14px;
+    white-space: nowrap;
     border: 0;
     border-radius: 9999px;
     background: transparent;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
 }
 
@@ -1867,4 +1875,26 @@ html.quanta-ui .quanta-chat-delete:hover,
 html.quanta-ui .quanta-chat-delete:focus-visible {
     color: #f87171;
     background: rgba(248, 113, 113, 0.1);
+}
+
+/* Keep the essential controls inset on phones; optional actions already leave the narrow dock. */
+@media (max-width: 480px) {
+    html.quanta-ui [data-testid="quanta-dock"] .qd-dock {
+        box-sizing: border-box;
+        max-width: calc(100% - 16px);
+        padding: 8px;
+    }
+
+    html.quanta-ui [data-testid="quanta-dock"] .qd-buttons {
+        gap: 4px;
+    }
+
+    html.quanta-ui [data-testid="quanta-dock"] .qd-buttons > [data-optional],
+    html.quanta-ui [data-testid="quanta-dock"] .qd-split-toggle {
+        display: none;
+    }
+
+    html.quanta-ui [data-testid="quanta-dock"] .qd-button.leave {
+        width: 44px;
+    }
 }
