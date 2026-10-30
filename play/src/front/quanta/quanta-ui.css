@@ -955,6 +955,13 @@ html.quanta-ui #game.game-scene-loaded > canvas {
     clip-path: inset(12px 12px 96px 12px round 16px);
 }
 
+/* The clip makes the canvas its own layer, painted over Phaser's DOM layer just before it: names, speech bubbles
+   and emotes would sit behind the map. Raised, the layer still lets clicks through to the map. */
+html.quanta-ui #game.game-scene-loaded > div:has(+ canvas) {
+    z-index: 1;
+    pointer-events: none;
+}
+
 /* On phones the dock is 68px tall, 8px from the bottom (QuantaDock.svelte). */
 @media (max-width: 480px) {
     html.quanta-ui #game.game-scene-loaded > canvas {
