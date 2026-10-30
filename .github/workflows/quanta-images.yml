@@ -6,6 +6,8 @@ name: Quanta images
 on:
   push:
     tags: ["quanta-v*"]
+  # Run on a quanta-v* tag by hand when GitHub drops the tag's push event.
+  workflow_dispatch:
 permissions: {}
 env:
   REGISTRY: ghcr.io/quanta-educational-platform

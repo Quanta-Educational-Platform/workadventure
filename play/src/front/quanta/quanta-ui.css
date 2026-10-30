@@ -1480,6 +1480,23 @@ html.quanta-ui [data-testid="say-popup"] .quanta-say-type > button[aria-pressed=
    message field gives way, not the card (focusing a field wider than the card scrolled the close button off it). */
 html.quanta-ui [data-testid="say-popup"] {
     min-width: 0;
+    width: min(480px, calc(100vw - 48px));
+}
+
+/* The send button always keeps its 40px, so the right end mirrors the close button; dimmed until there is text. */
+html.quanta-ui [data-testid="say-popup"] > div:last-child > button {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: #c9d5ea;
+    color: #1b1e23;
+}
+
+html.quanta-ui [data-testid="say-popup"]:has(input:placeholder-shown) > div:last-child > button {
+    background: #262a31;
+    color: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
 }
 
 html.quanta-ui [data-testid="say-popup"] > div:last-child {
@@ -1511,6 +1528,7 @@ html.quanta-ui [data-testid="say-popup"] input {
     padding: 0 14px;
     font-size: 15px;
     color: #fff;
+    text-overflow: ellipsis;
 }
 
 html.quanta-ui [data-testid="say-popup"] input:focus {
