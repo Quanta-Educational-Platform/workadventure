@@ -5,6 +5,7 @@ import Debug from "debug";
 import { apiClientRepository } from "../services/ApiClientRepository";
 import type { FrontAssets } from "../services/FrontAssets";
 import { GRPC_MAX_MESSAGE_SIZE } from "../enums/EnvironmentVariable";
+import { REJOIN_SPREAD_HEADER, rejoinSpreadMs } from "../quanta/rejoinPressure";
 import { BaseHttpController } from "./BaseHttpController";
 
 const debug = Debug("pusher:requests");
@@ -38,6 +39,8 @@ export class PingController extends BaseHttpController {
          */
         this.app.get("/ping", (req, res) => {
             debug(`PingController => [${req.method}] ${req.originalUrl} — IP: ${req.ip} — Time: ${Date.now()}`);
+            res.set(REJOIN_SPREAD_HEADER, String(rejoinSpreadMs()));
+            res.set("Access-Control-Expose-Headers", REJOIN_SPREAD_HEADER);
             res.status(200).send("pong");
             return;
         });

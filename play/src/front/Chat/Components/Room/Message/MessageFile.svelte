@@ -22,7 +22,7 @@
         this={canSave ? "a" : "div"}
         href={canSave ? $content.url : undefined}
         download={canSave ? $content.body : undefined}
-        class="block min-w-[200px] max-w-full overflow-hidden rounded-t-[inherit] bg-white/5 last:rounded-b-[inherit] text-white hover:text-white hover:no-underline"
+        class="quanta-attachment-file block min-w-[200px] max-w-full overflow-hidden rounded-t-[inherit] bg-white/5 last:rounded-b-[inherit] text-white hover:text-white hover:no-underline"
     >
         <div class="px-2.5 py-2">
             <div class="flex items-center gap-1 text-sm font-bold">
@@ -30,7 +30,7 @@
                 <span class="truncate">{$content.body}</span>
             </div>
             {#if size !== undefined}
-                <div class="text-xs text-white/70">{formatFileSize(size)}</div>
+                <div class="quanta-attachment-caption text-xs text-white/70">{formatFileSize(size)}</div>
             {/if}
         </div>
         {#if canSave}

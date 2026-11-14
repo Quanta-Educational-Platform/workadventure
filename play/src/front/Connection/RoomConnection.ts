@@ -109,7 +109,7 @@ import type { SetPlayerVariableEvent } from "../Api/Events/SetPlayerVariableEven
 import { iframeListener } from "../Api/IframeListener";
 import { analyticsClient } from "../Administration/AnalyticsClient";
 import { ABSOLUTE_PUSHER_URL } from "../Enum/ComputedConst";
-import { ENABLE_MAP_EDITOR, UPLOADER_URL, WOKA_SPEED } from "../Enum/EnvironmentVariable";
+import { ENABLE_MAP_EDITOR, QUANTA_UI, UPLOADER_URL, WOKA_SPEED } from "../Enum/EnvironmentVariable";
 import type { CompanionTextureDescriptionInterface } from "../Phaser/Companion/CompanionTextures";
 import type { WokaTextureDescriptionInterface } from "../Phaser/Entity/PlayerTextures";
 import { gameManager } from "../Phaser/Game/GameManager";
@@ -132,6 +132,8 @@ import {
 import { requestedScreenSharingState } from "../Stores/ScreenSharingStore";
 import { selectCompanionSceneVisibleStore } from "../Stores/SelectCompanionStore";
 import { selectCharacterSceneVisibleStore } from "../Stores/SelectCharacterStore";
+import { claimAskedPosition } from "../quanta/goToPending";
+import { reloadPageForNewVersion } from "../quanta/newVersion";
 import { connectionManager } from "./ConnectionManager";
 import type {
     GroupCreatedUpdatedMessageInterface,
@@ -146,8 +148,8 @@ import { localUserStore } from "./LocalUserStore";
 import { ConnectionClosedError } from "./ConnectionClosedError";
 import { WorkAdventureWebSocket } from "./WorkAdventureWebSocket";
 
-// This must be greater than RoomManager's PING_INTERVAL
-const manualPingDelay = 100_000;
+// This must be greater than RoomManager's PING_INTERVAL (quanta: 130 s, was 80 s; this was 100 s)
+const manualPingDelay = 140_000;
 
 export class RoomConnection implements RoomConnection {
     public readonly socket: WorkAdventureWebSocket;
@@ -160,6 +162,10 @@ export class RoomConnection implements RoomConnection {
 
     public readonly _serverDisconnected = new Subject<void>();
     public readonly serverDisconnected = this._serverDisconnected.asObservable();
+    /** quanta: how the room socket finally closed, and since when it had been trying to resume (if it was), read
+     *  when serverDisconnected fires. */
+    public closeCode: number | undefined;
+    public reconnectingSince: number | undefined;
 
     private readonly _errorMessageStream = new Subject<ErrorMessageTsProto>();
     public readonly errorMessageStream = this._errorMessageStream.asObservable();
@@ -345,6 +351,23 @@ export class RoomConnection implements RoomConnection {
         // now, so this no longer watches a stream to say a second time what the layer
         // below already said.
         this.websocketReconnectingStream = this.socket.reconnectingStream;
+        // Completed by the socket when it closes for good. While it is resuming, the ping watchdog is off: the socket's
+        // own retention bounds that, and the watchdog, timed from the last ping, would end the resume early. It is for
+        // a socket that looks open but no longer carries anything. reconnectingSince stays set until a message arrives
+        // (handleSocketMessage): a resume the server refuses opens first, and the final close reports "not
+        // reconnecting" before it closes.
+        //eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
+        this.socket.reconnectingStream.subscribe((reconnecting) => {
+            if (reconnecting) {
+                this.reconnectingSince ??= Date.now();
+                if (this.timeout) {
+                    clearTimeout(this.timeout);
+                    this.timeout = undefined;
+                }
+                return;
+            }
+            if (this.socket.isOpen() && !this._closed) this.resetPingTimeout();
+        });
 
         this.socket.onopen = () => {
             console.info("Socket has been opened");
@@ -357,6 +380,7 @@ export class RoomConnection implements RoomConnection {
     }
 
     private handleSocketMessage = (messageEvent: MessageEvent<ServerToClientMessageTsProto>) => {
+        this.reconnectingSince = undefined;
         try {
             const message = messageEvent.data.message;
             if (message === undefined) {
@@ -483,7 +507,8 @@ export class RoomConnection implements RoomConnection {
                                     break;
                                 }
                                 case "duplicateUserConnectedMessage": {
-                                    if (shouldShowDuplicateUserPopup()) {
+                                    // quanta: a newer session takes the room over (the pusher's replaceOlderSessions); nothing to confirm.
+                                    if (!QUANTA_UI && shouldShowDuplicateUserPopup()) {
                                         duplicateUserConnectedStore.setDuplicateConnected(true);
                                     }
                                     break;
@@ -719,13 +744,22 @@ export class RoomConnection implements RoomConnection {
                     }
                     if (message.errorScreenMessage.type === "redirect" && message.errorScreenMessage.urlToRedirect) {
                         window.location.assign(message.errorScreenMessage.urlToRedirect);
+                    } else if (
+                        QUANTA_UI &&
+                        message.errorScreenMessage.code === "NEW_VERSION" &&
+                        reloadPageForNewVersion()
+                    ) {
+                        // quanta: the room moved to a new build; this page reloads by itself after a notice.
                     } else {
                         errorScreenStore.setError(message.errorScreenMessage);
                     }
                     break;
                 }
                 case "moveToPositionMessage": {
-                    if (message.moveToPositionMessage && message.moveToPositionMessage.position) {
+                    if (
+                        message.moveToPositionMessage?.position &&
+                        !claimAskedPosition(message.moveToPositionMessage.position)
+                    ) {
                         gameManager
                             .getCurrentGameScene()
                             .moveTo(message.moveToPositionMessage.position, false, WOKA_SPEED * 2.5)
@@ -759,7 +793,8 @@ export class RoomConnection implements RoomConnection {
                     break;
                 }
                 case "duplicateUserConnectedMessage": {
-                    if (shouldShowDuplicateUserPopup()) {
+                    // quanta: a newer session takes the room over (the pusher's replaceOlderSessions); nothing to confirm.
+                    if (!QUANTA_UI && shouldShowDuplicateUserPopup()) {
                         duplicateUserConnectedStore.setDuplicateConnected(true);
                     }
                     break;
@@ -811,6 +846,7 @@ export class RoomConnection implements RoomConnection {
     // Event handlers as arrow function in order not to have to bind this explicitly
     private handleSocketClose = (event: CloseEvent) => {
         console.info("Socket has been closed", this.userId, this._closed, event);
+        this.closeCode = event.code;
         if (this.timeout) {
             clearTimeout(this.timeout);
             this.timeout = undefined;

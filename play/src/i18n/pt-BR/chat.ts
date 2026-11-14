@@ -47,6 +47,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "Não foi possível carregar esta pré-visualização da imagem.",
         openInNewTab: "Abrir em nova guia",
         notAvailable: "Imagem não disponível.",
+        cannotDisplay: "Este navegador não consegue mostrar esta imagem. Salve o arquivo para abri-lo.",
         imageActions: "Ações da imagem",
     },
     join: "Entrar",
@@ -285,6 +286,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "Aceite para baixar",
         saveFile: "Salvar arquivo",
         unavailable: "Não está mais disponível",
+        connectionFailed: "Não foi possível conectar ao remetente. Tente novamente.",
+        interrupted: "A transferência foi interrompida. Tente novamente.",
+        retry: "Tentar novamente",
         recipient: {
             waiting: "Aguardando",
             summary: "Recebido por {received} de {total}",

@@ -46,8 +46,9 @@
         mounted = true;
         // Get the current textures
         const currentTextures = gameManager.getCharacterTextureIds();
-        if (currentTextures && currentTextures.length > 1) {
-            buildOwnWoka = true; // If there are textures, we assume the user wants to customize their Woka
+        // quanta: someone new builds their own (it starts from a random one); a ready-made pick opens the list
+        if (!currentTextures || currentTextures.length !== 1) {
+            buildOwnWoka = true;
         }
         // Add keyboard navigation listener
         window.addEventListener("keydown", useKeyboardNavigation);

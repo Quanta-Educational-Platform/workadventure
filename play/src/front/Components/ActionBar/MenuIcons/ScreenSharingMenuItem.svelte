@@ -18,7 +18,7 @@
     function screenSharingClick(): void {
         onclick?.();
         analyticsClient.trackAdminEvent("meeting.screenshare.toggled");
-        if ($silentStore && !$isSpeakerStore) return;
+        if (!$requestedScreenSharingState && $silentStore && !$isSpeakerStore) return;
         if ($requestedScreenSharingState === true) {
             requestedScreenSharingState.disableScreenSharing();
         } else {
@@ -35,14 +35,14 @@
         disabledHelp={$openedMenuStore !== undefined}
         state={!$screenSharingActivatedStore
             ? "disabled"
-            : $requestedScreenSharingState && !$silentStore
+            : $requestedScreenSharingState
               ? "active"
               : "normal"}
         dataTestId="screenShareButton"
         media="./static/images/screensharing.mp4"
         desc={$LL.actionbar.help.share.desc()}
     >
-        {#if $requestedScreenSharingState && !$silentStore}
+        {#if $requestedScreenSharingState}
             <ScreenShareOffIcon />
         {:else}
             <ScreenShareIcon />

@@ -7,7 +7,7 @@
     "proto-all": "npm run ts-proto",
     "proto:watch": "npm run proto-all; npm run proto:watch-files",
     "proto:watch-files": "chokidar 'protos/*.proto' -c 'npm run proto-all'",
-    "tag-version": "sed -i \"s/apiVersionHash = \\\".*\\\"/apiVersionHash = \\\"$(sha1sum protos/messages.proto ../libs/messages/src/JsonMessages/* | sha1sum | cut -c1-8)\\\"/g\" ../libs/messages/src/JsonMessages/ApiVersion.ts",
+    "tag-version": "v=\"${WA_BUILD_ID:-$(sha1sum protos/messages.proto ../libs/messages/src/JsonMessages/* | sha1sum | cut -c1-8)}\" && { echo \"$v\" | grep -Eqx '[A-Za-z0-9._-]{1,100}' || { echo \"WA_BUILD_ID may only hold letters, digits, dots, dashes and underscores\" >&2; exit 1; }; } && sed -i \"s/apiVersionHash = \\\".*\\\"/apiVersionHash = \\\"$v\\\"/g\" ../libs/messages/src/JsonMessages/ApiVersion.ts",
     "precommit": "lint-staged",
     "pretty": "prettier --write '../libs/messages/src/JsonMessages/**/*.ts'"
   },

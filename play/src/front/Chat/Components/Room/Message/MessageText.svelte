@@ -1,18 +1,28 @@
 <script lang="ts">
-    import type { Readable, Unsubscriber } from "svelte/store";
+    import { readable, type Readable } from "svelte/store";
     import { Marked } from "marked";
-    import { onDestroy, onMount } from "svelte";
     import type { ChatMessageContent } from "../../../Connection/ChatConnection";
     import { resolveChatLinkClick } from "../../../Links/ChatLinkPolicy";
     import { openChatLinkAsCoWebsite } from "../../../Utils";
+    import { QUANTA_UI } from "../../../../Enum/EnvironmentVariable";
     import { sanitizeHTML } from "./WA-HTML-Sanitizer";
+    import { markMentions, type Mention } from "../../../../quanta/mentions";
+    import { roomModerationStore } from "../../../../quanta/moderationBridge";
+    import { fullNamesStore } from "../../../../quanta/fullNames";
 
     interface Props {
         content: Readable<ChatMessageContent>;
         hasDepth: false;
+        message?: object;
     }
 
-    let { content, hasDepth }: Props = $props();
+    let { content, hasDepth, message = undefined }: Props = $props();
+
+    // quanta: the people a class chat message names with @ (quanta/mentions.ts), highlighted; the viewer's own stronger.
+    const noMentions = readable<Mention[]>([]);
+    let mentions = $derived(
+        message && "mentions" in message ? (message.mentions as Readable<Mention[]>) : noMentions,
+    );
 
     async function getMarked(body: string): Promise<Marked> {
         let marked: Marked;
@@ -48,6 +58,12 @@
         marked.use({
             renderer,
             breaks: true,
+            ...(QUANTA_UI && {
+                tokenizer: {
+                    emStrong: () => undefined,
+                    del: () => undefined,
+                },
+            }),
         });
 
         return marked;
@@ -55,25 +71,26 @@
 
     let html = $state("");
 
-    let unsubscriber: Unsubscriber | undefined;
-    onMount(() => {
-        unsubscriber = content.subscribe((value) => {
-            let promiseHtml = getMarked(value.body).then((marked) => marked.parse(value.body));
+    // quanta: follows the content store it is given now: the class chat replaces a message's store when it is edited,
+    // and the timeline keeps this component for the same message. A slower parse of an older body never wins.
+    let parses = 0;
+    $effect(() => {
+        return content.subscribe((value) => {
+            const parse = ++parses;
+            let promiseHtml = getMarked(value.body).then((marked) =>
+                // quanta: a class's chat is text and links. Lists, headings, rules and emphasis would eat what a
+                // maths class types: "+", "- 3", "+ -", "# 5", "2*3*4".
+                QUANTA_UI ? marked.parseInline(value.body, { async: false }) : marked.parse(value.body),
+            );
             promiseHtml
                 .then((result) => {
-                    html = result;
+                    if (parse === parses) html = result;
                 })
                 .catch((error) => {
                     console.error("Failed to parse markdown content", error);
-                    html = $content.body;
+                    if (parse === parses) html = value.body;
                 });
         });
-    });
-
-    onDestroy(() => {
-        if (unsubscriber) {
-            unsubscriber();
-        }
     });
 
     let opening = $state(false);
@@ -90,7 +107,8 @@
             return;
         }
 
-        const url = resolveChatLinkClick(anchor, event);
+        // quanta: a link someone shares in class opens in a new tab; a panel over the room hides the room.
+        const url = QUANTA_UI ? undefined : resolveChatLinkClick(anchor, event);
         if (url === undefined) {
             return;
         }
@@ -125,7 +143,7 @@
     lang=""
     onclick={onBubbleClick}
 >
-    {@html sanitizeHTML(html)}
+    {@html markMentions(sanitizeHTML(html), $mentions, $roomModerationStore?.self, $fullNamesStore)}
 </div>
 
 <style>

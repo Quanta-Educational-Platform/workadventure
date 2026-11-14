@@ -12,6 +12,10 @@ export interface ProximityNotification {
     /** When false, click only opens the chat panel (e.g. for room invitations). Default true. */
     openRoomOnClick?: boolean;
     sidePanelSection?: RoomSidePanelSection;
+    /** quanta: someone named the viewer with @ (quanta/mentionAlert.ts). */
+    mention?: boolean;
+    /** quanta: what a click opens instead of the room (a direct conversation). */
+    onOpen?: () => void;
 }
 
 /**
@@ -29,6 +33,7 @@ function createChatNotificationStore() {
             messageId?: string,
             openRoomOnClick = true,
             sidePanelSection?: RoomSidePanelSection,
+            extra?: Pick<ProximityNotification, "mention" | "onOpen">,
         ): string => {
             const id = uuidv4();
             update((notifications: ProximityNotification[]) => {
@@ -38,7 +43,7 @@ function createChatNotificationStore() {
                     : notifications;
                 return [
                     ...filteredNotifications,
-                    { id, userName, message, messageId, room, openRoomOnClick, sidePanelSection },
+                    { id, userName, message, messageId, room, openRoomOnClick, sidePanelSection, ...extra },
                 ];
             });
             return id;

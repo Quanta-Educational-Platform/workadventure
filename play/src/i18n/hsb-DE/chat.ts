@@ -48,6 +48,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "Tutón wobrazowy přehlad njeda so začitać.",
         openInNewTab: "W nowym rajtarku woteworić",
         notAvailable: "Wobraz njeda so pokazać.",
+        cannotDisplay: "Tutón wobhladowak njemóže wobraz pokazać. Składuj dataju, zo by ju wočinił.",
         imageActions: "Akcije wobraza",
     },
     join: "Přizamknyć",
@@ -285,6 +286,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "Akceptuj, zo by sćahnył",
         saveFile: "Dataju składować",
         unavailable: "Hižo k dispoziciji njeje",
+        connectionFailed: "Zwisk z wotpósłarjom njebě móžny. Spytaj hišće raz.",
+        interrupted: "Přenošowanje je so přetorhnyło. Spytaj hišće raz.",
+        retry: "Hišće raz spytać",
         recipient: {
             waiting: "Čaka",
             summary: "Dóstate: {received} z {total}",

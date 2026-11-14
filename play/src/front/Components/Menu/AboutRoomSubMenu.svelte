@@ -1,78 +1,25 @@
 <script lang="ts">
     import { fly } from "svelte/transition";
-    import { onMount } from "svelte";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { LL } from "../../../i18n/i18n-svelte";
     import Button from "../UI/Button.svelte";
     import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
-
-    let gameScene = gameManager.getCurrentGameScene();
+    import { mapCredits, quantaAssetCredits } from "../../quanta/mapCredits";
+    import { QL } from "../../quanta/i18n";
 
     let expandedMapCopyright = $state(false);
     let expandedTilesetCopyright = $state(false);
     let expandedAudioCopyright = $state(false);
 
-    let mapName = $state("");
-    let mapLink = $state("");
-    let mapDescription = $state("");
-    let mapCopyright: string = $state($LL.menu.about.copyrights.map.empty());
-    let tilesetCopyright: string[] = $state([]);
-    let audioCopyright: string[] = $state([]);
-
-    onMount(() => {
-        if (gameScene.mapFile.properties !== undefined) {
-            const propertyName = gameScene.mapFile.properties.find((property) => property.name === "mapName");
-            if (propertyName !== undefined && typeof propertyName.value === "string") {
-                mapName = propertyName.value;
-            }
-            const propertyLink = gameScene.mapFile.properties.find((property) => property.name === "mapLink");
-            if (propertyLink !== undefined && typeof propertyLink.value === "string") {
-                mapLink = propertyLink.value;
-            }
-            const propertyDescription = gameScene.mapFile.properties.find(
-                (property) => property.name === "mapDescription",
-            );
-            if (propertyDescription !== undefined && typeof propertyDescription.value === "string") {
-                mapDescription = propertyDescription.value;
-            }
-            const propertyCopyright = gameScene.mapFile.properties.find((property) => property.name === "mapCopyright");
-            if (propertyCopyright !== undefined && typeof propertyCopyright.value === "string") {
-                mapCopyright = propertyCopyright.value;
-            }
-        }
-
-        for (const tileset of gameScene.mapFile.tilesets) {
-            if ("properties" in tileset && tileset.properties !== undefined) {
-                const propertyTilesetCopyright = tileset.properties.find(
-                    (property) => property.name === "tilesetCopyright",
-                );
-                if (propertyTilesetCopyright !== undefined && typeof propertyTilesetCopyright.value === "string") {
-                    // Assignment needed to trigger Svelte's reactivity (remove duplicates)
-                    tilesetCopyright = Array.from(new Set([...tilesetCopyright, propertyTilesetCopyright.value]));
-                }
-            }
-        }
-
-        for (const layer of gameScene.mapFile.layers) {
-            if (layer.type && layer.type === "tilelayer" && layer.properties) {
-                const propertyAudioCopyright = layer.properties.find((property) => property.name === "audioCopyright");
-                if (propertyAudioCopyright !== undefined && typeof propertyAudioCopyright.value === "string") {
-                    // Assignment needed to trigger Svelte's reactivity (remove duplicates)
-                    audioCopyright = Array.from(new Set([...audioCopyright, propertyAudioCopyright.value]));
-                }
-            }
-        }
-        // quanta: the room editor's furniture is placed as entities, not tiles, so the map names none of it.
-        if (QUANTA_UI) {
-            tilesetCopyright = Array.from(
-                new Set([
-                    ...tilesetCopyright,
-                    "Modern Interiors, Modern Office and Modern Exterior by LimeZu (limezu.itch.io)",
-                    "Furniture collections and Woka characters by WorkAdventure (workadventu.re)",
-                ]),
-            );
-        }
-    });
+    const credits = $derived(
+        mapCredits(gameManager.getCurrentGameScene().mapFile, QUANTA_UI ? quantaAssetCredits($QL) : []),
+    );
+    const mapName = $derived(credits.name);
+    const mapLink = $derived(credits.link);
+    const mapDescription = $derived(credits.description);
+    const mapCopyright = $derived(credits.mapCopyright ?? $LL.menu.about.copyrights.map.empty());
+    const tilesetCopyright = $derived(credits.tilesets);
+    const audioCopyright = $derived(credits.audio);
 </script>
 
 <div class="about-room-main text-center py-8" transition:fly={{ x: -700, duration: 250 }}>

@@ -12,11 +12,11 @@ import type { EndTimedAnalyticsEvent } from "../Administration/TimedAnalyticsEve
 import type { Streamable, WebRtcStreamable } from "../Space/Streamable";
 import { VideoBox } from "../Space/VideoBox";
 import { localEncoderStatsStore } from "../WebRtc/LocalEncoderStats";
-import { isSpeakerStore, type LocalStreamStoreValue } from "./MediaStore";
+import type { LocalStreamStoreValue } from "./MediaStore";
 import { isScreenSharingPickerCancelled } from "./ScreenSharingErrors";
-import { inExternalServiceStore, myCameraStore, myMicrophoneStore } from "./MyMediaStore";
+import { buildDisplayMediaOptions, detectDisplayCaptureSupport } from "./DisplayMediaOptions";
+import { inExternalServiceStore } from "./MyMediaStore";
 import type {} from "../Api/Desktop";
-import { screenShareStreamElementsStore } from "./PeerStore";
 import { muteMediaStreamStore } from "./MuteMediaStreamStore";
 import { isScreenSharingAvailableStore } from "./IsStreamingStore";
 
@@ -83,27 +83,8 @@ export const screenSharingAvailableStore = isScreenSharingAvailableStore;
  * A store containing the media constraints we want to apply.
  */
 export const screenSharingConstraintsStore = derived(
-    [
-        requestedScreenSharingState,
-        myCameraStore,
-        myMicrophoneStore,
-        inExternalServiceStore,
-        screenSharingAvailableStore,
-        screenShareStreamElementsStore,
-        isSpeakerStore,
-    ],
-    (
-        [
-            $requestedScreenSharingState,
-            $myCameraStore,
-            $myMicrophoneStore,
-            $inExternalServiceStore,
-            $screenSharingAvailableStore,
-            $screenShareStreamElementsStore,
-            $isSpeakerStore,
-        ],
-        set,
-    ) => {
+    [requestedScreenSharingState, inExternalServiceStore],
+    ([$requestedScreenSharingState, $inExternalServiceStore], set) => {
         let currentVideoConstraint: boolean | MediaTrackConstraints = true;
         //TODO : passer a true si on veut que le son soit activé par défaut dans le screen sharing
         let currentAudioConstraint: boolean | MediaTrackConstraints = true;
@@ -120,11 +101,8 @@ export const screenSharingConstraintsStore = derived(
             currentAudioConstraint = false;
         }
 
-        // Disable screen sharing if not in a live streaming context and no active screen shares or speaker status
-        if (!$screenSharingAvailableStore && $screenShareStreamElementsStore.length === 0 && !$isSpeakerStore) {
-            currentVideoConstraint = false;
-            currentAudioConstraint = false;
-        }
+        // No audience condition here: the capture outlives the bubbles and podiums it is published in (each space
+        // publishes it only while it has an audience, see shouldPublishScreenShareStore), so moving never ends it.
 
         // Let's make the changes only if the new value is different from the old one.
         if (
@@ -207,17 +185,12 @@ export const screenSharingLocalStreamStore = derived<Readable<MediaStreamConstra
         // Audio is only available for certain display surfaces (mainly browser tabs)
         // See: https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-            // Build constraints according to MDN specification
-            // video can be boolean or MediaTrackConstraints, default is true
-            // audio can be boolean or MediaTrackConstraints, default is false
-            const displayMediaConstraints: {
-                video: boolean | MediaTrackConstraints;
-                audio: boolean | MediaTrackConstraints;
-            } = {
-                video: !!constraints.video,
-                audio: !!constraints.audio,
-            };
-            currentStreamPromise = navigator.mediaDevices.getDisplayMedia(displayMediaConstraints);
+            currentStreamPromise = navigator.mediaDevices.getDisplayMedia(
+                buildDisplayMediaOptions(
+                    { video: !!constraints.video, audio: !!constraints.audio },
+                    detectDisplayCaptureSupport(),
+                ),
+            );
         } else if (window.WAD?.getDesktopCapturerSources) {
             currentStreamPromise = getDesktopCapturerSources();
         } else {

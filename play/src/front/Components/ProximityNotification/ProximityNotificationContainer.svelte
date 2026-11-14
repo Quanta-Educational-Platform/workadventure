@@ -6,7 +6,10 @@
 </script>
 
 {#if $chatNotificationStore.length > 0}
-    <div class="fixed left-4 bottom-0 pointer-events-none flex flex-col items-start pb-4 z-[900]">
+    <div
+        class="fixed left-4 bottom-0 pointer-events-none flex flex-col items-start pb-4 z-[900]"
+        data-testid="proximity-notifications"
+    >
         {#each $chatNotificationStore.slice(-MAX_NOTIFICATIONS) as notification (notification.id)}
             <div class="flex justify-start mb-2">
                 <ProximityNotification {notification} />

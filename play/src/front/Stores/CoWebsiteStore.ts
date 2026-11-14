@@ -5,8 +5,30 @@ import { buildCowebsiteOpenedProperties } from "../Administration/CowebsiteAnaly
 import { analyticsClient } from "../Administration/AnalyticsClient";
 import { TimedEventsByKey } from "../Administration/TimedAnalyticsEvent";
 
-export function createCoWebsiteStore() {
+export function createCoWebsiteStore(
+    flushBoard: (coWebsiteId: string) => Promise<void> | undefined = () => undefined,
+) {
     const { subscribe, update } = writable<Array<CoWebsite>>([]);
+
+    /**
+     * quanta: the cowebsites whose frames are in the page: the open ones, in their order, and boards that were closed
+     * but are still saving (quanta/boardFlush.ts). Everything else reads the open ones only, so a closed board leaves
+     * the layout at once. An item never moves here: moving an iframe reloads it.
+     */
+    const rendered = writable<Array<CoWebsite>>([]);
+    const closing = new Map<string, symbol>();
+
+    const renderAdded = (coWebsite: CoWebsite, open: Array<CoWebsite>) => {
+        rendered.update((current) => {
+            if (current.some((item) => item.getId() === coWebsite.getId())) return current;
+            const next = open[open.findIndex((item) => item.getId() === coWebsite.getId()) + 1];
+            const at = next ? current.findIndex((item) => item.getId() === next.getId()) : -1;
+            const result = [...current];
+            if (at === -1) result.push(coWebsite);
+            else result.splice(at, 0, coWebsite);
+            return result;
+        });
+    };
 
     /**
      * How long each open cowebsite has been open, one interval per id.
@@ -49,6 +71,9 @@ export function createCoWebsiteStore() {
         } else {
             update((currentArray) => [...currentArray, coWebsite]);
         }
+        // Opened again while it was still saving: the same frame comes back.
+        closing.delete(coWebsite.getId());
+        renderAdded(coWebsite, get({ subscribe }));
         if (get({ subscribe }).length === 1) {
             const coWebsiteWidthPercent = coWebsite.getWidthPercent();
             if (coWebsiteWidthPercent) {
@@ -86,11 +111,31 @@ export function createCoWebsiteStore() {
     };
 
     const removeMatching = (keep: (coWebsite: CoWebsite) => boolean) => {
-        update((currentArray) => {
-            const remaining = currentArray.filter(keep);
-            closeRemoved(currentArray, remaining);
-            return remaining;
-        });
+        const currentArray = get({ subscribe });
+        const remaining = currentArray.filter(keep);
+        const kept = new Set(remaining.map((coWebsite) => coWebsite.getId()));
+        const gone = new Set<string>();
+        for (const coWebsite of currentArray) {
+            const id = coWebsite.getId();
+            if (kept.has(id)) continue;
+            const flushing = flushBoard(id);
+            if (!flushing) {
+                gone.add(id);
+                continue;
+            }
+            const token = Symbol(id);
+            closing.set(id, token);
+            const unmount = () => {
+                if (closing.get(id) !== token) return;
+                closing.delete(id);
+                rendered.update((current) => current.filter((item) => item.getId() !== id));
+            };
+            flushing.then(unmount, unmount);
+        }
+        if (remaining.length === 0) fullScreenCowebsite.set(false);
+        closeRemoved(currentArray, remaining);
+        update(() => remaining);
+        if (gone.size > 0) rendered.update((current) => current.filter((item) => !gone.has(item.getId())));
     };
 
     const remove = (coWebsite: CoWebsite) => {
@@ -116,6 +161,7 @@ export function createCoWebsiteStore() {
 
     return {
         subscribe,
+        rendered: { subscribe: rendered.subscribe },
         add,
         remove,
         removeAll,

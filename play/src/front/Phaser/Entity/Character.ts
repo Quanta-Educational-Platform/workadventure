@@ -15,10 +15,13 @@ import type { GameScene } from "../Game/GameScene";
 import { Companion } from "../Companion/Companion";
 import { CharacterTextureError } from "../../Exception/CharacterTextureError";
 import { getPlayerAnimations, PlayerAnimationTypes } from "../Player/Animation";
+import { getSheetAnimations, isSheetFrameCount, sheetAnimationKey } from "../Player/WokaSheet";
+import { directionOfFacing, FacingTracker } from "../../quanta/wokaFacing";
 import { ProtobufClientUtils } from "../../Network/ProtobufClientUtils";
 import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
 
 import { UsernameDisplay } from "../Components/UsernameDisplay";
+import type { SeatPose } from "../../quanta/seats";
 import { lazyLoadPlayerCharacterTextures } from "./PlayerTexturesLoadingManager";
 import { SpeechBubble } from "./SpeechBubble";
 import { SpeechDomElement } from "./SpeechDomElement";
@@ -53,12 +56,31 @@ export type PathFollowResult = {
     blocked?: boolean;
 };
 
+/** quanta: a path walked at `cruise` pixels a second, reaching it and stopping from it over `ramp` seconds. */
+export type PathEase = { cruise: number; ramp: number };
+
+/** How far an eased walk of `length` pixels has gone after `t` seconds; past its end, a pixel beyond it. */
+function easedDistance({ cruise, ramp, length }: PathEase & { length: number }, t: number): number {
+    if (length <= 0) return length + 1;
+    const acceleration = cruise / ramp;
+    // Too short to reach the cruising pace: speeds up halfway, slows down the rest.
+    const rampTime = length < cruise * ramp ? Math.sqrt(length / acceleration) : ramp;
+    const top = acceleration * rampTime;
+    const cruiseTime = (length - top * rampTime) / top;
+    const total = 2 * rampTime + cruiseTime;
+    if (t >= total) return length + 1;
+    if (t <= rampTime) return (acceleration * t * t) / 2;
+    if (t <= rampTime + cruiseTime) return (top * rampTime) / 2 + top * (t - rampTime);
+    return length - (acceleration * (total - t) * (total - t)) / 2;
+}
+
 export abstract class Character extends Container implements OutlineableInterface, Movable {
     private readonly movedSubject = new Subject<PositionInterface>();
     public readonly moved$ = this.movedSubject.asObservable();
 
     private bubble: RenderTexture | null | DOMElement = null;
     private usernameDisplay: UsernameDisplay | undefined;
+    private displayedName: string | undefined;
     private availabilityStatus: AvailabilityStatusType = AvailabilityStatus.ONLINE;
     private raisedHand = false;
     public readonly playerName: string;
@@ -81,8 +103,15 @@ export abstract class Character extends Container implements OutlineableInterfac
     private destroyed = false;
     protected pathToFollow?: { x: number; y: number }[];
     protected pathWalkingSpeed?: number;
+    /** quanta: a walk that speeds up from a standstill and slows to one (setPathToFollow's `ease`). */
+    private pathEase?: PathEase & { length: number; elapsed: number };
     private currentPathSegmentDistanceFromStart = 0;
     private pathFollowingResolve?: (result: PathFollowResult) => void;
+    // quanta: the seat it is on (quanta/seats.ts) and how it is drawn there.
+    private seat: { id: string; pose: SeatPose } | undefined;
+    // quanta: true when every layer is a new sheet, with eight facings and seated frames.
+    private eightWay = false;
+    protected readonly facing = new FacingTracker(PositionMessage_Direction.DOWN);
     private readonly syncDisplayPositionWithPhysics = (): void => {
         this.setDepthIfNeeded(this.y + 16);
         this.updateUsernameDisplayPosition();
@@ -192,7 +221,7 @@ export abstract class Character extends Container implements OutlineableInterfac
                 scene,
                 this.x,
                 this.y + playerNameY,
-                this.playerName,
+                this.displayedName ?? this.playerName,
                 playerNameOutlineColor,
             );
             this.usernameDisplay.setAvailabilityStatus(this.availabilityStatus, true);
@@ -330,6 +359,12 @@ export abstract class Character extends Container implements OutlineableInterfac
         });
     }
 
+    /** What the name tag says, when it differs from the name others see (quanta/fullNames.ts). */
+    protected setDisplayedName(name: string | undefined): void {
+        this.displayedName = name;
+        this.usernameDisplay?.setDisplayedName(name ?? this.playerName);
+    }
+
     public toggleTalk(show = true): void {
         this.usernameDisplay?.setTalking(show, this.getAvailabilityStatus() === AvailabilityStatus.SPEAKER);
     }
@@ -366,7 +401,8 @@ export abstract class Character extends Container implements OutlineableInterfac
             }
             const sprite = new Sprite(this.scene, 0, 0, texture, frame);
             this.add(sprite);
-            getPlayerAnimations(texture).forEach((d) => {
+            const sheet = isSheetFrameCount(sprite.texture.getFrameNames().length);
+            [...getPlayerAnimations(texture), ...(sheet ? getSheetAnimations(texture) : [])].forEach((d) => {
                 if (!this.scene.anims.exists(d.key)) {
                     this.scene.anims.create({
                         key: d.key,
@@ -382,6 +418,55 @@ export abstract class Character extends Container implements OutlineableInterfac
             }
             this.sprites.set(texture, sprite);
         }
+        this.eightWay = [...this.sprites.values()].every((sprite) =>
+            isSheetFrameCount(sprite.texture.getFrameNames().length),
+        );
+        this.applySeatPose();
+    }
+
+    public get seatId(): string | undefined {
+        return this.seat?.id;
+    }
+
+    /** quanta: drawn on a seat, facing its way: on its seated frames, or, without any, legless and lowered onto it. */
+    public sitOn(id: string, x: number, y: number, direction: PositionMessage_Direction, pose: SeatPose): void {
+        this.seat = { id, pose };
+        this.getBody().setVelocity(0, 0);
+        this._lastDirection = direction;
+        this.facing.reset(direction);
+        this.setPosition(x, y);
+        this.playAnimation(direction, false);
+        this.applySeatPose();
+    }
+
+    public standUp(): void {
+        if (!this.seat) return;
+        this.seat = undefined;
+        if (this.eightWay) this.playAnimation(this._lastDirection, false);
+        this.applySeatPose();
+        this.updateUsernameDisplayPosition();
+    }
+
+    private get seatDrawing(): { offsetX: number; offsetY: number; cropBottom: number } | undefined {
+        const pose = this.seat?.pose;
+        if (!pose) return undefined;
+        return this.eightWay ? pose.sheet : { offsetX: 0, offsetY: pose.offsetY, cropBottom: pose.cropBottom };
+    }
+
+    private applySeatPose(): void {
+        const drawing = this.seatDrawing;
+        for (const sprite of this.sprites.values()) {
+            sprite.setX(drawing?.offsetX ?? 0);
+            sprite.setY(drawing?.offsetY ?? 0);
+            if (drawing?.cropBottom) sprite.setCrop(0, 0, sprite.width, sprite.height - drawing.cropBottom);
+            else sprite.setCrop();
+        }
+        this.updateUsernameDisplayPosition();
+    }
+
+    /** quanta: real movement, from which a woka works out which way it faces: one of eight on a new sheet. */
+    protected observeMovement(dx: number, dy: number, smoothingMs?: number): void {
+        this.facing.move(dx, dy, this.scene.time.now, smoothingMs);
     }
 
     protected playAnimation(direction: PositionMessage_Direction, moving: boolean): void {
@@ -390,6 +475,18 @@ export abstract class Character extends Container implements OutlineableInterfac
             if (!sprite.anims) {
                 console.error("ANIMS IS NOT DEFINED!!!");
                 return;
+            }
+            if (this.eightWay) {
+                const frame = this.seat?.pose.sheet.frame;
+                if (frame !== undefined) {
+                    sprite.anims.stop();
+                    sprite.setFrame(frame);
+                    continue;
+                }
+                const facing = this.facing.shown(direction, moving, this.scene.time.now);
+                const type = moving ? PlayerAnimationTypes.Walk : PlayerAnimationTypes.Idle;
+                sprite.play(sheetAnimationKey(texture, facing, type), true);
+                continue;
             }
             const directionStr = ProtobufClientUtils.toDirectionString(direction);
             if (moving && (!sprite.anims.currentAnim || sprite.anims.currentAnim.key !== directionStr)) {
@@ -409,7 +506,7 @@ export abstract class Character extends Container implements OutlineableInterfac
     }
 
     protected updateUsernameDisplayPosition(x = this.x, y = this.y): void {
-        this.usernameDisplay?.setPosition(x, y + playerNameY);
+        this.usernameDisplay?.setPosition(x, y + playerNameY + (this.seatDrawing?.offsetY ?? 0));
     }
 
     setPosition(x: number, y: number): this {
@@ -426,12 +523,26 @@ export abstract class Character extends Container implements OutlineableInterfac
         this.playAnimation(this._lastDirection, false);
     }
 
-    protected setPathToFollow(path: { x: number; y: number }[], speed?: number): Promise<PathFollowResult> {
+    protected setPathToFollow(
+        path: { x: number; y: number }[],
+        speed?: number,
+        ease?: PathEase,
+    ): Promise<PathFollowResult> {
         const isPreviousPathInProgress = this.isFollowingPath();
         this.pathToFollow = this.adjustPathToColliderBounds(path);
         this.pathToFollow.unshift({ x: this.x, y: this.y });
         this.pathWalkingSpeed = speed;
         this.currentPathSegmentDistanceFromStart = 0;
+        this.pathEase = undefined;
+        if (ease) {
+            let length = 0;
+            for (let i = 1; i < this.pathToFollow.length; i++)
+                length += Math.hypot(
+                    this.pathToFollow[i].x - this.pathToFollow[i - 1].x,
+                    this.pathToFollow[i].y - this.pathToFollow[i - 1].y,
+                );
+            this.pathEase = { ...ease, length, elapsed: 0 };
+        }
 
         return new Promise((resolve) => {
             this.pathFollowingResolve?.call(this, { x: this.x, y: this.y, cancelled: isPreviousPathInProgress });
@@ -442,6 +553,7 @@ export abstract class Character extends Container implements OutlineableInterfac
     public finishFollowingPath(cancelled = false, blocked = false): void {
         this.pathToFollow = undefined;
         this.pathWalkingSpeed = undefined;
+        this.pathEase = undefined;
         this.currentPathSegmentDistanceFromStart = 0;
         this.stop();
 
@@ -487,7 +599,14 @@ export abstract class Character extends Container implements OutlineableInterfac
         let yDistance = segmentEndPos.y - segmentStartPos.y;
         let pathSegmentLength = Math.sqrt(xDistance * xDistance + yDistance * yDistance);
 
-        this.currentPathSegmentDistanceFromStart += (this.getPathWalkingSpeed() * delta * 20) / 1000;
+        if (this.pathEase) {
+            const ease = this.pathEase;
+            const before = easedDistance(ease, ease.elapsed);
+            ease.elapsed += delta / 1000;
+            this.currentPathSegmentDistanceFromStart += easedDistance(ease, ease.elapsed) - before;
+        } else {
+            this.currentPathSegmentDistanceFromStart += (this.getPathWalkingSpeed() * delta * 20) / 1000;
+        }
 
         while (this.currentPathSegmentDistanceFromStart >= pathSegmentLength) {
             this.currentPathSegmentDistanceFromStart -= pathSegmentLength;
@@ -527,21 +646,11 @@ export abstract class Character extends Container implements OutlineableInterfac
         const oldX = this.x;
         const oldY = this.y;
         this.setPosition(x, y);
-
-        // In path finding mode, diagonal movement can make x and y deltas almost equal.
-        // Biasing y prevents the animation from flickering between horizontal and vertical directions.
-        if (Math.abs(x - oldX) > Math.abs((y - oldY) * 1.5)) {
-            if (x < oldX) {
-                this._lastDirection = PositionMessage_Direction.LEFT;
-            } else if (x > oldX) {
-                this._lastDirection = PositionMessage_Direction.RIGHT;
-            }
-        } else {
-            if (y < oldY) {
-                this._lastDirection = PositionMessage_Direction.UP;
-            } else if (y > oldY) {
-                this._lastDirection = PositionMessage_Direction.DOWN;
-            }
+        // quanta: the facing comes from the smoothed heading, so a path zigzagging between diagonal and straight
+        // tiles holds one view, here and on the wire, instead of flipping on every tile.
+        if (this.x !== oldX || this.y !== oldY) {
+            this.observeMovement(this.x - oldX, this.y - oldY);
+            this._lastDirection = directionOfFacing(this.facing.facing);
         }
 
         this.playAnimation(this._lastDirection, true);

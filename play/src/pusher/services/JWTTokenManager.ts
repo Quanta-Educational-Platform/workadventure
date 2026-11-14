@@ -6,6 +6,13 @@ export const AuthTokenData = z.object({
     identifier: z.string(), //will be a email if logged in or an uuid if anonymous
     accessToken: z.string().optional(),
     encryptedRefreshToken: z.string().optional(),
+    // quanta: signed in from a Quanta sign-in code. Its accessToken is a room session only Quanta's Admin API reads: not
+    // an OpenID token, with no refresh token.
+    quantaSession: z.boolean().optional(),
+    // quanta: the Quanta user it was made for, which a framed room checks against the page around it.
+    quantaUserId: z.string().optional(),
+    // quanta: when the token runs out, for watching a room session (QuantaRoomSessionWatch.ts).
+    exp: z.number().optional(),
     username: z.string().optional(),
     locale: z.string().optional(),
     tags: z
@@ -68,9 +75,11 @@ export class JWTTokenManager {
         tags?: string[],
         matrixUserId?: string,
         encryptedRefreshToken?: string,
+        quantaSession?: boolean,
+        quantaUserId?: string,
     ): Promise<string> {
-        return new SignJWT({ identifier, accessToken, username, locale, tags, matrixUserId, encryptedRefreshToken })
-            .setExpirationTime("30d")
+        return new SignJWT({ quantaSession, quantaUserId, identifier, accessToken, username, locale, tags, matrixUserId, encryptedRefreshToken })
+            .setExpirationTime(quantaSession ? "12h" : "30d")
             .setProtectedHeader({ alg: "HS256" })
             .sign(secret);
     }

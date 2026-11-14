@@ -1,5 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
+    import { pictureCell } from "../../Phaser/Player/WokaSheet";
+    import { WOKA_V3_LAYERS } from "../../quanta/wokaV3";
     import type { WokaData, WokaTexture } from "./WokaTypes";
 
     interface Props {
@@ -9,6 +11,9 @@
         direction?: number;
         getTextureUrl?: (url: string) => string;
         classList?: string;
+        /** quanta: part of the frame only (in sheet pixels), drawn `scale` times; the canvas fits it. */
+        crop?: { x: number; y: number; w: number; h: number };
+        scale?: number;
     }
 
     let {
@@ -18,9 +23,23 @@
         direction = 0,
         getTextureUrl = (url) => url,
         classList = "",
+        crop = undefined,
+        scale = 2,
     }: Props = $props();
 
-    const bodyPartOrder = ["body", "eyes", "hair", "clothes", "hat", "accessory", "woka"];
+    // quanta: Quanta's own parts (v3) after WA's, in the order they are drawn.
+    const bodyPartOrder = [
+        "body",
+        "eyes",
+        "hair",
+        "clothes",
+        "hat",
+        "accessory",
+        "woka",
+        ...WOKA_V3_LAYERS.map((layer) => layer.key),
+    ];
+    const width = $derived(crop ? crop.w * scale : canvasSize);
+    const height = $derived(crop ? crop.h * scale : canvasSize);
 
     let canvas: HTMLCanvasElement;
     let ctx: CanvasRenderingContext2D;
@@ -59,7 +78,22 @@
             const img = images[part];
             ctx.imageSmoothingEnabled = false;
             if (img && img.complete) {
-                ctx.drawImage(img, frame * 32, direction * 32, 32, 32, 0, 0, canvasSize, canvasSize);
+                const cell = pictureCell(img.naturalWidth, direction, frame);
+                if (crop) {
+                    ctx.drawImage(
+                        img,
+                        cell.column * 32 + crop.x,
+                        cell.row * 32 + crop.y,
+                        crop.w,
+                        crop.h,
+                        0,
+                        0,
+                        width,
+                        height,
+                    );
+                } else {
+                    ctx.drawImage(img, cell.column * 32, cell.row * 32, 32, 32, 0, 0, canvasSize, canvasSize);
+                }
             }
         }
     }
@@ -87,5 +121,4 @@
     });
 </script>
 
-<canvas bind:this={canvas} width={canvasSize} height={canvasSize} style="image-rendering: pixelated;" class={classList}
-></canvas>
+<canvas bind:this={canvas} {width} {height} style="image-rendering: pixelated;" class={classList}></canvas>

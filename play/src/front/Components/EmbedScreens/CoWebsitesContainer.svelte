@@ -15,8 +15,10 @@
     import type { CoWebsite } from "../../WebRtc/CoWebsite/CoWebsite";
     import { screenOrientationStore } from "../../Stores/ScreenOrientationStore";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import LL from "../../../i18n/i18n-svelte";
     import CoWebsiteTab from "./CoWebsiteTab.svelte";
-    import { IconChevronLeft, IconChevronRight, IconArrowsMinimize } from "@wa-icons";
+    import { IconChevronLeft, IconChevronRight, IconArrowsMinimize, IconArrowsMaximize, IconX } from "@wa-icons";
 
     //let container: HTMLElement;
     let activeCowebsite: CoWebsite = $state($coWebsites[0]);
@@ -118,9 +120,17 @@
         window.removeEventListener("mouseup", removeDivForResize);
     }
 
+    const renderedCoWebsites = coWebsites.rendered;
+
     const setActiveCowebsite = (coWebsite: CoWebsite) => {
         activeCowebsite = coWebsite;
     };
+
+    function closeActiveCowebsite() {
+        if (!activeCowebsite?.isClosable()) return;
+        coWebsites.remove(activeCowebsite);
+        analyticsClient.closeCowebsite();
+    }
 
     function toggleFullScreen(event: MouseEvent) {
         event.preventDefault();
@@ -234,6 +244,7 @@
                                 {coWebsite}
                                 isLoading={false}
                                 active={activeCowebsite === coWebsite}
+                                closeInCorner={QUANTA_UI}
                                 onclose={() => coWebsites.remove(coWebsite)}
                                 onclick={() => setActiveCowebsite(coWebsite)}
                             />
@@ -253,24 +264,57 @@
                 </div>
             {/if}
 
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="flex justify-end w-10 flex-none">
-                <div
-                    class="ms-full h-10 w-10 rounded flex items-center justify-center hover:bg-white/10 me-2 cursor-pointer"
-                    onclick={toggleFullScreen}
-                >
-                    {#if !$fullScreenCowebsite}
-                        <IconArrowsMinimize font-size="20" class="text-white" />
-                    {:else}
-                        <IconArrowsMinimize font-size="20" class="text-white" />
+            {#if QUANTA_UI}
+                <!-- quanta: close sits in the corner where people reach for it, set apart from full screen. -->
+                <div class="flex items-center flex-none gap-3 me-2">
+                    <button
+                        type="button"
+                        class="h-10 w-10 rounded flex items-center justify-center hover:bg-white/10"
+                        title={$fullScreenCowebsite
+                            ? $LL.actionbar.participantExitFullscreen()
+                            : $LL.menu.settings.fullscreen()}
+                        aria-label={$fullScreenCowebsite
+                            ? $LL.actionbar.participantExitFullscreen()
+                            : $LL.menu.settings.fullscreen()}
+                        data-testid="cowebsite-fullscreen"
+                        onclick={toggleFullScreen}
+                    >
+                        {#if $fullScreenCowebsite}
+                            <IconArrowsMinimize font-size="20" class="text-white" />
+                        {:else}
+                            <IconArrowsMaximize font-size="20" class="text-white" />
+                        {/if}
+                    </button>
+                    {#if activeCowebsite?.isClosable()}
+                        <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
+                        <button
+                            type="button"
+                            class="h-10 w-10 rounded flex items-center justify-center bg-white/10 hover:bg-danger-600"
+                            title={$LL.cowebsite.close()}
+                            aria-label={$LL.cowebsite.close()}
+                            data-testid="cowebsite-close"
+                            onclick={closeActiveCowebsite}
+                        >
+                            <IconX font-size="22" class="text-white" />
+                        </button>
                     {/if}
                 </div>
-            </div>
+            {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="flex justify-end w-10 flex-none">
+                    <div
+                        class="ms-full h-10 w-10 rounded flex items-center justify-center hover:bg-white/10 me-2 cursor-pointer"
+                        onclick={toggleFullScreen}
+                    >
+                        <IconArrowsMinimize font-size="20" class="text-white" />
+                    </div>
+                </div>
+            {/if}
         </div>
 
         <div class={$screenOrientationStore === "portrait" ? "flex-1 mb-3" : "h-full object-contain ms-3"}>
-            {#each $coWebsites as coWebsite (coWebsite.getId())}
+            {#each $renderedCoWebsites as coWebsite (coWebsite.getId())}
                 {#if coWebsite instanceof JitsiCoWebsite}
                     <JitsiCowebsiteComponent actualCowebsite={coWebsite} visible={coWebsite === activeCowebsite} />
                 {:else if coWebsite instanceof BBBCoWebsite}

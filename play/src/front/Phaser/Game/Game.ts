@@ -18,6 +18,9 @@ export class Game extends Phaser.Game {
         super(GameConfig);
 
         this.scale.on(Phaser.Scale.Events.RESIZE, () => {
+            // quanta: a resized canvas comes back cleared; drawn in this same step, not left black until something
+            // else on the map changes (a room sliding open beside the page showed a black map for a few frames).
+            this._isDirty = true;
             for (const scene of this.scene.getScenes(true)) {
                 if (scene instanceof ResizableScene) {
                     scene.onResize();

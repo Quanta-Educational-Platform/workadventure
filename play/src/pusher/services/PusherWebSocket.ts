@@ -10,6 +10,7 @@ import {
 import * as Sentry from "@sentry/node";
 import { CLIENT_DISCONNECTION_RETENTION_MS } from "../enums/EnvironmentVariable";
 import { NoncedMessageStore } from "../../common/NoncedMessageStore";
+import { WS_CLOSE_CODE_SESSION_DESTROYED } from "../../common/WebSocketCloseCodes";
 
 import type { SocketData } from "../models/Websocket/SocketData";
 
@@ -33,8 +34,11 @@ export class PusherWebSocket {
     private waitingForDrain = false;
     private lastReceivedNonce = 0;
     private transportAvailable = true;
+    // quanta: every message sent is kept for the whole retention, delivered or not (the client acknowledges nothing
+    // until it resumes), so a long retention gets a cap: 4 MB a client, 400 MB for a class of 100 at worst.
     private readonly outgoingMessagesStore = new NoncedMessageStore<Uint8Array<ArrayBuffer>>(
         CLIENT_DISCONNECTION_RETENTION_MS,
+        { maxBytes: 4 * 1024 * 1024, sizeOf: (payload) => payload.byteLength },
     );
 
     public constructor(socket: RawSocket) {
@@ -67,7 +71,22 @@ export class PusherWebSocket {
             return;
         }
         this.waitingForDrain = false;
-        for (const { nonce, payload } of this.outgoingMessagesStore.getAfter(this.lastSentNonce)) {
+        // quanta: messages this client never got were dropped while it could not take them (over the replay budget, or
+        // expired): sending what came after would leave its room state silently wrong. It rejoins from scratch instead.
+        // The pending messages are taken first and checked after, so one expiring in between still counts as lost.
+        const pending = this.outgoingMessagesStore.getAfter(this.lastSentNonce);
+        const first = pending[0];
+        if (
+            !this.outgoingMessagesStore.hasEveryNonceAfter(this.lastSentNonce) ||
+            (first !== undefined && first.nonce !== this.lastSentNonce + 1)
+        ) {
+            // The transport only: its close (code 4000) is what tears the session down for good
+            // (PusherRoomSocketController's close handler, then SocketManager.cleanupSocket). end() would mark this
+            // connection as disconnecting, which cleanupSocket reads as already cleaned up.
+            this.socket.end(WS_CLOSE_CODE_SESSION_DESTROYED, "Messages lost while the client could not receive them");
+            return;
+        }
+        for (const { nonce, payload } of pending) {
             if (this.sendStoredPayload(nonce, payload) !== 1) {
                 return;
             }
@@ -90,8 +109,9 @@ export class PusherWebSocket {
 
     /** Bound chat batches together with retained replay frames and transport backpressure. */
     public emitInBatchBounded(payload: SubMessage, maxBytes: number): boolean {
+        // Only frames not yet handed to uWS: sent ones are retained for replay, they are not a backlog.
         const pending = this.outgoingMessagesStore
-            .getAll()
+            .getAfter(this.lastSentNonce)
             .reduce((total, frame) => total + frame.payload.byteLength, 0);
         const batch = this.batchedMessages.payload.reduce(
             (total, item) => total + SubMessage.encode(item).finish().byteLength + 16,
@@ -168,7 +188,13 @@ export class PusherWebSocket {
     }
 
     public getBufferedAmount(): number {
-        return this.socket.getBufferedAmount();
+        // uWS throws on a closed socket; a member keeps its place for the reconnection window after that.
+        if (!this.transportAvailable) return 0;
+        try {
+            return this.socket.getBufferedAmount();
+        } catch {
+            return 0;
+        }
     }
 
     public isDisconnecting(): boolean {
@@ -204,6 +230,10 @@ export class PusherWebSocket {
 
     public isCurrentTransport(rawSocket: RawSocket): boolean {
         return this.socket === rawSocket;
+    }
+
+    public isTransportAvailable(): boolean {
+        return this.transportAvailable;
     }
 
     public handleTransportClosed(): void {
@@ -279,7 +309,8 @@ export class PusherWebSocket {
         this.lastSentNonce = clientLastReceivedNonce;
 
         this.startKeepAlive();
-        this.handleDrain();
+        // quanta: no replay here. The caller registers the new transport first and then calls handleDrain(): a replay
+        // that finds a gap closes the transport, and its close handler must find it to take the session down.
 
         // Close the old transport only after rebinding so the logical connection keeps running.
         try {

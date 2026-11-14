@@ -1,3 +1,4 @@
+import { mayBlockOrReport } from "../../quanta/staffTargets";
 import ModerationModal from "./ModerationModal.svelte";
 import { modals } from "@wa-modals";
 
@@ -6,5 +7,6 @@ import { modals } from "@wa-modals";
  * Called from the videobox, the woka menu and the chat user list.
  */
 export function openModerationModal(userUuid: string, userName: string): void {
+    if (!mayBlockOrReport({ uuid: userUuid })) return;
     modals.open(ModerationModal, { userUuid, userName });
 }

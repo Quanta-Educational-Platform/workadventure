@@ -245,6 +245,8 @@ export interface ChatMessage {
     quotedMessage: ChatMessage | undefined;
     type: ChatMessageType;
     reactions: MapStore<string, ChatMessageReaction>;
+    /** quanta: the class chat's reactions, which name who reacted. */
+    roomReactions?: Readable<RoomChatReaction[]>;
     remove: () => void;
     edit: (newContent: string) => Promise<void>;
     /** Only on messages carrying a file (image, file, audio, video). */
@@ -257,6 +259,12 @@ export interface ChatMessage {
     canDelete: Readable<boolean>;
     threadSummary?: Readable<ChatThreadSummary | null>;
     openThread?: () => Promise<ChatThread | undefined>;
+}
+
+export interface RoomChatReaction {
+    readonly emoji: string;
+    readonly people: readonly { readonly uuid: string; readonly name: string }[];
+    readonly mine: boolean;
 }
 
 export interface ChatMessageReaction {
@@ -445,7 +453,8 @@ export type ChatAttachmentStatus =
     | { state: "ready" }
     | { state: "loading"; progress?: number; remainingSeconds?: number }
     // "unavailable": the file cannot be had any more, for the sender or the recipient left the discussion.
-    | { state: "error"; error: "download" | "decrypt" | "unavailable" };
+    // "connection": no connection to the sender could be made; "interrupted": it dropped mid-way. Both can be retried.
+    | { state: "error"; error: "download" | "decrypt" | "unavailable" | "connection" | "interrupted" };
 
 export interface ChatAttachmentConsent {
     readonly decision: Readable<"pending" | "accepted" | "declined">;
@@ -455,6 +464,8 @@ export interface ChatAttachmentConsent {
 
 export type ChatAttachmentRecipient = {
     spaceUserId: string;
+    /** quanta: the recipient's account, for the real name Quanta may send this viewer. */
+    uuid?: string;
     name: string;
     pictureStore: PictureStore | undefined;
     color: string | undefined;

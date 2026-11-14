@@ -91,7 +91,7 @@ const camera: BaseTranslation = {
         moreAction: "More actions",
         closeMenu: "Close menu",
         senPrivateMessage: "Send a private message (coming soon)",
-        giveFloor: "Give the floor",
+        giveFloor: "Let speak to the class",
         revokeFloor: "Take back the floor",
         muteAudioUser: "Mute audio",
         askToMuteAudioUser: "Ask to mute audio",

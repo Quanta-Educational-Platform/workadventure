@@ -4,6 +4,7 @@ import type { LocalizedString } from "typesafe-i18n";
 import LL from "../../i18n/i18n-svelte";
 import type { StatusInformationInterface } from "../Components/ActionBar/AvailabilityStatus/Interfaces/AvailabilityStatusPropsInterface";
 import type { RequestedStatus } from "../Rules/StatusRules/statusRules";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
 
 const COLORS: Record<AvailabilityStatus, { filling: number; outline: number }> = {
     [AvailabilityStatus.AWAY]: { filling: 0xe9c84e, outline: 0xd3873b },
@@ -27,7 +28,12 @@ const COLORS: Record<AvailabilityStatus, { filling: number; outline: number }> =
 // protobuf reader hands them over as raw ints rather than UNRECOGNIZED.
 const UNKNOWN_STATUS_COLOR = { filling: 0xffffff, outline: 0xffffff };
 
+// quanta: someone speaking to the class from the podium or a megaphone is on air, not unavailable: WA's busy yellow
+// read as "can't be reached" next to a student at a table's megaphone. The megaphone by the name says the rest.
+const QUANTA_SPEAKER_COLOR = COLORS[AvailabilityStatus.ONLINE];
+
 export const getColorOfStatus = (status: AvailabilityStatus): { filling: number; outline: number } => {
+    if (QUANTA_UI && status === AvailabilityStatus.SPEAKER) return QUANTA_SPEAKER_COLOR;
     return COLORS[status] ?? UNKNOWN_STATUS_COLOR;
 };
 

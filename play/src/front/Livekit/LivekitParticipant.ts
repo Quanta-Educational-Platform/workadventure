@@ -7,6 +7,7 @@ import type {
 } from "livekit-client";
 import * as Sentry from "@sentry/svelte";
 import { Track, ParticipantEvent, VideoQuality } from "livekit-client";
+import type { ConnectionQuality } from "livekit-client";
 import type { Readable, Unsubscriber, Writable } from "svelte/store";
 import { derived, get, writable } from "svelte/store";
 import type { SpaceInterface, SpaceUserExtended } from "../Space/SpaceInterface";
@@ -21,11 +22,24 @@ import { subscribeToVideoQualityAnalytics } from "../WebRtc/VideoQualityAnalytic
 import { createLivekitWebRtcStats } from "../WebRtc/WebRtcStatsFactory";
 import { registerAudioQualitySource } from "../WebRtc/AudioQualityAnalytics";
 import type { Streamable } from "../Space/Streamable";
+import { analyticsClient } from "../Administration/AnalyticsClient";
 import { SCRIPTING_AUDIO_TRACK_NAME } from "./LivekitConstants";
+import { createWeakConnectionTracker, weakConnectionStore } from "./WeakConnection";
 
 // Maximize/minimize can briefly mount 2 video components for the same participant.
 // Delaying the final unsubscribe avoids sending a false->true bounce to LiveKit during that handoff.
 const VIDEO_UNSUBSCRIBE_DELAY_MS = 75;
+
+// quanta: a voice the space says is on but this browser does not play. Checked this often, and acted on once it lasted
+// long enough not to be a microphone that is just being published or a subscription on its way.
+const AUDIO_CHECK_MS = 4_000;
+const AUDIO_MISSING_MS = 8_000;
+const AUDIO_REPAIR_EVERY_MS = 20_000;
+// A first subscription on a weak link can take this long: asking again sooner would only start it over.
+const AUDIO_RESUBSCRIBE_AFTER_MS = 20_000;
+
+type MissingAudioReason = "missed_publication" | "state_lost" | "resubscribe" | "not_published" | "muted_publication";
+type MissingAudioEnd = "microphone_off" | "blocked" | "audio_muted" | "speaker_side" | "closed";
 
 export class LiveKitParticipant {
     private _isSpeakingStore: Writable<boolean>;
@@ -56,6 +70,12 @@ export class LiveKitParticipant {
         undefined,
     );
     private _muteAudioStore: Writable<boolean> = writable<boolean>(false);
+    // quanta: this person's own link, as LiveKit rates it, held for a while like our own (WeakConnection.ts): their tile
+    // says so, so a lagging voice or board is put down to the right person.
+    private _weakConnection = writable<boolean>(false);
+    private readonly weakLink = createWeakConnectionTracker((weak) => this._weakConnection.set(weak), { own: false });
+    private readonly boundHandleConnectionQualityChanged = (quality: ConnectionQuality) =>
+        this.weakLink.update(quality);
     private _cameraVideoSubscriptions = new Set<symbol>();
     private _screenShareVideoSubscriptions = new Set<symbol>();
     private _cameraVideoSubscribed = false;
@@ -65,6 +85,10 @@ export class LiveKitParticipant {
     private readonly videoWebrtcStats: Readable<WebRtcStats | undefined>;
     private readonly screenShareWebrtcStats: Readable<WebRtcStats | undefined>;
     private readonly analyticsStatsUnsubscribers: Unsubscriber[] = [];
+    private audioMissingSince: number | undefined;
+    private audioRepairedAt = 0;
+    private audioMissingReported: MissingAudioReason | undefined;
+    private readonly audioCheckTimer: ReturnType<typeof setInterval>;
 
     private _cameraPublication: RemoteTrackPublication | undefined;
     private _microphonePublication: RemoteTrackPublication | undefined;
@@ -81,6 +105,7 @@ export class LiveKitParticipant {
     private boundHandleTrackMuted: (publication: TrackPublication) => void;
     private boundHandleTrackUnmuted: (publication: TrackPublication) => void;
     private boundHandleIsSpeakingChanged: (isSpeaking: boolean) => void;
+    private readonly unsubscribeWeakConnection: Unsubscriber;
 
     constructor(
         public participant: RemoteParticipant,
@@ -93,6 +118,9 @@ export class LiveKitParticipant {
         private getLivekitRegion: () => string | undefined = () => undefined,
         private defaultVolume: number = get(volumeProximityDiscussionStore),
         private getConnectionId: () => string | undefined = () => undefined,
+        private isRoomConnected: () => boolean = () => true,
+        private isReceivingSettled: () => boolean = () => true,
+        private reportsSpeakerSide: () => boolean = () => true,
     ) {
         incrementLivekitConnectionsCount();
         this.boundHandleTrackPublished = this.handleTrackPublished.bind(this);
@@ -110,6 +138,18 @@ export class LiveKitParticipant {
         this.participant.on(ParticipantEvent.TrackMuted, this.boundHandleTrackMuted);
         this.participant.on(ParticipantEvent.TrackUnmuted, this.boundHandleTrackUnmuted);
         this.participant.on(ParticipantEvent.IsSpeakingChanged, this.boundHandleIsSpeakingChanged);
+        this.participant.on(ParticipantEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
+
+        // quanta: a weak link of our own steps the camera down to its lowest layer, and back up once it recovers.
+        let firstWeakValue = true;
+        this.unsubscribeWeakConnection = weakConnectionStore.subscribe(() => {
+            if (firstWeakValue) {
+                firstWeakValue = false;
+                return;
+            }
+            const publication = this._cameraPublication;
+            if (publication?.isSubscribed) publication.setVideoQuality(this.cameraMaxQuality());
+        });
 
         this._spaceUser = spaceUser;
         this._isSpeakingStore = writable(this.participant.isSpeaking);
@@ -143,6 +183,130 @@ export class LiveKitParticipant {
                 this._spaceUser.reactiveUser.microphoneState,
             ),
         );
+        this.audioCheckTimer = setInterval(() => this.checkMicrophoneAudio(), AUDIO_CHECK_MS);
+    }
+
+    /** The speaker's microphone as LiveKit has it: not the scripting track, which publishes under the same source. */
+    private findMicrophonePublication(): RemoteTrackPublication | undefined {
+        for (const publication of this.participant.audioTrackPublications.values()) {
+            if (publication.source === Track.Source.Microphone && !this.isScriptingAudioPublication(publication)) {
+                return publication;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * The space says this person's microphone is on, but nothing plays here: repairs what this browser can (an event it
+     * missed, a state an unsubscribe left behind, a subscription the server dropped) and reports what it found, once per
+     * episode, so a speaker-side cause (nothing published, a muted track) can be told from a listener-side one.
+     */
+    private checkMicrophoneAudio(): void {
+        if (this.abortSignal.aborted) return;
+        const micOn = get(this._spaceUser.reactiveUser.microphoneState) === true;
+        const blocked = get(this._blockedUsersStore).has(this._spaceUser.spaceUserId);
+        // An attendee shown in a megaphone space: their microphone is on for the app, but they never publish here.
+        const audioMuted = get(this._muteAudioStore);
+        const playing = get(this._hasMicrophoneAudio);
+        if (!micOn || blocked || audioMuted || playing) {
+            this.closeMissingAudio(
+                playing ? undefined : !micOn ? "microphone_off" : blocked ? "blocked" : "audio_muted",
+            );
+            this.audioMissingSince = undefined;
+            return;
+        }
+        // Our own room reconnecting: nothing plays and nothing here would help; the wait starts again once it is back.
+        if (!this.isRoomConnected()) {
+            this.audioMissingSince = undefined;
+            return;
+        }
+        const now = Date.now();
+        this.audioMissingSince ??= now;
+        const missingFor = now - this.audioMissingSince;
+        if (missingFor < AUDIO_MISSING_MS) return;
+
+        const publication = this.findMicrophonePublication();
+        let reason: MissingAudioReason;
+        if (!publication) {
+            reason = "not_published";
+        } else if (publication.isMuted) {
+            reason = "muted_publication";
+        } else if (publication !== this._microphonePublication) {
+            reason = "missed_publication";
+        } else if (publication.track) {
+            reason = "state_lost";
+        } else {
+            reason = "resubscribe";
+        }
+
+        if (reason === "not_published" || reason === "muted_publication") {
+            // Every listener sees the same: one of them reports it, and the speaker's own client has their side.
+            if (!this.reportsSpeakerSide()) {
+                this.closeMissingAudio("speaker_side");
+                return;
+            }
+        } else if (
+            reason === "resubscribe" &&
+            (missingFor < AUDIO_RESUBSCRIBE_AFTER_MS || !this.isReceivingSettled())
+        ) {
+            return;
+        }
+
+        if (
+            reason !== "not_published" &&
+            reason !== "muted_publication" &&
+            publication &&
+            now - this.audioRepairedAt >= AUDIO_REPAIR_EVERY_MS
+        ) {
+            this.audioRepairedAt = now;
+            if (reason === "missed_publication") {
+                this.handleTrackPublished(publication);
+                if (publication.track) this.handleTrackSubscribed(publication.track, publication);
+            } else if (reason === "state_lost" && publication.track) {
+                this.handleTrackSubscribed(publication.track, publication);
+            } else {
+                // Desired but never delivered: asking again makes the server set the subscription up anew.
+                if (publication.isDesired) publication.setSubscribed(false);
+                publication.setSubscribed(true);
+            }
+        }
+
+        if (this.audioMissingReported !== reason) {
+            this.audioMissingReported = reason;
+            this.reportMissingAudio("media.remote_audio.missing", reason);
+        }
+    }
+
+    /** Ends a reported episode, so none is left open on dashboards: recovered, or ended for the given cause. */
+    private closeMissingAudio(end?: MissingAudioEnd): void {
+        const reason = this.audioMissingReported;
+        if (reason === undefined) return;
+        this.audioMissingReported = undefined;
+        if (end) {
+            analyticsClient.trackAdminEvent("media.remote_audio.ended", {
+                ...this.missingAudioProperties(reason),
+                end,
+            });
+        } else {
+            this.reportMissingAudio("media.remote_audio.recovered", reason);
+        }
+    }
+
+    private reportMissingAudio(
+        event: "media.remote_audio.missing" | "media.remote_audio.recovered",
+        reason: MissingAudioReason,
+    ): void {
+        analyticsClient.trackAdminEvent(event, this.missingAudioProperties(reason));
+    }
+
+    private missingAudioProperties(reason: MissingAudioReason) {
+        return {
+            reason,
+            durationMs: this.audioMissingSince === undefined ? 0 : Date.now() - this.audioMissingSince,
+            connectionId: this.getConnectionId() ?? null,
+            participantSid: this.participant.sid,
+            trackSid: this.findMicrophonePublication()?.trackSid ?? null,
+        };
     }
 
     private acquireVideoSubscription(type: "camera" | "screenShare"): () => void {
@@ -356,12 +520,9 @@ export class LiveKitParticipant {
         if (publication.source === Track.Source.Camera) {
             this._videoRemoteTrack.set(track as RemoteVideoTrack);
 
-            // Apply video quality based on bandwidth setting
-            const videoQualitySetting = get(videoQualityStore);
-            // If the setting is low, do not go in resolution above MEDIUM
-            if (videoQualitySetting === "low") {
-                publication.setVideoQuality(VideoQuality.MEDIUM);
-            }
+            // Always set, HIGH too: LiveKit keeps a publication's requested quality across an unsubscribe, so a camera
+            // capped while the link was weak and off screen when it recovered would otherwise come back capped.
+            publication.setVideoQuality(this.cameraMaxQuality());
         } else if (publication.source === Track.Source.ScreenShare) {
             this._screenShareRemoteTrack.set(track as RemoteVideoTrack);
 
@@ -373,13 +534,28 @@ export class LiveKitParticipant {
             }
         } else if (publication.source === Track.Source.ScreenShareAudio) {
             this._audioScreenShareStreamStore.set(track.mediaStream);
+            // An unsubscribe cleared it, and a resubscription to the same publication sends no unmute
+            if (this._screenShareAudioPublication === publication) {
+                this._hasScreenShareAudio.set(!publication.isMuted);
+                this.refreshLivekitScreenShareStreamStore();
+            }
         } else if (this.isScriptingAudioPublication(publication)) {
             this._scriptingAudioStream = track.mediaStream;
             this.refreshLivekitAudioStreamStore();
+            if (this._scriptingAudioPublication === publication) this._hasScriptingAudio.set(!publication.isMuted);
         } else if (publication.source === Track.Source.Microphone) {
             this._microphoneStream = track.mediaStream;
             this.refreshLivekitAudioStreamStore();
+            // The audio element only plays while hasAudio holds (AudioStreamWrapper): a track that ended and came back on
+            // the same publication (the SFU dropped and re-added it) would otherwise stay silent with the speaker "on".
+            if (this._microphonePublication === publication) this._hasMicrophoneAudio.set(!publication.isMuted);
         }
+    }
+
+    /** The low bandwidth setting caps cameras at MEDIUM; a weak link of our own at LOW. */
+    private cameraMaxQuality(): VideoQuality {
+        if (get(weakConnectionStore)) return VideoQuality.LOW;
+        return get(videoQualityStore) === "low" ? VideoQuality.MEDIUM : VideoQuality.HIGH;
     }
 
     private handleTrackUnpublished(publication: RemoteTrackPublication) {
@@ -556,6 +732,7 @@ export class LiveKitParticipant {
             canCloseStreamable: () => false,
             videoType: "video",
             webrtcStats: this.videoWebrtcStats,
+            weakConnection: this._weakConnection,
         };
     }
 
@@ -588,6 +765,7 @@ export class LiveKitParticipant {
             canCloseStreamable: () => false,
             videoType: "screenSharing",
             webrtcStats: this.screenShareWebrtcStats,
+            weakConnection: this._weakConnection,
         };
     }
 
@@ -641,8 +819,11 @@ export class LiveKitParticipant {
         return this.getScreenShareStream();
     }
 
-    public destroy() {
+    /** `replaced`: LiveKit holds a newer object for this person with the same tracks, so their subscriptions stay. */
+    public destroy(options: { replaced?: boolean } = {}) {
         decrementLivekitConnectionsCount();
+        clearInterval(this.audioCheckTimer);
+        this.closeMissingAudio("closed");
         this.analyticsStatsUnsubscribers.forEach((unsubscribe) => unsubscribe());
         this.analyticsStatsUnsubscribers.length = 0;
 
@@ -662,11 +843,15 @@ export class LiveKitParticipant {
         this._screenShareVideoSubscriptions.clear();
         this._cameraVideoSubscribed = false;
         this._screenShareVideoSubscribed = false;
-        this._cameraPublication?.setSubscribed(false);
-        this._microphonePublication?.setSubscribed(false);
-        this._scriptingAudioPublication?.setSubscribed(false);
-        this._screenSharePublication?.setSubscribed(false);
-        this._screenShareAudioPublication?.setSubscribed(false);
+        // An unsubscribe goes out by track id on the room's shared signal connection: for a replaced object it would
+        // cut the new one's live tracks too.
+        if (!options.replaced) {
+            this._cameraPublication?.setSubscribed(false);
+            this._microphonePublication?.setSubscribed(false);
+            this._scriptingAudioPublication?.setSubscribed(false);
+            this._screenSharePublication?.setSubscribed(false);
+            this._screenShareAudioPublication?.setSubscribed(false);
+        }
 
         this.participant.off(ParticipantEvent.TrackPublished, this.boundHandleTrackPublished);
         this.participant.off(ParticipantEvent.TrackSubscribed, this.boundHandleTrackSubscribed);
@@ -675,5 +860,8 @@ export class LiveKitParticipant {
         this.participant.off(ParticipantEvent.TrackMuted, this.boundHandleTrackMuted);
         this.participant.off(ParticipantEvent.TrackUnmuted, this.boundHandleTrackUnmuted);
         this.participant.off(ParticipantEvent.IsSpeakingChanged, this.boundHandleIsSpeakingChanged);
+        this.participant.off(ParticipantEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
+        this.weakLink.stop();
+        this.unsubscribeWeakConnection();
     }
 }

@@ -25,6 +25,7 @@
     import Button from "../UI/Button.svelte";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { touchScreenManager } from "../../Touch/TouchScreenManager";
     import { IconPencil, IconXIcon } from "@wa-icons";
 
     let emoteDataLoading = $state(false);
@@ -197,9 +198,12 @@
                             >
                                 {$emoteDataStore.get(key)?.emoji}
                             </div>
-                            <div class="text-white/50 group-hover:text-white group-hover:bold font-xxs pl-1">
-                                {key}
-                            </div>
+                            <!-- quanta: a key to press is no help without a keyboard -->
+                            {#if !touchScreenManager.primaryTouchDevice}
+                                <div class="text-white/50 group-hover:text-white group-hover:bold font-xxs pl-1">
+                                    {key}
+                                </div>
+                            {/if}
                         </button>
                     </div>
                 {/each}

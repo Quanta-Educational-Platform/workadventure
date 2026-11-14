@@ -119,7 +119,9 @@ export class UserInputManager {
     }
 
     private initVirtualJoystick() {
-        this.joystick = new MobileJoystick(this.scene);
+        // quanta: a phone or tablet keeps its joystick in sight, resting in the map's corner.
+        const resting = QUANTA_UI && touchScreenManager.primaryTouchDevice;
+        this.joystick = new MobileJoystick(this.scene, resting);
         if (!touchScreenManager.primaryTouchDevice) {
             this.joystick.visible = false; // Hide the joystick if the device is not primarily a touch device
         }
@@ -146,7 +148,8 @@ export class UserInputManager {
             }
         });
         this.joystick.on("pointerup", () => {
-            this.joystick?.hide(1_000); // Hide the joystick after 1 second of inactivity
+            if (resting) this.joystick?.rest();
+            else this.joystick?.hide(1_000); // Hide the joystick after 1 second of inactivity
         });
     }
 
@@ -294,7 +297,11 @@ export class UserInputManager {
             return eventsMap;
         }
         this.joystickEvents.forEach((value, key) => {
-            if (value && this.joystick) {
+            // quanta: past the joystick's dead zone the woka walks at its own speed, the way the arrow keys move it;
+            // WA's sum of forces stepped only every second tick or so, a halting walk at half speed.
+            if (value && this.joystick && QUANTA_UI) {
+                eventsMap.set(key, value);
+            } else if (value && this.joystick) {
                 switch (key) {
                     case UserInputEvent.MoveUp:
                     case UserInputEvent.MoveDown:

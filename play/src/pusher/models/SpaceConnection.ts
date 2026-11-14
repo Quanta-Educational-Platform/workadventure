@@ -81,6 +81,9 @@ export class SpaceConnection implements SpaceConnectionInterface {
                 this._GRPC_MAX_MESSAGE_SIZE,
             );
             const spaceStreamToBack = apiSpaceClient.watchSpace() as BackSpaceConnection;
+            // quanta: every space on this back (several per room: its chat, megaphone, bubbles) listens for this one
+            // stream ending (Space.setSpaceStreamToBack), so a busy class day has dozens; a leak still warns past this.
+            spaceStreamToBack.setMaxListeners(500);
             this.registerEventsOnConnection(spaceStreamToBack, backId, apiSpaceClient);
             return spaceStreamToBack;
         } catch (error) {

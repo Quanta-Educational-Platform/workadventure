@@ -1,15 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 vi.mock("../../src/pusher/enums/EnvironmentVariable", () => import("./mocks/pusherEnvironmentVariableMock"));
+const encodeFrame = vi.hoisted(() => vi.fn((_frame: { nonce: number }) => ({ finish: () => new Uint8Array([1]) })));
 vi.mock("@workadventure/messages", () => ({
     FrontToPusherWebSocketMessage: {
         decode: vi.fn(),
     },
     PusherToFrontWebSocketMessage: {
-        encode: vi.fn(() => ({
-            finish: () => new Uint8Array([1]),
-        })),
+        encode: encodeFrame,
     },
 }));
 
@@ -367,6 +366,49 @@ describe("PusherRoomSocketController transport resume identity", () => {
 
         expect(previous.replaceSocket(replacement, 0)).toBe(false);
         expect(getEndMock(replacement)).toHaveBeenCalledWith(1008, "Cannot replace socket: connection id mismatch");
+    });
+});
+
+describe("PusherRoomSocketController refused connections", () => {
+    beforeEach(() => {
+        encodeFrame.mockClear();
+    });
+
+    function refusedSocket(clientLastReceivedNonce?: number): RawSocket {
+        const socket = createSocket();
+        const data = {
+            rejected: true,
+            reason: "error",
+            error: { status: "error", type: "retry", code: "NEW_VERSION" },
+            clientLastReceivedNonce,
+        };
+        (socket as unknown as { getUserData: () => unknown }).getUserData = () => data;
+        return socket;
+    }
+
+    it("numbers the refusal after the last frame a resuming client received", async () => {
+        let handlers: RegisteredHandlers | undefined;
+        createController((h) => {
+            handlers = h;
+        });
+
+        const socket = refusedSocket(41);
+        await handlers?.open(socket);
+
+        expect(encodeFrame).toHaveBeenCalledWith(expect.objectContaining({ nonce: 42 }));
+        expect(getSendMock(socket)).toHaveBeenCalledTimes(1);
+        expect(getEndMock(socket)).toHaveBeenCalledWith(1000, "Error message sent");
+    });
+
+    it("numbers the refusal of a fresh connection as its first frame", async () => {
+        let handlers: RegisteredHandlers | undefined;
+        createController((h) => {
+            handlers = h;
+        });
+
+        await handlers?.open(refusedSocket());
+
+        expect(encodeFrame).toHaveBeenCalledWith(expect.objectContaining({ nonce: 1 }));
     });
 });
 

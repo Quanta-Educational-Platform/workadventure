@@ -1,3 +1,4 @@
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
 import { derived, writable } from "svelte/store";
 import { chatVisibilityStore } from "../Stores/ChatStore";
 import { windowSize } from "../Stores/CoWebsiteStore";
@@ -36,6 +37,8 @@ export const hideActionBarStoreBecauseOfChatBar = derived(
         if (!$chatVisibilityStore && !$mapEditorModeStore) {
             return false;
         }
+        // quanta: the chat is a column, a band or a cover that stops above the dock: the dock always stays.
+        if (QUANTA_UI && !$mapEditorModeStore) return false;
         return (
             $windowSize.width -
                 ($chatVisibilityStore ? $chatSidebarWidthStore : 0) -

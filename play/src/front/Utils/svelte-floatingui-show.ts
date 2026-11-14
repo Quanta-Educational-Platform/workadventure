@@ -1,5 +1,6 @@
 import type { ComputePositionConfig } from "@floating-ui/dom";
-import { arrow, autoUpdate, computePosition, flip, limitShift, offset, shift } from "@floating-ui/dom";
+import type { Rect } from "@floating-ui/dom";
+import { arrow, autoUpdate, computePosition, flip, limitShift, offset, shift, size } from "@floating-ui/dom";
 import { writable } from "svelte/store";
 import { v4 } from "uuid";
 import type { WorkAdventureComponent, WorkAdventureComponentProps } from "../../types/component";
@@ -25,6 +26,9 @@ export const floatingUiComponents = writable(
  * @param closeOnClickOutside - when true, the popup closes when the user clicks outside the reference element and the popup content
  * @param onClose - called when the popup is closed (by click outside or by calling the returned close function)
  * @param zIndex - overrides the default global floating layer when the popup must stay below higher-priority overlays
+ * @param edgePadding - how far the popup keeps from the window's edges
+ * @param boundary - quanta: the area the popup stays wholly inside (the room's visible window), instead of the
+ * viewport; read on each placement, and the popup scrolls when taller than it
  */
 export function showFloatingUi(
     referenceNode: Element,
@@ -36,6 +40,8 @@ export function showFloatingUi(
     closeOnClickOutside = false,
     onClose?: () => void,
     zIndex = 3000,
+    edgePadding = 5,
+    boundary?: () => Rect,
 ): () => void {
     let arrowNode: HTMLElement | undefined;
     let contentNode: HTMLElement | undefined;
@@ -113,11 +119,27 @@ export function showFloatingUi(
 
     const updatePosition = () => {
         if (referenceNode && contentNode) {
-            const middlewares = [
-                flip(),
-                shift({ padding: 5, limiter: limitShift() }),
-                offset({ mainAxis: offsetMainAxis }),
-            ];
+            const area = boundary?.();
+            const middlewares = area
+                ? [
+                      offset({ mainAxis: offsetMainAxis }),
+                      flip({ padding: edgePadding, boundary: area }),
+                      // Without a limiter: wholly inside even when that takes it off its anchor.
+                      shift({ padding: edgePadding, boundary: area, crossAxis: true }),
+                      size({
+                          padding: edgePadding,
+                          boundary: area,
+                          apply({ availableHeight, elements }) {
+                              elements.floating.style.maxHeight = `${Math.max(availableHeight, 0)}px`;
+                              elements.floating.style.overflowY = "auto";
+                          },
+                      }),
+                  ]
+                : [
+                      flip({ padding: edgePadding }),
+                      shift({ padding: edgePadding, limiter: limitShift() }),
+                      offset({ mainAxis: offsetMainAxis }),
+                  ];
             if (arrowNode) {
                 middlewares.push(arrow({ element: arrowNode }));
             }

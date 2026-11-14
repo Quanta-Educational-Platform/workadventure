@@ -7,6 +7,8 @@ export type RoomTimelineFocusRequest = {
     roomId: string;
     eventId: string;
     sequence: number;
+    /** quanta: told whether the message could be brought into view (the pinned message's strip). */
+    onResult?: (found: boolean) => void;
 };
 
 type RoomSidePanelState = {
@@ -53,12 +55,13 @@ const createRoomSidePanelStore = () => {
                 activeSection: section,
             }));
         },
-        focusTimelineEvent(roomId: string, eventId: string) {
+        focusTimelineEvent(roomId: string, eventId: string, onResult?: (found: boolean) => void) {
             focusSequence += 1;
             roomTimelineFocusStore.set({
                 roomId,
                 eventId,
                 sequence: focusSequence,
+                ...(onResult && { onResult }),
             });
         },
         syncWithRoom(selectedRoom: ChatConversation | undefined) {

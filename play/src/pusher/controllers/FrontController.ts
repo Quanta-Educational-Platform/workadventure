@@ -5,7 +5,7 @@ import { uuid } from "stanza/Utils";
 import * as Sentry from "@sentry/node";
 import { z } from "zod";
 import Debug from "debug";
-import { MetaTagsBuilder } from "../services/MetaTagsBuilder";
+import { MetaTagsBuilder, MetaTagsDefaultValue } from "../services/MetaTagsBuilder";
 import { adminService } from "../services/AdminService";
 import { getStringPalette, wrapWithStyleTag } from "../services/GenerateCustomColors";
 import { notWaHost } from "../middlewares/NotWaHost";
@@ -22,6 +22,22 @@ import type { FrontAssets } from "../services/FrontAssets";
 import { BaseHttpController } from "./BaseHttpController";
 
 const debug = Debug("pusher:requests");
+
+/**
+ * A room page must come back even when what it decorates itself with doesn't: past the deadline the page goes out
+ * with defaults (the room fetches its map itself), and the wait that held it up is named in the log.
+ */
+const PAGE_STEP_DEADLINE_MS = 10_000;
+function withDeadline<T>(work: Promise<T>, fallback: T, step: string, url: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+            console.warn(`Room page step "${step}" passed ${PAGE_STEP_DEADLINE_MS} ms for ${url}; answering without it`);
+            resolve(fallback);
+        }, PAGE_STEP_DEADLINE_MS);
+    });
+    return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
 
 export class FrontController extends BaseHttpController {
     private redirectToAdminFile: string;
@@ -219,7 +235,7 @@ export class FrontController extends BaseHttpController {
         let redirectUrl: string | undefined;
 
         try {
-            redirectUrl = await builder.getRedirectUrl();
+            redirectUrl = await withDeadline(builder.getRedirectUrl(), undefined, "redirect", url);
         } catch (e) {
             console.info(`Cannot get redirect URL "%s"`, url, e);
         }
@@ -249,8 +265,13 @@ export class FrontController extends BaseHttpController {
         const { authToken } = req.body ?? {};
 
         try {
-            const metaTagsData = await builder.getMeta(req.header("User-Agent"));
-            const mapDetails = await builder.getMapDetails();
+            const metaTagsData = await withDeadline(
+                builder.getMeta(req.header("User-Agent")),
+                MetaTagsDefaultValue,
+                "meta",
+                url,
+            );
+            const mapDetails = await withDeadline(builder.getMapDetails(), undefined, "map details", url);
             let option = {};
             const secondaryPalette = getStringPalette(mapDetails?.primaryColor, "secondary");
             const contrastPalette = getStringPalette(mapDetails?.backgroundColor, "contrast");

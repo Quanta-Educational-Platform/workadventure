@@ -4,20 +4,44 @@
     import type { SpaceUserExtended } from "../../Space/SpaceInterface";
     import Woka from "../Woka/Woka.svelte";
     import Button from "../UI/Button.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { QL } from "../../quanta/i18n";
+    import HelpCard from "../../quanta/HelpCard.svelte";
     import PopUpContainer from "./PopUpContainer.svelte";
 
     interface Props {
         sender: SpaceUserExtended | undefined;
         message: string;
+        kind?: "microphone" | "camera";
         acceptRequest: () => void;
         refuseRequest: () => void;
     }
 
-    let { sender, message, acceptRequest, refuseRequest }: Props = $props();
+    let { sender, message, kind = "microphone", acceptRequest, refuseRequest }: Props = $props();
 
     let pictureStore = $derived(sender ? sender.pictureStore : readable<string | undefined>(undefined));
 </script>
 
+{#if QUANTA_UI}
+    <!-- quanta: who asks and for which device, on the room's compact card. -->
+    <HelpCard
+        icon={kind === "camera" ? "videocamOff" : "micOff"}
+        tone="neutral"
+        title={kind === "camera"
+            ? sender
+                ? $QL.muteAskCameraFrom({ name: sender.name })
+                : $QL.muteAskCamera()
+            : sender
+              ? $QL.muteAskMicrophoneFrom({ name: sender.name })
+              : $QL.muteAskMicrophone()}
+        testId="quanta-mute-request"
+    >
+        {#snippet actions()}
+            <button type="button" class="refuse-request" onclick={refuseRequest}>{$QL.muteKeepOn()}</button>
+            <button type="button" class="primary accept-request" onclick={acceptRequest}>{$QL.muteTurnOff()}</button>
+        {/snippet}
+    </HelpCard>
+{:else}
 <PopUpContainer reduceOnSmallScreen={true}>
     <div class="interact-menu blue-dialog-box outline-light text-center w-72 pointer-events-auto m-auto">
         <div class="flex flex-row justify-center items-center">
@@ -47,3 +71,4 @@
         </Button>
     {/snippet}
 </PopUpContainer>
+{/if}

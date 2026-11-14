@@ -8,7 +8,7 @@
         proximityMeetingStore,
     } from "../../Stores/MyMediaStore";
     import { bottomActionBarVisibilityStore } from "../../Stores/BottomActionBarStore";
-    import { screenSharingAvailableStore } from "../../Stores/ScreenSharingStore";
+    import { requestedScreenSharingState, screenSharingAvailableStore } from "../../Stores/ScreenSharingStore";
     import CameraMenuItem from "./MenuIcons/CameraMenuItem.svelte";
     import MicrophoneMenuItem from "./MenuIcons/MicrophoneMenuItem.svelte";
     import ScreenSharingMenuItem from "./MenuIcons/ScreenSharingMenuItem.svelte";
@@ -49,7 +49,7 @@
                         <!-- NAV : CAMERA END -->
 
                         <!-- NAV : SCREENSHARING START -->
-                        {#if $bottomActionBarVisibilityStore && $screenSharingAvailableStore}
+                        {#if $bottomActionBarVisibilityStore && ($screenSharingAvailableStore || $requestedScreenSharingState)}
                             <ScreenSharingMenuItem onclick={toggleScreensharing} />
                         {/if}
                         <!-- NAV : SCREENSHARING END -->

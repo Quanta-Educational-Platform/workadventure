@@ -45,6 +45,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "無法載入此圖片預覽。",
         openInNewTab: "在新分頁中開啟",
         notAvailable: "圖片無法使用。",
+        cannotDisplay: "此瀏覽器無法顯示這張圖片，請儲存檔案後開啟。",
         imageActions: "圖片操作",
     },
     join: "加入",
@@ -282,6 +283,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "接受後即可下載",
         saveFile: "儲存檔案",
         unavailable: "已無法使用",
+        connectionFailed: "無法連線到傳送者，請再試一次。",
+        interrupted: "傳輸已中斷，請再試一次。",
+        retry: "重試",
         recipient: {
             waiting: "等待中",
             summary: "{total} 人中 {received} 人已接收",

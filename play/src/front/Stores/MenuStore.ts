@@ -10,8 +10,10 @@ import {
     ENABLE_OPENID,
     ENABLE_REPORT_ISSUES_MENU,
     OPID_PROFILE_SCREEN_PROVIDER,
+    QUANTA_UI,
     REPORT_ISSUES_URL,
 } from "../Enum/EnvironmentVariable";
+import { mapEditorEntryVisible, mapExplorerEntryVisible } from "../quanta/classroomUi";
 import MapSubMenu from "../Components/ActionBar/MenuIcons/MapSubMenu.svelte";
 import ParticipantMenuItem from "../Components/ActionBar/MenuIcons/ParticipantMenuItem.svelte";
 import LoginMenuItem from "../Components/ActionBar/MenuIcons/LoginMenuItem.svelte";
@@ -122,7 +124,8 @@ function createSubMenusStore() {
         {
             type: "translated",
             key: SubMenusInterface.globalMessages,
-            visible: userIsAdminStore,
+            // quanta: from the dock's three dots instead (ProfileMenuContent.svelte).
+            visible: derived(userIsAdminStore, ($admin) => $admin && !QUANTA_UI),
         },
         {
             type: "translated",
@@ -402,10 +405,19 @@ export const helpTextDisabledStore = derived(
 );
 
 export const mapEditorMenuVisibleStore = derived(
-    [mapEditorActivated, mapManagerActivated, mapEditorActivatedForThematics],
-    ([$mapEditorActivated, $mapManagerActivated, $mapEditorActivatedForThematics]) => {
-        return ($mapEditorActivated || $mapEditorActivatedForThematics) && $mapManagerActivated;
+    [mapEditorActivated, mapManagerActivated, mapEditorActivatedForThematics, userIsAdminStore],
+    ([$mapEditorActivated, $mapManagerActivated, $mapEditorActivatedForThematics, $userIsAdminStore]) => {
+        return mapEditorEntryVisible(
+            QUANTA_UI,
+            ($mapEditorActivated || $mapEditorActivatedForThematics) && $mapManagerActivated,
+            $userIsAdminStore,
+        );
     },
+);
+export const mapExplorerVisibleStore = derived(
+    [mapManagerActivated, userIsAdminStore],
+    ([$mapManagerActivated, $userIsAdminStore]) =>
+        mapExplorerEntryVisible(QUANTA_UI, $mapManagerActivated, $userIsAdminStore),
 );
 export const globalMessageVisibleStore = derived(
     [megaphoneCanBeUsedStore, userIsAdminStore],

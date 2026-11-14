@@ -47,6 +47,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "이 이미지 미리보기를 불러올 수 없습니다.",
         openInNewTab: "새 탭에서 열기",
         notAvailable: "이미지를 사용할 수 없습니다.",
+        cannotDisplay: "이 브라우저에서는 이 이미지를 표시할 수 없습니다. 파일을 저장해서 여세요.",
         imageActions: "이미지 작업",
     },
     join: "참가",
@@ -286,6 +287,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "수락하면 다운로드됩니다",
         saveFile: "파일 저장",
         unavailable: "더 이상 사용할 수 없습니다",
+        connectionFailed: "보낸 사람과 연결할 수 없습니다. 다시 시도하세요.",
+        interrupted: "전송이 중단되었습니다. 다시 시도하세요.",
+        retry: "다시 시도",
         recipient: {
             waiting: "대기 중",
             summary: "{total}명 중 {received}명 수신",

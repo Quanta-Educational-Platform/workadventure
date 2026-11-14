@@ -18,7 +18,7 @@
     import ProximityRoomSidePanelHome from "./ProximityRoomSidePanelHome.svelte";
     import ProximityRoomSidePanelParticipants from "./ProximityRoomSidePanelParticipants.svelte";
     import ProximityRoomSidePanelQuestions from "./ProximityRoomSidePanelQuestions.svelte";
-    import { IconChevronLeft, IconX } from "@wa-icons";
+    import { IconChevronLeft } from "@wa-icons";
 
     type MatrixSidePanelRoom = ChatRoom &
         ChatRoomMembershipManagement &
@@ -35,10 +35,6 @@
     }
 
     let { room, showCloseButton = false, closeOnTimelineFocus = false }: Props = $props();
-
-    function activateSection(section: RoomSidePanelSection) {
-        roomSidePanelStore.setActiveSection(section);
-    }
 
     function isProximityRoomSidePanelSection(section: RoomSidePanelSection): section is ProximityRoomSidePanelSection {
         return section === "home" || section === "participants" || section === "polls" || section === "questions";
@@ -66,50 +62,38 @@
         }
         roomSidePanelStore.setActiveSection("home");
     });
+    // quanta: a room's chat has no hub to come back to: people have their own tab, polls and questions are in the chat.
+    $effect(() => {
+        if (isProximityRoom && (displayedSection === "home" || displayedSection === "participants")) {
+            roomSidePanelStore.close();
+        }
+    });
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-white/[0.02]" data-testid="roomSidePanel">
+<div class="flex h-full min-h-0 flex-col" data-testid="roomSidePanel">
     {#if displayedSection !== "home" || shouldShowCloseButton}
-        <div class="border border-solid border-x-0 border-t-0 border-white/10 px-3 py-3">
-            <div class="flex items-center gap-2">
-                {#if displayedSection !== "home"}
-                    <button
-                        type="button"
-                        class="m-0 flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-solid border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10"
-                        data-testid="roomSidePanelBackButton"
-                        title={$LL.chat.roomPanel.back()}
-                        aria-label={$LL.chat.roomPanel.back()}
-                        onclick={() => activateSection("home")}
-                    >
-                        <IconChevronLeft font-size={18} />
-                    </button>
-                    <div class="min-w-0 flex-1 truncate text-sm font-bold uppercase tracking-widest text-white/75">
-                        {#if displayedSection === "threads"}
-                            {$LL.chat.roomPanel.sections.threads()}
-                        {:else if displayedSection === "polls"}
-                            {$LL.chat.roomPanel.sections.polls()}
-                        {:else if displayedSection === "participants"}
-                            {$LL.chat.roomPanel.sections.participants()}
-                        {:else if displayedSection === "questions"}
-                            {$LL.chat.question.title()}
-                        {:else if displayedSection === "settings"}
-                            {$LL.chat.roomPanel.sections.settings()}
-                        {/if}
-                    </div>
-                {:else}
-                    <div class="min-w-0 flex-1"></div>
-                {/if}
-                {#if shouldShowCloseButton}
-                    <button
-                        type="button"
-                        class="m-0 flex aspect-square h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-solid border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10"
-                        data-testid="closeRoomSidePanelButton"
-                        title={$LL.chat.roomPanel.toggleClose()}
-                        aria-label={$LL.chat.roomPanel.toggleClose()}
-                        onclick={() => roomSidePanelStore.close()}
-                    >
-                        <IconX font-size={18} />
-                    </button>
+        <div class="quanta-panel-head">
+            <button
+                type="button"
+                class="quanta-card-action"
+                data-testid="roomSidePanelBackButton"
+                title={$LL.chat.roomPanel.back()}
+                aria-label={$LL.chat.roomPanel.back()}
+                onclick={() => roomSidePanelStore.close()}
+            >
+                <IconChevronLeft font-size={18} />
+            </button>
+            <div class="quanta-panel-title">
+                {#if displayedSection === "threads"}
+                    {$LL.chat.roomPanel.sections.threads()}
+                {:else if displayedSection === "polls"}
+                    {$LL.chat.roomPanel.sections.polls()}
+                {:else if displayedSection === "participants"}
+                    {$LL.chat.roomPanel.sections.participants()}
+                {:else if displayedSection === "questions"}
+                    {$LL.chat.question.title()}
+                {:else if displayedSection === "settings"}
+                    {$LL.chat.roomPanel.sections.settings()}
                 {/if}
             </div>
         </div>

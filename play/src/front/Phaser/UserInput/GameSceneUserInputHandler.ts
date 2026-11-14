@@ -7,7 +7,7 @@ import type { UserInputHandlerInterface } from "../../Interfaces/UserInputHandle
 import type { GameScene } from "../Game/GameScene";
 import { mapEditorModeStore } from "../../Stores/MapEditorStore";
 import { isActivatable } from "../Game/ActivatableInterface";
-import { mapManagerActivated } from "../../Stores/MenuStore";
+import { mapExplorerVisibleStore } from "../../Stores/MenuStore";
 import { displayEmote, isEmoteIndex } from "../../Stores/EmoteStore";
 import { analyticsClient } from "../../Administration/AnalyticsClient";
 import { navChat } from "../../Chat/Stores/ChatStore";
@@ -18,6 +18,8 @@ import { isPopupJustClosed } from "../Game/Say/SayManager";
 import LL from "../../../i18n/i18n-svelte";
 import { followRoleStore, followStateStore, followUsersStore } from "../../Stores/FollowStore";
 import { localUserStore } from "../../Connection/LocalUserStore";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { QL } from "../../quanta/i18n";
 import type { Shortcut } from "./UserInputManager";
 
 import Pointer = Phaser.Input.Pointer;
@@ -98,6 +100,7 @@ export class GameSceneUserInputHandler implements UserInputHandlerInterface {
                 key: "F",
                 description: get(LL).menu.shortcuts.follow(),
             },
+            ...(QUANTA_UI ? [{ key: "X", description: get(QL).sitShortcut() }] : []),
         ];
     }
 
@@ -112,6 +115,9 @@ export class GameSceneUserInputHandler implements UserInputHandlerInterface {
     }
 
     public handlePointerUpEvent(pointer: Pointer, gameObjects: GameObject[]): void {
+        const dragged = this.mapDrag?.moved ?? false;
+        this.endMapDrag();
+        if (dragged) return;
         if (pointer.wasTouch || pointer.leftButtonReleased()) {
             for (const object of gameObjects) {
                 if (isActivatable(object)) {
@@ -157,9 +163,48 @@ export class GameSceneUserInputHandler implements UserInputHandlerInterface {
             });
     }
 
-    public handlePointerDownEvent(pointer: Pointer, gameObjects: GameObject[]): void {}
+    // quanta: a mouse drag on the map, away from people and things one can use, moves the view (CameraManager.panBy).
+    private mapDrag: { x: number; y: number; startX: number; startY: number; moved: boolean } | undefined;
+    private static readonly DRAG_THRESHOLD = 6;
 
-    public handlePointerMoveEvent(pointer: Pointer, gameObjects: GameObject[]): void {}
+    public handlePointerDownEvent(pointer: Pointer, gameObjects: GameObject[]): void {
+        this.endMapDrag();
+        if (!QUANTA_UI || pointer.wasTouch || !pointer.leftButtonDown() || get(mapEditorModeStore)) return;
+        if (
+            gameObjects.some(
+                (object) => isActivatable(object) || object instanceof Player || object instanceof RemotePlayer,
+            )
+        )
+            return;
+        this.mapDrag = { x: pointer.x, y: pointer.y, startX: pointer.x, startY: pointer.y, moved: false };
+    }
+
+    public handlePointerMoveEvent(pointer: Pointer, gameObjects: GameObject[]): void {
+        const drag = this.mapDrag;
+        if (!drag) return;
+        if (!pointer.leftButtonDown()) {
+            this.endMapDrag();
+            return;
+        }
+        if (
+            !drag.moved &&
+            Math.hypot(pointer.x - drag.startX, pointer.y - drag.startY) <
+                GameSceneUserInputHandler.DRAG_THRESHOLD * (window.devicePixelRatio || 1)
+        )
+            return;
+        if (!drag.moved) {
+            drag.moved = true;
+            this.gameScene.input.setDefaultCursor("grabbing");
+        }
+        this.gameScene.getCameraManager().panBy(pointer.x - drag.x, pointer.y - drag.y);
+        drag.x = pointer.x;
+        drag.y = pointer.y;
+    }
+
+    private endMapDrag(): void {
+        if (this.mapDrag?.moved) this.gameScene.input.setDefaultCursor("");
+        this.mapDrag = undefined;
+    }
 
     private handleKeyF() {
         const state = get(followStateStore);
@@ -217,12 +262,17 @@ export class GameSceneUserInputHandler implements UserInputHandlerInterface {
 
         switch (event.code) {
             case "KeyE": {
-                if (get(mapManagerActivated) == false) return event;
+                if (!get(mapExplorerVisibleStore)) return event;
                 mapEditorModeStore.switchMode(!get(mapEditorModeStore));
                 break;
             }
             case "KeyR": {
                 this.gameScene.CurrentPlayer?.rotate();
+                break;
+            }
+            // quanta: S walks, and R, E, F, C and U are taken.
+            case "KeyX": {
+                this.gameScene.seatManager?.pressSitKey();
                 break;
             }
             case "KeyC":

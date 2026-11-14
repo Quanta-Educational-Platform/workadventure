@@ -48,14 +48,14 @@
         <a
             href={$content.url}
             download={$content.body}
-            class="p-0 m-0 text-white/50 hover:text-white transition-all flex"
+            class="p-0 m-0 text-white/80 hover:text-white transition-all flex"
             target="_blank"
         >
             <IconArrowDown font-size={16} class="hover:cursor-pointer" />
         </a>
     {/if}
     <button
-        class="p-0 m-0 text-white/50 hover:text-white transition-all hover:cursor-pointer flex"
+        class="p-0 m-0 text-white/80 hover:text-white transition-all hover:cursor-pointer flex"
         data-testid="replyToMessageButton"
         onclick={replyToMessage}
     >
@@ -63,7 +63,7 @@
     </button>
     {#if message.openThread}
         <button
-            class="p-0 m-0 text-white/50 hover:text-white transition-all hover:cursor-pointer flex"
+            class="p-0 m-0 text-white/80 hover:text-white transition-all hover:cursor-pointer flex"
             data-testid="openThreadButton"
             title={$LL.chat.thread.openThreadButtonTitle()}
             onclick={openThread}
@@ -76,7 +76,7 @@
     {/if}
     {#if $canEdit}
         <button
-            class="p-0 m-0 text-white/50 hover:text-white transition-all hover:cursor-pointer flex"
+            class="p-0 m-0 text-white/80 hover:text-white transition-all hover:cursor-pointer flex"
             data-testid="editMessageButton"
             onclick={selectMessageToEdit}
         >
@@ -85,7 +85,7 @@
     {/if}
     {#if $canDelete}
         <button
-            class="p-0 m-0 text-white/50 hover:text-white transition-all hover:cursor-pointer flex"
+            class="p-0 m-0 text-white/80 hover:text-white transition-all hover:cursor-pointer flex"
             data-testid="removeMessageButton"
             onclick={removeMessage}
         >

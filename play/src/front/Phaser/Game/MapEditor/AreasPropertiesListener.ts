@@ -56,11 +56,12 @@ import {
     requestedMicrophoneState,
     silentStore,
 } from "../../../Stores/MediaStore";
+import { currentPlayerGroupIdStore } from "../../../Stores/CurrentPlayerGroupStore";
 import { externalMeetingEnded, externalMeetingStarted } from "../../../ExternalModule/ExternalMeetingAnalytics";
 import { jitsiMeetingEnded, jitsiMeetingStarted } from "../../../WebRtc/JitsiMeetingAnalytics";
 import { currentLiveStreamingSpaceStore, givenFloorSpaceStore } from "../../../Stores/MegaphoneStore";
 import { meetingRaiseHandStore, megaphoneRaiseHandSpacesStore } from "../../../Stores/RaiseHandZoneSettingsStore";
-import { notificationPlayingStore } from "../../../Stores/NotificationStore";
+import { LONG_NOTIFICATION_MS, notificationPlayingStore } from "../../../Stores/NotificationStore";
 import type { CoWebsite } from "../../../WebRtc/CoWebsite/CoWebsite";
 import { getImageCoWebsiteTitle, ImageCoWebsite, isImageCoWebsiteUrl } from "../../../WebRtc/CoWebsite/ImageCoWebsite";
 import { JitsiCoWebsite } from "../../../WebRtc/CoWebsite/JitsiCoWebsite";
@@ -79,7 +80,21 @@ import {
     canRequestVisitCardsStore,
     requestVisitCardsStore,
     selectedChatIDRemotePlayerStore,
+    userIsAdminStore,
 } from "../../../Stores/GameStore";
+import {
+    classLectureOf,
+    isMegaphoneSpot,
+    SpotStands,
+    lectureSpeakerZoneOf,
+    onSpotSpeakerSilenced,
+    SpotLectures,
+} from "../../../quanta/megaphoneSpots";
+import { classLectureAvailableStore, onSpeakToClass, onStopSpeakingToClass } from "../../../quanta/speakingToClass";
+import { QL } from "../../../quanta/i18n";
+import { hintDone } from "../../../quanta/dockHints";
+import { isClassBoardArea } from "../../../quanta/boardAccess";
+import { InteractHighlights } from "../../../quanta/interactHighlight";
 
 import type { MessageUserJoined } from "../../../Connection/ConnexionModels";
 import { navChat } from "../../../Chat/Stores/ChatStore";
@@ -125,6 +140,8 @@ type AreaDataPropertyUpdate = {
     };
 }[AreaDataProperty["type"]];
 
+const CLASS_LECTURE = "class";
+
 export function getAreaProximitySpaceName(rawName: string, fallbackId: string): string {
     const roomID = rawName.trim().length === 0 ? fallbackId : rawName;
     return Jitsi.slugifyJitsiRoomName(roomID, "", true).trim();
@@ -132,6 +149,7 @@ export function getAreaProximitySpaceName(rawName: string, fallbackId: string): 
 
 export class AreasPropertiesListener {
     private scene: GameScene;
+    private readonly interactHighlights: InteractHighlights | undefined;
 
     /**
      * Opened by Areas only, per property
@@ -154,6 +172,69 @@ export class AreasPropertiesListener {
      * instead of joining/leaving the space.
      */
     private activeMegaphoneZones: Map<string, MegaphoneZoneState> = new Map();
+
+    private speakInLecture = (
+        lecture: { areaId: string; property: SpeakerMegaphonePropertyData },
+        signal: AbortSignal,
+    ): void => {
+        this.handleSpeakerMegaphonePropertyOnEnter(lecture.property, lecture.areaId, signal).catch((e) => {
+            console.error(e);
+            Sentry.captureException(e);
+        });
+    };
+    private stopSpeakingInLecture = (lecture: { areaId: string; property: SpeakerMegaphonePropertyData }): void => {
+        this.handleSpeakerMegaphonePropertyOnLeave(lecture.property, lecture.areaId).catch((e) => {
+            console.error(e);
+            Sentry.captureException(e);
+        });
+    };
+    /** quanta: the lecture the player speaks in from each megaphone spot they stand on. */
+    private spotLectures = new SpotLectures<{ areaId: string; property: SpeakerMegaphonePropertyData }>(
+        this.speakInLecture,
+        this.stopSpeakingInLecture,
+    );
+    /** quanta: the same for the speaker zones (the podium), so the speaker can stop on air without stepping off. */
+    private podiumLectures = new SpotLectures<{ areaId: string; property: SpeakerMegaphonePropertyData }>(
+        this.speakInLecture,
+        this.stopSpeakingInLecture,
+    );
+    /** quanta: the spots the player stands on, and whether they are on air from them (see SpotStands). */
+    private spotStands = new SpotStands(
+        this.spotLectures,
+        () => get(requestedMicrophoneState),
+        () => get(currentPlayerGroupIdStore) !== undefined,
+    );
+    private stopWatchingMicForSpots = requestedMicrophoneState.subscribe(() => this.spotStands.update());
+    private stopWatchingBubbleForSpots = currentPlayerGroupIdStore.subscribe(() => this.spotStands.update());
+    // A student stopped by the teacher is told how to speak again; otherwise the spot just seems to have broken.
+    private stopSilencingSpots = onSpotSpeakerSilenced(() => {
+        if (this.spotStands.silence() === 0) return;
+        // Says the microphone went off too: it replaces WA's own "muted by a moderator" toast instead of stacking.
+        const muted: string[] = [get(LL).notification.microphoneMuted(), get(LL).notification.askToMuteMicrophone()];
+        for (const shown of get(notificationPlayingStore))
+            if (muted.includes(shown.text)) notificationPlayingStore.removeNotification(shown);
+        notificationPlayingStore.playNotification(
+            get(QL).spotSpeakerStopped(),
+            "microphone-off.png",
+            undefined,
+            LONG_NOTIFICATION_MS,
+        );
+    });
+    /** quanta: staff on air in the podium's lecture from wherever they are, until they turn it off. */
+    private classLecture = new SpotLectures<{ areaId: string; property: SpeakerMegaphonePropertyData }>(
+        this.speakInLecture,
+        this.stopSpeakingInLecture,
+    );
+    private stopOnAirOnRequest = onStopSpeakingToClass(() => {
+        this.spotStands.silence();
+        this.podiumLectures.silence();
+        this.classLecture.leave(CLASS_LECTURE);
+    });
+    private stopSpeakToClassRequests = onSpeakToClass(() => {
+        if (!QUANTA_UI || !get(userIsAdminStore)) return;
+        const lecture = classLectureOf(this.wamAreas(), this.playerPosition());
+        if (lecture) this.classLecture.enter(CLASS_LECTURE, lecture);
+    });
     /**
      * The Matrix rooms of the chat areas the player is in, each with a token for the latest entry. Entering one waits
      * for the chat connection, then for the server: once it is done, an entry whose token is no longer the current one
@@ -163,6 +244,8 @@ export class AreasPropertiesListener {
 
     constructor(scene: GameScene) {
         this.scene = scene;
+        this.interactHighlights = QUANTA_UI ? new InteractHighlights(scene) : undefined;
+        if (QUANTA_UI) classLectureAvailableStore.set(classLectureOf(this.wamAreas()) !== undefined);
 
         // Subscribe to area property variable changes to update lock state store
         // We subscribe to the manager store to handle cases where the manager is set later
@@ -200,6 +283,8 @@ export class AreasPropertiesListener {
                 continue;
             }
 
+            this.interactHighlights?.enter(areaData);
+
             // Quanta classroom areas are system-managed (editors, audience, podium); their names aren't for students.
             if (!QUANTA_UI && areaData.name && areaData.name !== "") {
                 notificationPlayingStore.playNotification(areaData.name, "icon-tool-area.png", areaData.id);
@@ -233,6 +318,40 @@ export class AreasPropertiesListener {
                 this.addPropertyFilter(property, areaData, area);
             }
         }
+        // After the listener zones of the same step, so the spot's speaker role is the last one taken.
+        for (const areaData of areasData) {
+            this.enterSpotLecture(areaData);
+        }
+    }
+
+    private wamAreas(): Iterable<AreaData> {
+        return this.scene.getGameMap().getWamFile()?.getGameMapAreas().getAreas().values() ?? [];
+    }
+
+    private playerPosition(): { x: number; y: number } | undefined {
+        const player = this.scene.CurrentPlayer as GameScene["CurrentPlayer"] | undefined;
+        return player && { x: player.x, y: player.y };
+    }
+
+    /**
+     * quanta: whoever stands on a table's megaphone spot speaks to the class as on the podium, without raising a hand:
+     * they become a speaker of the lecture the spot is in, heard by every listener, in a bubble or not. The podium
+     * itself stays the teachers' (its rights property); the spot only borrows its speaker zone.
+     */
+    private enterSpotLecture(areaData: AreaData): void {
+        if (!QUANTA_UI || !isMegaphoneSpot(areaData) || this.spotStands.has(areaData.id)) {
+            return;
+        }
+        const lecture = lectureSpeakerZoneOf(areaData, this.wamAreas());
+        if (!lecture) {
+            return;
+        }
+        this.spotStands.enter(areaData.id, lecture);
+        hintDone("megaphone");
+    }
+
+    private leaveSpotLecture(areaData: AreaData): void {
+        this.spotStands.leave(areaData.id);
     }
 
     public onUpdateAreasHandler(
@@ -335,6 +454,8 @@ export class AreasPropertiesListener {
             if (!areaData.properties) {
                 continue;
             }
+            this.interactHighlights?.leave(areaData);
+
             // Remove notification for area
             notificationPlayingStore.removeNotificationById(areaData.id);
 
@@ -366,6 +487,9 @@ export class AreasPropertiesListener {
             }
 
             this.scene.landingAreas = this.scene.landingAreas.filter((landingArea) => landingArea.id !== areaData.id);
+        }
+        for (const areaData of areasData) {
+            this.leaveSpotLecture(areaData);
         }
     }
 
@@ -417,6 +541,10 @@ export class AreasPropertiesListener {
                 break;
             }
             case "speakerMegaphone": {
+                if (QUANTA_UI) {
+                    this.podiumLectures.enter(property.id, { areaId: areaData.id, property });
+                    break;
+                }
                 this.handleSpeakerMegaphonePropertyOnEnter(property, areaData.id, abortController.signal).catch((e) => {
                     console.error(e);
                     Sentry.captureException(e);
@@ -527,6 +655,11 @@ export class AreasPropertiesListener {
                 break;
             }
             case "speakerMegaphone": {
+                if (QUANTA_UI && this.podiumLectures.has(oldProperty.id)) {
+                    this.podiumLectures.leave(oldProperty.id);
+                    this.podiumLectures.enter(newProperty.id, { areaId: area.id, property: newProperty });
+                    break;
+                }
                 this.handleSpeakerMegaphonePropertyOnLeave(oldProperty, area.id).catch((e) => {
                     console.error("Error while leaving space");
                     Sentry.captureException(new Error("Error while leaving space"));
@@ -630,6 +763,10 @@ export class AreasPropertiesListener {
                 break;
             }
             case "speakerMegaphone": {
+                if (QUANTA_UI && this.podiumLectures.has(property.id)) {
+                    this.podiumLectures.leave(property.id);
+                    break;
+                }
                 this.handleSpeakerMegaphonePropertyOnLeave(property, areaData?.id).catch((e) => {
                     console.error("Error while leaving space");
                     Sentry.captureException(new Error("Error while leaving space"));
@@ -684,6 +821,12 @@ export class AreasPropertiesListener {
 
     private handleOpenWebsitePropertyOnEnter(property: OpenWebsitePropertyData, areaData?: AreaData): void {
         if (!property.link) {
+            return;
+        }
+
+        // quanta: a class board spot opens nothing of its own: the boards are Quanta's, presented beside the room. An older
+        // room's map may still link its spot to a whiteboard site.
+        if (QUANTA_UI && isClassBoardArea(areaData?.name)) {
             return;
         }
 
@@ -1605,6 +1748,15 @@ export class AreasPropertiesListener {
                 if (!space) {
                     throw new Error(`Failed to join megaphone speaker space "${uniqRoomName}"`);
                 }
+                // Stepped off before the join came back: the leave has already run, and the join made the room a
+                // speaker's again. Streaming now would keep a speaker who is no longer in the zone on air.
+                if (abortSignal.aborted) {
+                    if (this.findActiveListenerZoneForSpace(uniqRoomName)) {
+                        joinedRoom.kind.set("listener");
+                    }
+                    this.refreshMegaphoneGlobalStores(uniqRoomName);
+                    return;
+                }
 
                 space.startStreaming();
                 currentLiveStreamingSpaceStore.set(space);
@@ -1646,6 +1798,11 @@ export class AreasPropertiesListener {
 
             // Remove from tracking
             this.activeMegaphoneZones.delete(property.id);
+            // Still a speaker of the same space from another zone (a spot next to the podium): stay on air.
+            if (this.findActiveSpeakerZoneForSpace(uniqRoomName)) {
+                this.refreshMegaphoneGlobalStores(uniqRoomName);
+                return;
+            }
             const room = this.scene.proximityChatRoomManager.resolveTargetRoom(uniqRoomName);
             const space = room?.getCurrentSpace();
 
@@ -2173,6 +2330,15 @@ export class AreasPropertiesListener {
             abortController.abort();
         }
         this.abortControllers.clear();
+        this.spotStands.clear();
+        this.stopWatchingMicForSpots();
+        this.stopWatchingBubbleForSpots();
+        this.podiumLectures.clear();
+        this.classLecture.clear();
+        this.stopSilencingSpots();
+        this.stopOnAirOnRequest();
+        this.stopSpeakToClassRequests();
+        if (QUANTA_UI) classLectureAvailableStore.set(false);
 
         // Clean up action trigger callbacks
         for (const callback of this.actionTriggerCallback.values()) {

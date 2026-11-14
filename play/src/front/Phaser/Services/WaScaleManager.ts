@@ -25,6 +25,9 @@ export class WaScaleManager {
 
     private focusTarget?: WaScaleManagerFocusTarget;
 
+    private applying = false;
+    private pendingApply: { camera?: Camera; animating: boolean } | undefined;
+
     public constructor(
         private minGamePixelsNumber: number,
         private absoluteMinPixelNumber: number,
@@ -57,6 +60,31 @@ export class WaScaleManager {
         if (this.scaleManager === undefined) {
             return;
         }
+        // Phaser's resize emits RESIZE synchronously and the scenes' onResize may set a new zoom from inside this
+        // call; finishing the outer call afterwards would apply its stale zoom over the inner call's canvas size.
+        // The nested request is deferred and run once the current one has finished.
+        if (this.applying) {
+            this.pendingApply = { camera: camera ?? this.pendingApply?.camera, animating };
+            return;
+        }
+        this.applying = true;
+        try {
+            this.doApplyNewSize(camera, animating);
+            for (let pass = 0; this.pendingApply && pass < 3; pass++) {
+                const next = this.pendingApply;
+                this.pendingApply = undefined;
+                this.doApplyNewSize(next.camera, next.animating);
+            }
+        } finally {
+            this.applying = false;
+            this.pendingApply = undefined;
+        }
+    }
+
+    private doApplyNewSize(camera: Camera | undefined, animating: boolean): void {
+        if (this.scaleManager === undefined) {
+            return;
+        }
         const { width, height } = coWebsiteManager.getGameSize();
         const devicePixelRatio = window.devicePixelRatio ?? 1;
         const { game: gameSize, real: realSize } = this.hdpiManager.getOptimalGameSize({
@@ -76,21 +104,42 @@ export class WaScaleManager {
         // One exception: during camera zoom animations. The this.scaleManager.resize costs a lot of resources. So we don't
         // want to do this in a loop when zooming. If we are in the middle of an animation, we scale the canvas number of pixels
         // to the browser viewport and we use the Phaser camera zoom.
-        if (gameSize.width <= realSize.width && gameSize.height <= realSize.height && !animating) {
-            this.scaleManager.resize(gameSize.width, gameSize.height);
-            this.scaleManager.setZoom(this.actualZoom);
-            camera?.setZoom(1);
+        if (!animating) {
+            // "Sharp bilinear": the exact zoom the layout asks for (so the room fills its pane and resizes smoothly)
+            // is drawn at the next whole zoom with crisp pixels, then the browser smoothly shrinks the canvas to the
+            // exact size. Every map pixel is an identical block in the canvas, so nothing pulses while the camera
+            // moves; drawing straight at a fractional zoom makes each map pixel 4 or 5 device pixels by turns.
+            const exactZoom =
+                gameSize.width <= realSize.width && gameSize.height <= realSize.height
+                    ? realSize.width / gameSize.width
+                    : this.hdpiManager.zoomModifier *
+                      this.hdpiManager.getOptimalZoomLevel(realSize.width * realSize.height);
+            let drawnZoom = Math.max(1, Math.ceil(exactZoom - 0.01));
+            // Below 2x the next whole zoom can nearly double the canvas; enlarge slightly instead.
+            if (drawnZoom / exactZoom > 1.5) drawnZoom = Math.max(1, Math.floor(exactZoom));
+            this.actualZoom = exactZoom / devicePixelRatio;
+            // The camera's zoom goes with the canvas size: set first, as the resize tells the scenes at once
+            // (Game.ts) and their camera bounds read both; set after, the frame is drawn with bounds made from the
+            // new width and the old zoom, the room off by up to a hundred pixels until the next frame.
+            camera?.setZoom(drawnZoom);
+            this.scaleManager.resize(
+                Math.ceil((realSize.width * drawnZoom) / exactZoom),
+                Math.ceil((realSize.height * drawnZoom) / exactZoom),
+            );
+            this.scaleManager.setZoom(exactZoom / drawnZoom / devicePixelRatio);
+            // Phaser marks the canvas crisp (antialias off); the shrink must be smooth unless the zoom is whole.
+            if (this.game.canvas) {
+                this.game.canvas.style.imageRendering = Math.abs(drawnZoom - exactZoom) < 0.001 ? "pixelated" : "auto";
+            }
         } else {
+            // During zoom animations: canvas at device resolution, camera zoom follows the animation.
+            const zoom =
+                this.hdpiManager.zoomModifier * this.hdpiManager.getOptimalZoomLevel(realSize.width * realSize.height);
+            camera?.setZoom(zoom);
             if (this.scaleManager.width !== realSize.width || this.scaleManager.height !== realSize.height) {
                 this.scaleManager.resize(realSize.width, realSize.height);
             }
-
-            const zoom =
-                this.hdpiManager.zoomModifier * this.hdpiManager.getOptimalZoomLevel(realSize.width * realSize.height);
-            // In the camera-zoom branch, keep the DOM and canvas layers on the same display scale.
-            // The scale manager only compensates for DPR here; the gameplay zoom is fully handled by the camera.
             this.scaleManager.setZoom(1 / devicePixelRatio);
-            camera?.setZoom(zoom);
         }
 
         // Note: onResize will be called twice (once here and once in Game.ts), but we have no better way.

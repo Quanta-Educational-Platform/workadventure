@@ -47,6 +47,21 @@ class DraftMessageService {
         store.put(draft);
     }
 
+    /** saveDraft, settled once the draft is stored (or could not be), e.g. before the page reloads. */
+    public saveDraftAndWait(draft: DraftMessage): Promise<void> {
+        return new Promise((resolve) => {
+            if (!this.db) {
+                resolve();
+                return;
+            }
+            const transaction = this.db.transaction("drafts", "readwrite");
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => resolve();
+            transaction.onabort = () => resolve();
+            transaction.objectStore("drafts").put(draft);
+        });
+    }
+
     public async loadDraft(id: string): Promise<DraftMessage | null> {
         return new Promise((resolve, reject) => {
             if (!this.db) {

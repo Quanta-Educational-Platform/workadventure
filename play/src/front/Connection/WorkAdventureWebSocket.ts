@@ -37,6 +37,8 @@ export class WorkAdventureWebSocket {
     // so the pusher needs this to make sure a resumed transport lands on the session it left and not on a newer one.
     private readonly connectionId = uuidv4();
     private manuallyClosed = false;
+    // quanta: a transport that never opened has no session to resume.
+    private everOpened = false;
     private reconnectAttempted = false;
     private reconnectAttempt = 0;
     private reconnectStartedAt: number | undefined;
@@ -102,6 +104,7 @@ export class WorkAdventureWebSocket {
     };
 
     private handleOpenEvent = (): void => {
+        this.everOpened = true;
         const isReconnection = this.reconnectAttempted;
         this.clearReconnectionTimeout();
         this.reconnectAttempted = false;
@@ -208,6 +211,11 @@ export class WorkAdventureWebSocket {
         if (event.code === 1000 || event.code === 1008 || event.code === WS_CLOSE_CODE_SESSION_DESTROYED) {
             return false;
         }
+        // quanta: the first connection failed (the pusher refused it, busy, or could not be reached): nothing to resume.
+        // The caller retries a new connection with its own backoff.
+        if (!this.everOpened) {
+            return false;
+        }
         if (this.reconnectStartedAt !== undefined) {
             const elapsedMs = Date.now() - this.reconnectStartedAt;
             if (elapsedMs >= CLIENT_DISCONNECTION_RETENTION_MS) {
@@ -250,9 +258,13 @@ export class WorkAdventureWebSocket {
     }
 
     private getReconnectDelayMs(): number {
-        return Math.min(
-            WorkAdventureWebSocket.RECONNECT_MAX_DELAY_MS,
-            WorkAdventureWebSocket.RECONNECT_BASE_DELAY_MS * 2 ** Math.max(0, this.reconnectAttempt - 1),
+        // Half to one and a half times the step: clients that lost the server together drift apart.
+        return (
+            Math.min(
+                WorkAdventureWebSocket.RECONNECT_MAX_DELAY_MS,
+                WorkAdventureWebSocket.RECONNECT_BASE_DELAY_MS * 2 ** Math.max(0, this.reconnectAttempt - 1),
+            ) *
+            (0.5 + Math.random())
         );
     }
 

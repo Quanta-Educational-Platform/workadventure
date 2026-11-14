@@ -155,3 +155,5 @@ export { default as IconPhoto } from "~icons/tabler/photo";
 export { default as IconVideo } from "~icons/tabler/video";
 export { default as IconBell } from "~icons/tabler/bell";
 export { default as IconStack2 } from "~icons/tabler/stack-2";
+export { default as IconPin } from "~icons/tabler/pin";
+export { default as IconPinnedOff } from "~icons/tabler/pinned-off";

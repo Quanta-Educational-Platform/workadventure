@@ -104,6 +104,47 @@ html.quanta-ui [data-testid="profile-menu"] button svg {
     color: #c4c7c5;
 }
 
+/* A phone's ⋮ is a sheet from the window's foot, full width, rows a thumb can hit (QuantaDock.svelte dims behind it). */
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui div:has(> [data-testid="profile-menu"]) {
+        position: fixed !important;
+        top: auto !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+    }
+
+    html.quanta-ui [data-testid="profile-menu"] {
+        width: auto;
+        padding: 20px 8px calc(16px + env(safe-area-inset-bottom, 0px));
+        border-radius: 22px 22px 0 0;
+        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+        position: relative;
+    }
+
+    html.quanta-ui [data-testid="profile-menu"]::before {
+        content: "";
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        width: 36px;
+        height: 4px;
+        margin-left: -18px;
+        border-radius: 4px;
+        background: #4a4f58;
+    }
+
+    html.quanta-ui [data-testid="profile-menu"] > div {
+        max-height: 70vh;
+    }
+
+    html.quanta-ui [data-testid="profile-menu"] button {
+        min-height: 50px;
+        border-radius: 12px;
+        font-size: 15px;
+    }
+}
+
 /* Rows without an icon (buttons added by the room script) line up with the labels of the others. */
 html.quanta-ui [data-testid="profile-menu"] button.gradient {
     padding-left: 56px;
@@ -113,7 +154,7 @@ html.quanta-ui [data-testid="profile-menu"] button.gradient::before {
     display: none;
 }
 
-/* Section headings become dividers; the first one (above the statuses) goes. */
+/* Section headings become dividers: the situational group (Stop following...) sits apart from the menu's own rows. */
 html.quanta-ui [data-testid="profile-menu"] .uppercase.text-xxs {
     height: 1px;
     margin: 8px 0;
@@ -121,10 +162,6 @@ html.quanta-ui [data-testid="profile-menu"] .uppercase.text-xxs {
     overflow: hidden;
     background: #3a3f48;
     font-size: 0;
-}
-
-html.quanta-ui [data-testid="profile-menu"] > div > div:first-of-type .uppercase.text-xxs:first-of-type {
-    display: none;
 }
 
 html.quanta-ui [data-testid="profile-menu"] .status-button {
@@ -161,8 +198,10 @@ html.quanta-ui #chat.chatWindow {
     backdrop-filter: none;
 }
 
-/* Zoom and explore: a column the width of the Chat button below it, in the dock's surface. */
+/* Zoom and explore: a column the width of the Chat button below it, in the dock's surface. Above an enlarged
+   camera or screen share (MainLayout's presentation layout), below the full-screen one (z 310), where it hides. */
 html.quanta-ui [data-testid="actions-explorer"] {
+    z-index: 305;
     width: 48px;
     padding: 4px;
     border-radius: 24px;
@@ -275,7 +314,7 @@ html.quanta-ui :is(.toast-container, .popup-container) .responsive-message {
 }
 
 /* Phones: the window is 8px from the frame. */
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui [data-toast-stack] {
         left: 16px;
     }
@@ -381,6 +420,30 @@ html.quanta-ui #chat.chatWindow {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
+/* In the side column (sidePanel.ts): the people list's card, its header (ChatPanelHeader.svelte) above the chat. */
+html.quanta-ui #chat.quanta-side-chat {
+    display: flex;
+    flex-direction: column;
+    box-shadow: none;
+}
+
+html.quanta-ui #chat.quanta-side-chat > div:last-child {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+}
+
+/* Closing, the content fades first and the empty card slides out after it, as the people column's does. */
+html.quanta-ui #chat.quanta-side-chat.quanta-side-leaving > * {
+    opacity: 0;
+    transition: opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Under the People | Chat tabs the chat needs no header of its own: no back arrow, name or info button. */
+html.quanta-ui #chat.quanta-side-chat [data-testid="roomTimeline"] > div:first-child > div:first-child {
+    display: none;
+}
+
 html.quanta-ui #chat [data-testid="roomTimeline"] > div:first-child > div {
     border: 0;
     padding: 12px 8px 4px 24px;
@@ -414,6 +477,8 @@ html.quanta-ui #chat .message > span.border {
 }
 
 html.quanta-ui #chat [data-testid="messageInput"] {
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 13px 4px 13px 18px;
     border: 0;
     border-radius: 0;
@@ -423,6 +488,12 @@ html.quanta-ui #chat [data-testid="messageInput"] {
 
 html.quanta-ui #chat [data-testid="messageInput"]:empty::before {
     color: #a7adb7;
+}
+
+/* The box keeps saying who reads the message until something is typed, focus or not (WA blanks it on focus, which
+   after sending is always). */
+html.quanta-ui #chat [data-testid="messageInput"]:focus:empty::before {
+    content: attr(data-text);
 }
 
 html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child {
@@ -435,6 +506,7 @@ html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child {
 }
 
 html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child > button {
+    flex-shrink: 0;
     width: 40px;
     height: 40px;
     border-radius: 9999px;
@@ -442,6 +514,8 @@ html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child > button {
 }
 
 html.quanta-ui #chat [data-testid="sendMessageButton"] {
+    flex-shrink: 0;
+    align-self: center;
     width: 40px;
     height: 40px;
     padding: 0;
@@ -451,6 +525,492 @@ html.quanta-ui #chat [data-testid="sendMessageButton"] {
     border-radius: 9999px;
     background: #c9d5ea;
     color: #1d2b45;
+}
+
+/* Send is lit, the brightest thing in the bar, whenever it would send; dim only when it can't. The bar's own button
+   colour (below, for the side column) would otherwise grey its icon out on the light fill. */
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child > button[data-testid="sendMessageButton"]:enabled {
+    background: #eceef1;
+    color: #1d2b45;
+    opacity: 1;
+    cursor: pointer;
+}
+
+html.quanta-ui
+    #chat
+    [data-testid="roomTimeline"]
+    > div:last-child
+    > button[data-testid="sendMessageButton"]:enabled:hover {
+    background: #ffffff;
+}
+
+html.quanta-ui #chat [data-testid="roomTimeline"] > div:last-child > button[data-testid="sendMessageButton"]:disabled {
+    background: transparent;
+    color: #6b7079;
+    opacity: 1;
+}
+
+/* The class chat in the side column, in the people list's colours: own messages light like the main buttons, the
+   others slate, each bubble as wide as its text; the time above a run of messages, the delete action beside the
+   bubble on hover only. `li > #message` skips quoted messages, which nest another #message. */
+html.quanta-ui #chat.quanta-side-chat [data-testid="roomTimeline"] ul {
+    gap: 2px;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div {
+    position: relative;
+}
+
+/* A row keeps a gutter beside its bubble narrower than WorkAdventure's 50 px, wide enough for the folded actions. In
+   a narrow column the avatar is smaller too, so others' bubbles don't wrap a word a line. */
+html.quanta-ui #chat.quanta-side-chat {
+    container: quanta-chat / inline-size;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div {
+    max-width: calc(100% - 34px) !important;
+}
+
+@container quanta-chat (max-width: 300px) {
+    html.quanta-ui #chat.quanta-side-chat li > #message:not(.self-end) > div {
+        gap: 6px;
+        padding-left: 4px;
+    }
+
+    html.quanta-ui #chat.quanta-side-chat li > #message:not(.self-end) > div > .avatar {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        padding: 0;
+    }
+
+    html.quanta-ui #chat.quanta-side-chat li > #message:not(.self-end) > div > div.ml-12 {
+        margin-left: 34px;
+    }
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > .message {
+    min-width: 0;
+    margin: 0;
+    border-radius: 14px 14px 14px 4px;
+    background: #2b3038;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end > div > div > .message {
+    border-radius: 14px 14px 4px 14px;
+    background: #c9d5ea;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > .message .message-bubble {
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 20px;
+    color: #eceef1;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end > div > div > .message .message-bubble {
+    color: #1d2b45;
+}
+
+/* Links read as links in every bubble: underlined, light on the slate ones and a deep blue on our own light one
+   (MessageText.svelte writes white inline, so these must win over it). */
+html.quanta-ui #chat.quanta-side-chat .message-bubble a[href] {
+    color: #b9d3ff !important;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end > div > div > .message .message-bubble a[href] {
+    color: #1f4fb8 !important;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > div.h-fit {
+    justify-content: flex-start;
+    align-items: baseline;
+    gap: 6px;
+    margin: 10px 0 4px;
+    padding: 0 4px;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > div.h-fit > span:first-child {
+    font-size: 13px;
+    font-weight: 600;
+    color: #eceef1;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > div.h-fit > span:last-child {
+    margin: 0;
+    font-size: 12px;
+    color: #8b919b;
+    opacity: 1;
+}
+
+/* Our own run needs no "You": the time alone, on the right. */
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > div.h-fit.flex-row-reverse > span:first-child {
+    display: none;
+}
+
+html.quanta-ui #chat.quanta-side-chat [data-testid="roomTimeline"] .font-condensed.min-w-32 {
+    font-size: 12px;
+    color: #8b919b;
+    opacity: 1;
+}
+
+/* Floats just above the bubble's end where that space is free, else beside a short bubble or inside its top corner:
+   Message.svelte measures it on hover or focus and sets the place. */
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions {
+    position: absolute;
+    top: -14px;
+    right: 0;
+    z-index: 5;
+    display: flex;
+    padding: 1px 3px;
+    border-radius: 9px;
+    background: rgb(var(--color-contrast, 27 31 42));
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions > button {
+    display: flex;
+    padding: 4px;
+}
+
+html.quanta-ui #chat.quanta-side-chat li:hover .quanta-chat-actions,
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Where the bar has no room clear of its message it folds into one "more" button beside the bubble, and opens as a
+   menu below or above the message (Message.svelte). */
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions > .quanta-chat-more {
+    display: none;
+    padding: 4px;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions.folded {
+    padding: 1px;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions.folded > :not(.quanta-chat-more) {
+    display: none;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions.folded > .quanta-chat-more {
+    display: flex;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions.open {
+    z-index: 6;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* A reaction is one tap: a short row over the message's actions, always inside the chat. */
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions:has(.quanta-react-row) {
+    z-index: 6;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-react-row {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    display: flex;
+    gap: 2px;
+    width: max-content;
+    padding: 3px;
+    border-radius: 10px;
+    background: #2b3038;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-react-row > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border-radius: 7px;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 17px;
+    line-height: 1;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-react-row > button:hover,
+html.quanta-ui #chat.quanta-side-chat .quanta-react-row > button:focus-visible {
+    background: rgb(255 255 255 / 0.12);
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-react-row > button[aria-pressed="true"] {
+    background: rgb(255 255 255 / 0.18);
+}
+
+/* The full picker (message box, dock reactions): dark, and narrow enough for the narrowest chat. */
+html.quanta-ui emoji-picker {
+    --background: #1f232b;
+    --border-color: rgb(255 255 255 / 0.08);
+    --border-size: 0;
+    --button-active-background: rgb(255 255 255 / 0.18);
+    --button-hover-background: rgb(255 255 255 / 0.1);
+    --category-font-color: rgb(255 255 255 / 0.6);
+    --category-font-size: 12px;
+    --indicator-color: #fff;
+    --outline-color: rgb(255 255 255 / 0.4);
+    --num-columns: 7;
+    --emoji-size: 1.25rem;
+    --emoji-padding: 0.25rem;
+    --category-emoji-size: 1.125rem;
+    --category-emoji-padding: 0.3rem;
+    width: min(264px, calc(100vw - 16px));
+    height: 300px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+/* Editing happens in the message box: one thin line above it says what is being changed. */
+html.quanta-ui .quanta-edit-strip {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    padding: 4px 4px 6px 12px;
+    color: rgb(255 255 255 / 0.7);
+}
+
+html.quanta-ui .quanta-edit-strip > svg {
+    flex: none;
+}
+
+html.quanta-ui .quanta-edit-strip-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    padding-left: 8px;
+    border-left: 2px solid rgb(255 255 255 / 0.35);
+    font-size: 12px;
+    line-height: 16px;
+}
+
+html.quanta-ui .quanta-edit-strip-text > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+html.quanta-ui .quanta-edit-strip-text > span:first-child {
+    color: #fff;
+    font-weight: 600;
+}
+
+html.quanta-ui .quanta-edit-strip.failed .quanta-edit-strip-text > span:first-child {
+    color: #ff8a80;
+}
+
+html.quanta-ui .quanta-edit-strip > button {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border-radius: 7px;
+    color: rgb(255 255 255 / 0.7);
+}
+
+html.quanta-ui .quanta-edit-strip > button:hover {
+    background: rgb(255 255 255 / 0.1);
+    color: #fff;
+}
+
+/* The message being edited stays where it is, a step back. */
+html.quanta-ui .quanta-message-editing {
+    opacity: 0.55;
+}
+
+/* Deleting someone else's message asks first, in a card under its bubble. */
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px 6px;
+    margin-top: 4px;
+    padding: 3px 4px 3px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm > p {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm > div {
+    display: flex;
+    gap: 2px;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm button {
+    height: 26px;
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 7px;
+    background: none;
+    color: rgb(255 255 255 / 0.75);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm button:hover,
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm button:focus-visible {
+    background: rgb(255 255 255 / 0.1);
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-delete-confirm button.danger {
+    color: #ff8a80;
+    font-weight: 600;
+}
+
+/* "(edited)" inside the bubble, in the bubble's own text colour. */
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > .message .quanta-chat-edited {
+    padding: 0 12px 6px;
+    margin-top: -4px;
+    color: inherit;
+    font-size: 11px;
+    opacity: 1;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end > div > div > .message .quanta-chat-edited {
+    color: #1d2b45;
+}
+
+/* Attachment labels follow the bubble, including files that cannot be drawn as images. */
+html.quanta-ui #chat.quanta-side-chat li > #message > div > div > .message {
+    --attachment-text: #eceef1;
+    --attachment-waiting: #f5d278;
+    --attachment-received: #83dfb2;
+    --attachment-failed: #ffb4b4;
+    color: var(--attachment-text);
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end > div > div > .message {
+    --attachment-text: #1d2b45;
+    --attachment-waiting: #654800;
+    --attachment-received: #155538;
+    --attachment-failed: #8c2020;
+}
+
+html.quanta-ui
+    #chat.quanta-side-chat
+    .message
+    :is(
+        .quanta-attachment-recipients,
+        .quanta-attachment-file,
+        .quanta-attachment-caption,
+        [data-testid="undrawableImage"]
+    ) {
+    color: var(--attachment-text);
+}
+
+html.quanta-ui #chat.quanta-side-chat .message .recipient-waiting {
+    color: var(--attachment-waiting);
+}
+
+html.quanta-ui #chat.quanta-side-chat .message .recipient-received {
+    color: var(--attachment-received);
+}
+
+html.quanta-ui #chat.quanta-side-chat .message .recipient-failed {
+    color: var(--attachment-failed);
+}
+
+/* Editing our own message in its light bubble: a dark field and buttons on it, not WA's white on white. */
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end [data-testid="editMessageInput"] {
+    margin: 6px 6px 0 !important;
+    width: auto;
+    min-width: 200px;
+    border: 0;
+    border-radius: 10px;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end [data-testid="cancelMessageEditionButton"] {
+    color: #1d2b45;
+}
+
+html.quanta-ui #chat.quanta-side-chat li > #message.self-end [data-testid="saveMessageEditionButton"] {
+    background: #1d2b45;
+    color: #eceef1;
+}
+
+/* The message box: a filled field like the platform's inputs, not an outlined pill. */
+html.quanta-ui #chat.quanta-side-chat [data-testid="roomTimeline"] > div:last-child {
+    margin: 8px 12px 12px;
+    border: 0;
+    border-radius: 14px;
+    background: #2b3038;
+}
+
+html.quanta-ui #chat.quanta-side-chat [data-testid="roomTimeline"] > div:last-child > button {
+    color: #a7adb7;
+}
+
+html.quanta-ui #chat.quanta-side-chat [data-testid="messageInput"] {
+    padding: 12px 4px 12px 14px;
+    font-size: 14px;
+}
+
+/* The chat's apps (YouTube, the boards, a poll): a grid of equal cells, each item a rounded rectangle on hover and
+   focus like the panel's other rows, not the pill every rounded button becomes above. */
+html.quanta-ui #chat .application-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    align-items: stretch;
+    gap: 4px;
+    padding: 6px 12px;
+}
+
+html.quanta-ui #chat .application-picker:empty {
+    display: none;
+}
+
+html.quanta-ui #chat .application-picker > button.application-picker-item {
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px 8px;
+    border-radius: 12px;
+    background: transparent;
+    transition: background-color 0.12s;
+}
+
+html.quanta-ui #chat .application-picker > button.application-picker-item:not(:disabled):is(:hover, :focus-visible) {
+    background: rgb(255 255 255 / 0.08);
+}
+
+html.quanta-ui #chat .application-picker > button.application-picker-item:focus-visible {
+    outline: 2px solid #c9d5ea;
+    outline-offset: -2px;
+}
+
+html.quanta-ui #chat .application-picker > button.application-picker-item.bg-secondary-800 {
+    background: rgb(255 255 255 / 0.14);
 }
 
 /* Tailwind's !important utilities sit in a layer, which beats unlayered !important: override inside it. */
@@ -482,6 +1042,27 @@ html.quanta-ui .responsive-dimension > div > div {
 html.quanta-ui .responsive-dimension :is(.bg-secondary\/50, .bg-secondary\/90) {
     background-color: #c9d5ea;
     color: #1d2b45;
+}
+
+/* A long name stays inside its tile, cut with an ellipsis, rather than spilling past both of its edges (a phone's
+   tiles are 112px and up). */
+html.quanta-ui .responsive-dimension,
+html.quanta-ui .responsive-dimension > div,
+html.quanta-ui .responsive-dimension > div > div,
+html.quanta-ui .responsive-dimension > div > div > div {
+    max-width: 100%;
+    min-width: 0;
+}
+
+html.quanta-ui .responsive-dimension :is(span.select-none, .select-none > span) {
+    /* An inline span ignores overflow: as a box it can be cut. */
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: bottom;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* The bar under the tiles that resizes them: a quiet grip, brighter on hover. */
@@ -575,7 +1156,7 @@ html.quanta-ui .popup-container {
     max-width: calc(100vw - 168px);
 }
 
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui .popup-container {
         max-width: calc(100vw - 32px);
     }
@@ -716,8 +1297,10 @@ html.quanta-ui [data-testid="actions-menu"] .btn {
 
 /* The teacher's raised-hands panel: a slate card like the notices, without WA's yellow stripe; "Lower all"
    is the main button, each "Lower hand" a quiet one. */
-/* The platform's people list is open and already lists the raised hands. */
-html.quanta-ui.quanta-people-open [data-testid="raised-hands-dock"] {
+/* The platform lists the raised hands in its People column (with "Let speak" and the order): inside it the room's
+   own card would repeat them; it stays for an older platform while its people list is closed. */
+html.quanta-ui.quanta-people-open [data-testid="raised-hands-dock"],
+html.quanta-ui.quanta-platform-panel [data-testid="raised-hands-dock"] {
     display: none;
 }
 
@@ -800,9 +1383,9 @@ html.quanta-ui [data-testid="raised-hands-panel"] .btn[data-testid="panel-lower-
     color: #1d2b45 !important;
 }
 
-/* Buttons the room script puts in the corner (Quanta's recording pill, "Course Content" in a tab of its own): chips
-   in the dock's panel colour and the zoom controls' size (48px, a 40px button inside), without WA's glow and tinted
-   border in the script's colour. The recording one gets a red dot for its colour. */
+/* Buttons the room script puts in the corner ("Course Content" in a tab of its own): chips in the dock's panel colour
+   and the zoom controls' size (48px, a 40px button inside), without WA's glow and tinted border in the script's colour.
+   Its recording button is shown as the room's own indicator instead (recordingIndicator.ts). */
 html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button] > div {
     padding: 4px;
     border-radius: 9999px;
@@ -831,31 +1414,11 @@ html.quanta-ui [data-testid="quanta-room-buttons"] button:hover {
     background: rgba(255, 255, 255, 0.08) !important;
 }
 
-html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button="quanta-recording"] button {
-    padding: 0 16px 0 14px;
-}
-
-html.quanta-ui [data-testid="quanta-room-buttons"] [data-room-button="quanta-recording"] button::before {
-    content: "";
-    display: block;
-    position: static;
-    width: 9px;
-    height: 9px;
-    flex: none;
-    border-radius: 9999px;
-    filter: none;
-    opacity: 1;
-    background: var(--bg-color, #f2675c);
-    animation: quanta-rec 2s ease-in-out infinite;
-}
-
-@keyframes quanta-rec {
-    50% {
-        opacity: 0.35;
-    }
-}
-
-/* An enlarged camera or screen share, and the full-screen one, stay inside the map's window, above the dock. */
+/* An enlarged camera or screen share, and the full-screen one, stay inside the map's window, above the dock and left
+   of the class chat's column: under it, the share's right side was hidden. The picture is fitted whole inside
+   (CenteredVideo), letterboxed. */
+/* Its parent (#main-layout) already stops at the open chat's column (MainLayout's padding), so only the window's own
+   inset here: taking the chat's width off again left the strip half as wide as its room beside the chat. */
 html.quanta-ui .presentation-layout {
     top: 12px;
     right: 12px;
@@ -866,12 +1429,16 @@ html.quanta-ui .presentation-layout {
 }
 
 html.quanta-ui .quanta-fullscreen-media {
-    inset: 12px 12px 96px;
+    inset: 12px calc(12px + var(--quanta-chat-map, 0px)) 96px 12px;
     width: auto;
     height: auto;
     overflow: hidden;
     border-radius: 16px;
     background: #1d2027;
+}
+
+html.quanta-ui #main-layout:has(.quanta-fullscreen-media) [data-testid="actions-explorer"] {
+    display: none;
 }
 
 /* Behind a full-screen video the map is hidden: at some window sizes its edge showed through a hairline gap. */
@@ -882,13 +1449,13 @@ html.quanta-ui #game:has(.quanta-fullscreen-media) > canvas {
 /* Its participants column too, with the window's corners. */
 html.quanta-ui .quanta-fullscreen-list {
     top: 12px;
-    right: 12px;
+    right: calc(12px + var(--quanta-chat-map, 0px));
     height: calc(100% - 108px);
     overflow: hidden;
     border-radius: 0 16px 16px 0;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui .presentation-layout {
         top: 8px;
         right: 8px;
@@ -897,13 +1464,13 @@ html.quanta-ui .quanta-fullscreen-list {
     }
 
     html.quanta-ui .quanta-fullscreen-media {
-        inset: 8px 8px 84px;
+        inset: 8px calc(8px + var(--quanta-chat-map, 0px)) 84px 8px;
         border-radius: 14px;
     }
 
     html.quanta-ui .quanta-fullscreen-list {
         top: 8px;
-        right: 8px;
+        right: calc(8px + var(--quanta-chat-map, 0px));
         height: calc(100% - 92px);
         border-radius: 0 14px 14px 0;
     }
@@ -952,7 +1519,10 @@ html.quanta-ui #game {
 }
 
 html.quanta-ui #game.game-scene-loaded > canvas {
-    clip-path: inset(12px 12px 96px 12px round 16px);
+    clip-path: inset(
+        calc(12px + var(--quanta-call-strip, 0px)) calc(12px + var(--quanta-chat-map, 0px))
+            calc(96px + var(--quanta-chat-below, 0px)) 12px round 16px
+    );
 }
 
 /* The clip makes the canvas its own layer, painted over Phaser's DOM layer just before it: names, speech bubbles
@@ -963,9 +1533,12 @@ html.quanta-ui #game.game-scene-loaded > div:has(+ canvas) {
 }
 
 /* On phones the dock is 68px tall, 8px from the bottom (QuantaDock.svelte). */
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui #game.game-scene-loaded > canvas {
-        clip-path: inset(8px 8px 84px 8px round 14px);
+        clip-path: inset(
+            calc(8px + var(--quanta-call-strip, 0px)) calc(8px + var(--quanta-chat-map, 0px))
+                calc(84px + var(--quanta-chat-below, 0px)) 8px round 14px
+        );
     }
 }
 
@@ -973,7 +1546,7 @@ html.quanta-ui #game.game-scene-loaded > div:has(+ canvas) {
    edges and from the map, above the dock where the two sit side by side. Padded rather than clipped, so the page
    keeps its whole height. */
 html.quanta-ui #cowebsites-container {
-    padding: 12px 12px 96px 0;
+    padding: 12px calc(12px + var(--quanta-chat-website, 0px)) 96px 0;
     background: #101217;
     backdrop-filter: none;
 }
@@ -987,23 +1560,23 @@ html.quanta-ui #cowebsites-container > div:first-child {
 /* Portrait: the website above the map, the map's own 12px below it. */
 @media (orientation: portrait) {
     html.quanta-ui #cowebsites-container {
-        padding: 12px 12px 0;
+        padding: 12px calc(12px + var(--quanta-chat-website, 0px)) 0 12px;
     }
 }
 
 /* Full screen, WA lifts it above everything (z-index 1000); the dock stays above it. */
 html.quanta-ui #cowebsites-container.cowebsite-fullscreen {
-    padding: 12px 12px 96px;
+    padding: 12px calc(12px + var(--quanta-chat-website, 0px)) 96px 12px;
     z-index: 940;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui #cowebsites-container {
-        padding: 8px 8px 0;
+        padding: 8px calc(8px + var(--quanta-chat-website, 0px)) 0 8px;
     }
 
     html.quanta-ui #cowebsites-container.cowebsite-fullscreen {
-        padding: 8px 8px 84px;
+        padding: 8px calc(8px + var(--quanta-chat-website, 0px)) 84px 8px;
     }
 }
 
@@ -1217,7 +1790,12 @@ html.quanta-ui .mapexplorer :is(.entities, .areas) .bg-white.text-secondary {
    fonts first, so a system's monochrome symbol font doesn't draw them as outlines. */
 /* The same 12px everywhere: around the panel, above and below its divider; WA's row padding doubled it under the
    Say/Think row. */
+/* Sized to its content, not to the dock that positions it, and never wider than the frame: in a narrow room beside a
+   lesson or on a phone, Edit and then the emoji wrap onto rows of their own. */
 html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar {
+    box-sizing: border-box;
+    width: max-content;
+    max-width: calc(100vw - 16px);
     padding: 12px;
     border-radius: 24px;
     background: #181b21;
@@ -1225,7 +1803,25 @@ html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > div:first-child {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 8px;
+}
+
+@media (max-width: 431px) {
+    html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > div:first-child > .bottom-action-button {
+        padding-left: 0;
+    }
+
+    html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > div:first-child > .bottom-action-button::before {
+        display: none;
+    }
+}
+
 html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar > div:first-child > div:first-child {
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 4px;
     padding: 0;
 }
@@ -1257,7 +1853,8 @@ html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji:hover
     transform: scale(1.15);
 }
 
-html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji > div:last-child {
+/* Its keyboard key, in the corner (touch screens have none: the emoji itself is then the last child). */
+html.quanta-ui [data-testid="quanta-dock"] .bottom-action-bar button.emoji > div:last-child:not(.emoji) {
     position: absolute;
     right: 2px;
     bottom: 1px;
@@ -1353,6 +1950,94 @@ html.quanta-ui [data-testid="quanta-settings"] .global-message-content + div > s
 /* The video tiles start inside the map's window, not on the backdrop above it. */
 html.quanta-ui #cameras-container {
     margin-top: 24px;
+}
+
+/* A tile's microphone indicator only shows: taps reach what is under it (on a small tile, its open button). */
+html.quanta-ui .group\/centered-video > .z-\[251\] {
+    pointer-events: none;
+}
+
+/* A tile's open button shows only on hover in WA: a touch screen shows it, as a small round button. */
+@media (hover: none) {
+    html.quanta-ui #cameras-container .full-screen-button {
+        width: 36px;
+        height: 36px;
+        padding: 8px;
+        border-radius: 9999px;
+        background: rgb(16 18 23 / 0.72);
+        backdrop-filter: none;
+        opacity: 0.9;
+    }
+}
+
+/* Phones: the call is one row of small tiles (PresentationLayout.svelte); a row tile's own 160px minimum would keep
+   them as big as on a laptop. */
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui #cameras-container {
+        margin-top: 8px;
+    }
+
+    html.quanta-ui #cameras-container > .camera-box {
+        min-width: 0;
+        flex-basis: auto;
+    }
+
+    /* A tile with a picture (a shared screen, a camera that is on) leads the row, so a share is in sight on a
+       portrait phone too; the row centres itself while it fits and starts at its left edge once it scrolls (browsers
+       without "safe" keep it at the left), instead of WA's margins on the first and last tiles in WA's own order. */
+    html.quanta-ui #cameras-container {
+        justify-content: flex-start;
+        justify-content: safe center;
+    }
+
+    html.quanta-ui #cameras-container > .camera-box {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    html.quanta-ui #cameras-container > .camera-box:has(video) {
+        order: -1 !important;
+    }
+
+    /* A shared screen takes the room below the tiles but its picture is often shorter: only the picture takes taps,
+       the map around it stays walkable. */
+    html.quanta-ui #highlighted-media > .video-media-box {
+        pointer-events: none;
+    }
+
+    html.quanta-ui #highlighted-media :is(video, .group\/centered-video) {
+        pointer-events: auto;
+    }
+
+    /* Its exit and full-screen buttons, always shown on a touch screen (VideoMediaBox.svelte), as a small pill in the
+       top-left corner (the presenter's microphone sits over the top-right one) instead of a bar over the middle of the
+       picture; the presenter's name smaller in its corner. */
+    html.quanta-ui .group\/centered-video > .absolute.m-auto.h-14 {
+        top: 6px;
+        right: auto;
+        left: 6px;
+        height: 36px;
+        border-radius: 9999px;
+        background: rgb(16 18 23 / 0.72);
+        backdrop-filter: none;
+    }
+
+    html.quanta-ui .group\/centered-video > .absolute.m-auto.h-14 button {
+        padding: 0 9px;
+    }
+
+    html.quanta-ui .group\/centered-video > .absolute.m-auto.h-14 svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    html.quanta-ui
+        :is(#highlighted-media, .quanta-fullscreen-media)
+        .group\/centered-video
+        > .absolute.bottom-0.left-0 {
+        transform: scale(0.72);
+        transform-origin: bottom left;
+    }
 }
 
 /* The camera check before entering: the settings dialog's language. A plain title without WA's paragraph of
@@ -1893,13 +2578,18 @@ html.quanta-ui [data-quanta-global] #active-globalMessage > .flex.flex-col.items
     }
 }
 
-html.quanta-ui .quanta-chat-delete {
+html.quanta-ui :is(.quanta-chat-delete, .quanta-chat-edit, .quanta-chat-copy, .quanta-chat-pin) {
     color: var(--quanta-muted, #a1a1aa);
     background: transparent;
     border: 0;
     border-radius: 6px;
     padding: 6px;
     cursor: pointer;
+}
+html.quanta-ui :is(.quanta-chat-edit, .quanta-chat-copy, .quanta-chat-pin):hover,
+html.quanta-ui :is(.quanta-chat-edit, .quanta-chat-copy, .quanta-chat-pin):focus-visible {
+    color: #eceef1;
+    background: rgba(255, 255, 255, 0.08);
 }
 html.quanta-ui .quanta-chat-delete:hover,
 html.quanta-ui .quanta-chat-delete:focus-visible {
@@ -1908,7 +2598,7 @@ html.quanta-ui .quanta-chat-delete:focus-visible {
 }
 
 /* Keep the essential controls inset on phones; optional actions already leave the narrow dock. */
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 480px) {
     html.quanta-ui [data-testid="quanta-dock"] .qd-dock {
         box-sizing: border-box;
         max-width: calc(100% - 16px);
@@ -1919,7 +2609,8 @@ html.quanta-ui .quanta-chat-delete:focus-visible {
         gap: 4px;
     }
 
-    html.quanta-ui [data-testid="quanta-dock"] .qd-buttons > [data-optional],
+    /* A laptop's room beside a lesson can be this narrow too, so reactions stay; screen sharing goes. */
+    html.quanta-ui [data-testid="quanta-dock"] .qd-buttons > [data-optional]:not(.qd-anchor),
     html.quanta-ui [data-testid="quanta-dock"] .qd-split-toggle {
         display: none;
     }
@@ -1927,4 +2618,1511 @@ html.quanta-ui .quanta-chat-delete:focus-visible {
     html.quanta-ui [data-testid="quanta-dock"] .qd-button.leave {
         width: 44px;
     }
+}
+
+/* The teacher's board, read-only for a student (SimpleCowebsiteComponent): Excalidraw's island and buttons (light
+   theme, its canvas in either), so the board's own controls and ours read as one. */
+.quanta-board-ask {
+    gap: 2px;
+    padding: 4px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow:
+        0 0 0.93px 0 rgb(0 0 0 / 0.17),
+        0 0 3.13px 0 rgb(0 0 0 / 0.08),
+        0 7px 14px 0 rgb(0 0 0 / 0.05);
+    font-family:
+        Assistant,
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
+}
+.quanta-board-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #1b1b1f;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+button.quanta-board-pill {
+    cursor: pointer;
+}
+button.quanta-board-pill:hover {
+    background: #f1f0ff;
+}
+button.quanta-board-pill:focus-visible {
+    outline: 2px solid #6965db;
+    outline-offset: 1px;
+}
+.quanta-board-pill-quiet {
+    color: #5c5c5c;
+}
+button.quanta-board-pill-primary {
+    background: #6965db;
+    color: #fff;
+}
+button.quanta-board-pill-primary:hover {
+    background: #5753d0;
+}
+.quanta-board-pill-waiting {
+    background: #fff4d6;
+    color: #5c4300;
+}
+
+/* Above the dock, in the map's window: at the frame's foot the dock covers them. */
+html.quanta-ui [data-testid="proximity-notifications"] {
+    /* Set with the dock's height (QuantaDock.svelte): a tray makes it taller. */
+    bottom: var(--quanta-toasts-bottom, 96px);
+    padding-bottom: 0;
+}
+
+/* WA's toasts (UI/Notification.svelte in MainLayout's stack): compact cards inside the room's top-right corner. Their
+   own styles size them to the text and push the text down, so a long one ran off the room's left edge. */
+html.quanta-ui div:has(> .notification-playing) {
+    top: 12px;
+    /* Beside the side column (People over the room, or the chat), not under it. */
+    right: calc(12px + var(--quanta-chat-map, 0px));
+    max-width: calc(100% - 24px - var(--quanta-chat-map, 0px));
+    gap: 8px;
+    align-items: flex-end;
+}
+/* The room's notices in one stack (MainLayout, quanta/Notice.svelte): centred over the room just above whatever stands
+   on the dock (its strip, the view-as-student notice), the newest nearest the dock. Never over the call's tiles at the
+   top or the dock; clear of the zoom column on either side (12px inset, 12px, 48px, 12px), as the pop-ups are. */
+html.quanta-ui div.quanta-notices {
+    position: absolute;
+    z-index: 999;
+    top: auto;
+    bottom: var(--quanta-notices-bottom, 104px);
+    /* Centred on the dock (QuantaDock.svelte measures it), like the on-air line: the room's one axis for messages. The
+       layout's own box already stops at an open chat column. */
+    left: var(--quanta-room-x, 50%);
+    right: auto;
+    width: min(480px, calc(var(--quanta-room-w, 100%) - 168px));
+    /* Below the call's tiles and the room script's buttons at the top (noticeOffsets.ts): NoticeStack.svelte keeps
+       out of sight what has no room, so nothing here is clipped (the cards' shadows and slide-in stay whole). */
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    container-type: inline-size;
+    pointer-events: none;
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui div.quanta-notices {
+        width: calc(var(--quanta-room-w, 100%) - 24px);
+    }
+}
+
+html.quanta-ui div.quanta-notices > * {
+    max-width: 100%;
+    pointer-events: auto;
+}
+
+html.quanta-ui div.quanta-notices > .quanta-notice-item {
+    display: flex;
+    justify-content: center;
+    max-width: 100%;
+}
+
+/* A dock button's tip (QuantaDock.svelte, 38px above the dock) never covers a notice: while one shows, the notices and the
+   dock's own rows rise above it. */
+@media (hover: hover) {
+    html.quanta-ui div.quanta-notices,
+    html.quanta-ui .quanta-dock [data-testid="quanta-on-air-strip"] {
+        transition: translate 0.15s ease;
+    }
+
+    html.quanta-ui:not([data-quanta-board-on]):has(
+            .quanta-dock [data-tip]:not([aria-pressed="true"], [aria-expanded="true"]):hover
+        )
+        div.quanta-notices,
+    html.quanta-ui:not([data-quanta-board-on])
+        .quanta-dock:has([data-tip]:not([aria-pressed="true"], [aria-expanded="true"]):hover)
+        [data-testid="quanta-on-air-strip"] {
+        translate: 0 -38px;
+    }
+}
+
+/* Kept out of sight, still laid out where it would stand: measured, so it comes back the frame it has room. */
+html.quanta-ui div.quanta-notices > .quanta-notice-item.gone {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: max-content;
+    max-width: 100%;
+    transform: translateX(-50%);
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* What the stack reads out as notices come (NoticeStack.svelte): for screen readers only. */
+html.quanta-ui .quanta-notice-log {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+html.quanta-ui div.quanta-notices .toast-container,
+html.quanta-ui div.quanta-notices .toast-container:first-child {
+    margin: 0;
+}
+
+html.quanta-ui .notification-playing {
+    max-width: 360px;
+    margin: 0;
+    padding: 12px 16px 12px 12px;
+    gap: 12px;
+    border-radius: 12px;
+    background: rgb(30 31 36 / 0.92);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+}
+html.quanta-ui .notification-playing img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    border-radius: 8px;
+}
+html.quanta-ui .notification-playing p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+/* Who is talking (quanta/talkingIndicator.ts): sound bars in the name, where the status dot sits, in place of WA's faint
+   ring around the name. Sized with the name, so they read at every zoom. Each bar keeps its own uneven rhythm, so
+   together they never settle into a visible loop. Height rather than a scale, which would flatten their round ends. */
+html.quanta-ui .username-display.talking,
+html.quanta-ui .username-display.speaker {
+    animation: none;
+}
+
+html.quanta-ui .username-display.talking > :first-child,
+html.quanta-ui .username-display.speaker > :first-child {
+    display: none !important;
+}
+
+html.quanta-ui .quanta-talk-bars {
+    display: none;
+}
+
+html.quanta-ui .username-display.talking > .quanta-talk-bars,
+html.quanta-ui .username-display.speaker > .quanta-talk-bars {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    width: calc(11px * var(--username-dom-scale, 1));
+    height: calc(11px * var(--username-dom-scale, 1));
+    contain: strict;
+}
+
+html.quanta-ui .quanta-talk-bars > i {
+    display: block;
+    width: calc(2.5px * var(--username-dom-scale, 1));
+    min-height: calc(2.5px * var(--username-dom-scale, 1));
+    height: 45%;
+    border-radius: 999px;
+    background: #80da88;
+    animation: quanta-talk-a 1.07s ease-in-out infinite;
+}
+
+html.quanta-ui .quanta-talk-bars > i:nth-child(2) {
+    height: 80%;
+    animation: quanta-talk-b 1.31s ease-in-out infinite;
+}
+
+html.quanta-ui .quanta-talk-bars > i:nth-child(3) {
+    height: 55%;
+    animation: quanta-talk-c 0.89s ease-in-out infinite;
+}
+
+@keyframes quanta-talk-a {
+    0%,
+    100% {
+        height: 35%;
+    }
+    17% {
+        height: 80%;
+    }
+    29% {
+        height: 45%;
+    }
+    48% {
+        height: 100%;
+    }
+    63% {
+        height: 30%;
+    }
+    82% {
+        height: 70%;
+    }
+}
+
+@keyframes quanta-talk-b {
+    0%,
+    100% {
+        height: 75%;
+    }
+    14% {
+        height: 35%;
+    }
+    33% {
+        height: 100%;
+    }
+    46% {
+        height: 55%;
+    }
+    61% {
+        height: 90%;
+    }
+    79% {
+        height: 30%;
+    }
+}
+
+@keyframes quanta-talk-c {
+    0%,
+    100% {
+        height: 50%;
+    }
+    22% {
+        height: 95%;
+    }
+    41% {
+        height: 30%;
+    }
+    58% {
+        height: 70%;
+    }
+    77% {
+        height: 40%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.quanta-ui .quanta-talk-bars > i {
+        animation: none;
+    }
+}
+
+/* Messages fade out under the chat's header and above its composer instead of being cut by them; the padding keeps
+   the oldest and the newest clear at rest. */
+html.quanta-ui .quanta-chat-scroll {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+/* The class chat's reactions: under the bubble, each naming who reacted. */
+html.quanta-ui .quanta-chat-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+html.quanta-ui .quanta-chat-reaction {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 8px 0 7px;
+    border: 0;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.08);
+    color: rgb(255 255 255 / 0.8);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: left;
+    cursor: pointer;
+}
+
+/* The emoji in a square of its own, its ink centred whatever the emoji font (quanta/emojiCentre.ts). Without the
+   family the first font with the glyph wins, which on Linux draws it as a grey outline. */
+html.quanta-ui .quanta-chat-reaction > span:first-child {
+    display: block;
+    width: 16px;
+    height: 16px;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 16px;
+    text-align: center;
+    translate: 0 var(--quanta-emoji-nudge, 0);
+}
+
+html.quanta-ui .quanta-chat-reaction > span:last-child {
+    display: block;
+    font-variant-numeric: tabular-nums;
+}
+
+html.quanta-ui .quanta-chat-reaction:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.14);
+}
+
+/* Your own reaction: the main buttons' blue-grey, lightly. */
+html.quanta-ui .quanta-chat-reaction.mine {
+    background: rgb(201 213 234 / 0.24);
+    color: #eceef1;
+}
+
+html.quanta-ui .quanta-chat-reaction.mine:hover:not(:disabled) {
+    background: rgb(201 213 234 / 0.32);
+}
+
+html.quanta-ui .quanta-chat-reaction:disabled {
+    cursor: default;
+}
+
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions > .quanta-chat-react {
+    display: flex;
+    padding: 4px;
+}
+
+/* A request someone already dealt with steps back, so the open ones stand out. */
+html.quanta-ui .quanta-message-done {
+    opacity: 0.55;
+}
+
+/* Polls and questions read as the chat's own messages: the same bubble, a narrow column's width at most, and small
+   quiet actions. Labels go first when the column gets narrow, down to icons. */
+html.quanta-ui .quanta-card-row {
+    padding: 2px 12px;
+}
+
+html.quanta-ui .quanta-card {
+    box-sizing: border-box;
+    container-type: inline-size;
+    width: min(100%, 340px);
+    padding: 8px 12px;
+    border-radius: 14px 14px 14px 4px;
+    background: #2b3038;
+    color: #eceef1;
+    font-size: 14px;
+    line-height: 20px;
+    overflow-wrap: break-word;
+}
+
+html.quanta-ui .quanta-card-full {
+    width: 100%;
+    border-radius: 10px;
+}
+
+html.quanta-ui .quanta-card-title {
+    font-weight: 600;
+}
+
+html.quanta-ui .quanta-card-body {
+    margin-top: 2px;
+    white-space: pre-wrap;
+}
+
+html.quanta-ui .quanta-card-body-first {
+    margin-top: 0;
+}
+
+html.quanta-ui .quanta-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 4px;
+    margin-top: 1px;
+    font-size: 12px;
+    line-height: 16px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.quanta-ui .quanta-card-meta > span + span::before {
+    content: "· ";
+}
+
+html.quanta-ui .quanta-card-meta-top {
+    margin-top: 0;
+}
+
+html.quanta-ui .quanta-card-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+html.quanta-ui .quanta-card-note {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 16px;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+html.quanta-ui .quanta-card-error {
+    color: #ffb4b4;
+}
+
+html.quanta-ui .quanta-card-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    margin: 4px -6px -4px;
+    min-height: 26px;
+}
+
+html.quanta-ui .quanta-card-count {
+    flex: 1 1 0;
+    min-width: 72px;
+    padding: 0 6px;
+    font-size: 12px;
+    line-height: 16px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.quanta-ui .quanta-card-gap {
+    flex: 1 1 auto;
+}
+
+html.quanta-ui .quanta-card-action {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
+    min-width: 26px;
+    justify-content: center;
+    margin: 0;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    line-height: 16px;
+    cursor: pointer;
+}
+
+html.quanta-ui .quanta-card-action:not(:disabled):is(:hover, :focus-visible) {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+html.quanta-ui .quanta-card-action:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+html.quanta-ui .quanta-card-action-on,
+html.quanta-ui .quanta-card-done {
+    color: #80da88;
+}
+
+html.quanta-ui .quanta-card-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+@container (max-width: 240px) {
+    html.quanta-ui .quanta-card-label {
+        display: none;
+    }
+}
+
+html.quanta-ui .quanta-poll-options {
+    margin-top: 6px;
+}
+
+html.quanta-ui .quanta-poll-option {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    column-gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 5px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+html.quanta-ui .quanta-poll-results .quanta-poll-option {
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 8px;
+}
+
+html.quanta-ui button.quanta-poll-option {
+    cursor: pointer;
+}
+
+html.quanta-ui button.quanta-poll-option:disabled {
+    cursor: default;
+}
+
+html.quanta-ui .quanta-poll-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    color: #12261a;
+}
+
+html.quanta-ui .quanta-poll-mark-many {
+    border-radius: 5px;
+}
+
+html.quanta-ui button.quanta-poll-option:not(:disabled):is(:hover, :focus-visible) .quanta-poll-mark {
+    border-color: #80da88;
+}
+
+html.quanta-ui .quanta-poll-mark-on {
+    border-color: #80da88;
+    background: #80da88;
+}
+
+html.quanta-ui .quanta-poll-percent {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+html.quanta-ui .quanta-poll-text-won {
+    font-weight: 600;
+}
+
+html.quanta-ui .quanta-poll-chosen {
+    display: inline-flex;
+    vertical-align: -1px;
+    color: #80da88;
+}
+
+html.quanta-ui .quanta-poll-line {
+    grid-column: 2;
+    display: block;
+    height: 1px;
+    margin-top: 5px;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+html.quanta-ui .quanta-poll-results .quanta-poll-line {
+    height: 3px;
+    margin-top: 3px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+html.quanta-ui .quanta-poll-line > i {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+    border-radius: 3px;
+    background: #80da88;
+    transition: width 0.25s ease;
+}
+
+/* What opens over the chat from a poll or question: one quiet row to go back, then the list. */
+html.quanta-ui .quanta-panel-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    height: 36px;
+    padding: 0 8px;
+}
+
+html.quanta-ui .quanta-panel-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    color: #eceef1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html.quanta-ui .quanta-question-form {
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    gap: 4px;
+    margin: 0 12px 8px;
+    padding: 6px 6px 6px 10px;
+    border-radius: 10px;
+    background: #2b3038;
+}
+
+html.quanta-ui .quanta-question-form > textarea {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    resize: none;
+    background: transparent;
+    color: #eceef1;
+    font-size: 14px;
+    line-height: 20px;
+}
+
+html.quanta-ui .quanta-panel-tabs {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    padding: 0 12px 6px;
+}
+
+html.quanta-ui .quanta-panel-tabs > button {
+    margin: 0;
+    padding: 2px 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+    line-height: 16px;
+    cursor: pointer;
+}
+
+html.quanta-ui .quanta-panel-tabs > button[aria-selected="true"] {
+    border-bottom-color: currentColor;
+    color: #fff;
+}
+
+html.quanta-ui .quanta-panel-list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+    padding: 0 12px 12px;
+    overflow-y: auto;
+}
+
+html.quanta-ui .quanta-panel-empty {
+    margin: 8px 0;
+    font-size: 13px;
+    line-height: 18px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* Creating a poll: Popup's shell cut down to the size of what it asks. */
+html.quanta-ui div:has(> .p-8 > .quanta-poll-create) {
+    max-width: 380px;
+    border-radius: 14px;
+    background: #1f2329;
+    backdrop-filter: none;
+}
+
+html.quanta-ui .p-8:has(> .quanta-poll-create) {
+    padding: 12px 16px 8px;
+}
+
+html.quanta-ui .p-8:has(> .quanta-poll-create) > :first-child {
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+html.quanta-ui .p-8:has(> .quanta-poll-create) > :first-child > .p-2 {
+    padding: 0;
+}
+
+html.quanta-ui .p-8:has(> .quanta-poll-create) [data-testid="closeModal"] {
+    width: 28px;
+    height: 28px;
+    min-width: 0;
+    padding: 0;
+}
+
+html.quanta-ui .quanta-poll-create-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+html.quanta-ui .quanta-poll-create {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+html.quanta-ui .quanta-poll-create :is(textarea, input:not([type="checkbox"])) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 6px;
+    outline: 0;
+    resize: none;
+    background: #2b3038;
+    color: #eceef1;
+    font-size: 14px;
+    line-height: 20px;
+}
+
+html.quanta-ui .quanta-poll-create :is(textarea, input:not([type="checkbox"])):focus {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+html.quanta-ui .quanta-poll-create-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+html.quanta-ui .quanta-poll-create-answer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+html.quanta-ui .quanta-poll-create-add {
+    align-self: flex-start;
+}
+
+html.quanta-ui .quanta-poll-create-hide {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+}
+
+html.quanta-ui .quanta-poll-create-hide > input {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin: 1px 0 0;
+    accent-color: #80da88;
+}
+
+html.quanta-ui .footer:has(> .quanta-poll-create-actions) {
+    padding: 0 16px 12px;
+    border-radius: 0 0 14px 14px;
+    background: transparent;
+}
+
+html.quanta-ui .quanta-poll-create-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 100%;
+}
+
+html.quanta-ui .quanta-poll-create-actions > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+html.quanta-ui .quanta-poll-create-actions > .quanta-poll-create-submit {
+    background: #c9d5ea;
+    color: #1d2b45;
+    font-weight: 600;
+}
+
+html.quanta-ui .quanta-poll-create-actions > .quanta-poll-create-submit:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Over the map, clear of the chat column: the platform's handle for that column lies above the room's frame. */
+html.quanta-ui div:has(> .p-8 > .quanta-poll-create) {
+    transform: translateX(calc(var(--quanta-chat-map, 0px) / -2));
+}
+
+/* A chat message toast (ProximityNotification.svelte): the room's solid card, the sender over two lines of the message,
+   as a phone shows one; no emoji, no see-through panel, the chat's own type sizes. */
+html.quanta-ui .proximity-notification {
+    width: auto;
+    min-width: 0;
+    max-width: min(340px, calc(100vw - 48px));
+    gap: 0;
+    padding: 10px 14px 11px;
+    border: 1px solid rgb(255 255 255 / 0.07);
+    border-radius: 14px;
+    background: rgb(29 32 39 / 0.97);
+    backdrop-filter: none;
+    box-shadow:
+        0 1px 2px rgb(0 0 0 / 0.3),
+        0 8px 24px rgb(0 0 0 / 0.28);
+}
+
+/* A mention keeps the chat's colour for mentions: its yellow "@" (ProximityNotification.svelte) where a notice has its icon. */
+html.quanta-ui .proximity-notification:has(> .quanta-mention-toast-icon) {
+    gap: 10px;
+    padding-left: 12px;
+}
+
+html.quanta-ui .proximity-notification:hover,
+html.quanta-ui .proximity-notification:focus-visible {
+    background: #252931;
+}
+
+html.quanta-ui .proximity-notification > div:first-child:not(.quanta-mention-toast-icon) {
+    display: none;
+}
+
+html.quanta-ui .proximity-notification > div:last-child > div:first-child {
+    margin-bottom: 1px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    color: #eceef1;
+}
+
+html.quanta-ui .proximity-notification [data-testid="proximity-notification-message"] {
+    font-size: 14px;
+    line-height: 20px;
+    color: #e3e6ea;
+    overflow-wrap: anywhere;
+}
+
+html.quanta-ui .proximity-notification .proximity-notification-room {
+    font-weight: 400;
+    color: rgba(236, 238, 241, 0.55);
+}
+
+/* A teacher's mark on a request (on the way, dealt with): one quiet line under the bubble, the state's icon in its
+   colour and who, never a reaction chip. Green is the room's colour for something done. */
+html.quanta-ui .quanta-chat-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    margin: 2px 0 0;
+    padding: 1px 6px 1px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: rgb(255 255 255 / 0.55);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    text-align: left;
+    cursor: pointer;
+}
+
+html.quanta-ui .quanta-chat-status > :first-child {
+    flex: none;
+    align-self: flex-start;
+    margin-top: 1.5px;
+    color: #c9d5ea;
+}
+
+html.quanta-ui .quanta-chat-status.done > :first-child {
+    color: #80da88;
+}
+
+html.quanta-ui .quanta-chat-status > span {
+    overflow-wrap: break-word;
+}
+
+html.quanta-ui .quanta-chat-status:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.08);
+}
+
+html.quanta-ui .quanta-chat-status:disabled {
+    cursor: default;
+}
+
+/* @mentions (quanta/mentions.ts): a named person reads in the chats' "for you" amber; the viewer's own name stands out. */
+html.quanta-ui .message-bubble .quanta-mention {
+    color: #f2c14e;
+    font-weight: 600;
+}
+
+html.quanta-ui .message-bubble .quanta-mention.me {
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    padding: 0 3px;
+    border-radius: 4px;
+    background: rgb(242 193 78 / 0.2);
+}
+
+/* On the viewer's own light bubble the amber reads too faint: a deep amber instead. */
+html.quanta-ui .bg-secondary\/90 .message-bubble .quanta-mention {
+    color: #8a5300;
+}
+
+/* The class's stage (stage.ts, StageRoomTile.svelte): a board the platform presents over the room's window takes it,
+   and the room steps down to the strip's first tile; the map's picture is drawn small there (a transform on the
+   canvas), and the call's tiles line the strip beside it, as large as the tile. With the room back on the stage the
+   board waits as that first tile instead, over the map's top. Folded ("faces"), the strip is a row of round faces. */
+html.quanta-ui[data-quanta-stage],
+html.quanta-ui[data-quanta-stage] body {
+    background: #101217;
+}
+
+/* The map is only a picture there: its tile takes the clicks. */
+html.quanta-ui[data-quanta-stage] #game > canvas {
+    pointer-events: none;
+}
+
+/* The layout already stops at the open chat's column; the tiles start beside the first one, level with it. The
+   layout and the row start a little in already (12px and 4px). */
+html.quanta-ui[data-quanta-strip] .presentation-layout {
+    padding-top: 0;
+    padding-left: calc(var(--quanta-stage-lead, 199px) + var(--quanta-stage-gap, 12px) - 4px);
+    padding-right: calc(var(--quanta-stage-gap, 12px) + 40px);
+}
+
+html.quanta-ui[data-quanta-strip] #cameras-container {
+    margin-top: 0;
+    justify-content: flex-start;
+    gap: var(--quanta-stage-gap, 12px);
+}
+
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box {
+    min-width: 0;
+    flex: 0 0 auto;
+    width: var(--quanta-stage-tile-w, 199px) !important;
+    max-width: none !important;
+    height: var(--quanta-stage-tile-h, 112px);
+    margin: 0 !important;
+}
+
+/* Folded: each person a round face as tall as the folded strip, their name on hover (the tile's title). */
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box {
+    width: var(--quanta-stage-tile-h, 36px) !important;
+    border-radius: 999px;
+}
+
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box :is(span, p, button, svg, [class*="name"]) {
+    display: none !important;
+}
+
+/* The call's strip, folded or not, as a voice call shows its people: a green ring round whoever is talking; the
+   teachers first, then a thin divider, then the class. */
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box {
+    order: 2 !important;
+}
+
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-staff] {
+    order: 0 !important;
+}
+
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-talking] {
+    position: relative;
+}
+
+/* Inside the tile, over its own card: the strip clips anything past its edge. */
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-talking]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 300;
+    border-radius: 16px;
+    box-shadow: inset 0 0 0 2px #80da88;
+    pointer-events: none;
+}
+
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-quanta-talking]::after {
+    border-radius: 999px;
+}
+
+/* The ring says who talks: WA's sound meter and its talking border go. */
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box :has(> .voice-meter-bar) {
+    display: none !important;
+}
+
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box .border-secondary {
+    border-color: transparent !important;
+}
+
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box .responsive-dimension div {
+    background: transparent !important;
+    backdrop-filter: none !important;
+}
+
+html.quanta-ui[data-quanta-strip]
+    #cameras-container:has(> .camera-box[data-quanta-staff]):has(> .camera-box:not([data-quanta-staff]))::before {
+    content: "";
+    order: 1;
+    flex: none;
+    align-self: center;
+    width: 1px;
+    height: 48px;
+    background: rgb(255 255 255 / 0.2);
+}
+
+html.quanta-ui[data-quanta-strip="faces"]
+    #cameras-container:has(> .camera-box[data-quanta-staff]):has(> .camera-box:not([data-quanta-staff]))::before {
+    height: 24px;
+}
+
+/* The avatar of a person without a camera in the middle of their circle: the camera-off card's name block (its padding,
+   its hidden name, its own -50% translate) would hold it up and to the left. */
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box .responsive-dimension {
+    inset: 0 !important;
+    /* Tailwind's -translate-*-1/2 go through these; a translate declared beside transform is dropped by the minifier. */
+    --tw-translate-x: 0px !important;
+    --tw-translate-y: 0px !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box .responsive-dimension div {
+    position: static !important;
+}
+
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box .responsive-dimension img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: 32px;
+    height: 32px;
+    image-rendering: pixelated;
+}
+
+/* A share or an enlarged camera on the stage: below the strip and above the dock, fitted whole on a dark ground. */
+html.quanta-ui[data-quanta-stage="share"] #highlighted-media {
+    position: fixed;
+    z-index: 30;
+    top: calc(var(--quanta-stage-gap, 12px) * 2 + var(--quanta-stage-tile-h, 112px));
+    left: var(--quanta-stage-gap, 12px);
+    right: calc(var(--quanta-stage-gap, 12px) + var(--quanta-chat-map, 0px));
+    bottom: calc(96px + var(--quanta-chat-below, 0px));
+    margin: 0 !important;
+    display: flex;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #0b0d11;
+    pointer-events: auto;
+}
+
+html.quanta-ui[data-quanta-stage="share"] #highlighted-media > * {
+    width: 100%;
+    height: 100%;
+}
+
+html.quanta-ui[data-quanta-stage="share"] #highlighted-media video {
+    object-fit: contain !important;
+}
+
+/* The presenter's name under the picture, in a band of its own, never over a corner of what they share. */
+html.quanta-ui[data-quanta-stage="share"] #highlighted-media {
+    padding-bottom: 36px;
+}
+
+html.quanta-ui[data-quanta-stage="share"] #highlighted-media .responsive-dimension {
+    top: calc(100% + 4px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+}
+
+/* With a mouse the dock's buttons name themselves above it on hover: room for that line (the platform's board pane
+   leaves the same). */
+@media (hover: hover) and (min-width: 481px) and (min-height: 481px) {
+    html.quanta-ui[data-quanta-stage="share"] #highlighted-media {
+        bottom: calc(124px + var(--quanta-chat-below, 0px));
+    }
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui[data-quanta-stage="share"] #highlighted-media {
+        bottom: calc(84px + var(--quanta-chat-below, 0px));
+        border-radius: 14px;
+    }
+}
+
+/* The call's strip with nothing on the stage: no first tile, the first tile level with the map window's left edge (the
+   layout already starts there; the row's own 4px in is taken back). */
+html.quanta-ui[data-quanta-call-strip] .presentation-layout {
+    padding-left: 0;
+}
+
+html.quanta-ui[data-quanta-call-strip] #cameras-container {
+    margin-left: 0;
+}
+
+/* A presented board covers the map; its people's names would poke out above the board's top edge. */
+html.quanta-ui[data-quanta-board-on] #game .username-display {
+    visibility: hidden;
+}
+
+/* Layout A, the rail (rail.ts, RailColumn.svelte). Beside the stage, WA's call tiles fill the rail's call card under
+   its header: a camera that is on (or a share) across the card at 16:9, everyone else three to a row; past the card's
+   limit they scroll. The card itself and its header are drawn under them. */
+html.quanta-ui[data-quanta-rail="column"] .presentation-layout {
+    position: fixed;
+    z-index: 2;
+    top: var(--quanta-rail-tiles-top, -9999px);
+    left: var(--quanta-rail-x, 0px);
+    right: auto;
+    bottom: auto;
+    width: var(--quanta-rail-tiles-w, 0px);
+    height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+html.quanta-ui[data-quanta-rail] .presentation-layout > div:has(#cameras-container),
+html.quanta-ui[data-quanta-rail] .presentation-layout > div > div:has(> #cameras-container) {
+    width: 100%;
+    height: auto !important;
+    max-height: none !important;
+}
+
+html.quanta-ui[data-quanta-rail="column"] #cameras-container {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: start;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    height: auto !important;
+    max-height: var(--quanta-rail-tiles-max, 50vh);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    white-space: normal;
+    pointer-events: auto;
+}
+
+html.quanta-ui[data-quanta-rail="column"] #cameras-container > .camera-box {
+    flex: none;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: 88px;
+    aspect-ratio: auto;
+    margin: 0 !important;
+    border-radius: 12px;
+}
+
+/* Camera-off tiles a step lighter than the card they sit on (their own ground is the card's colour). */
+html.quanta-ui[data-quanta-rail] #cameras-container > .camera-box:not([data-quanta-video]) {
+    background: #262a31;
+}
+
+html.quanta-ui[data-quanta-rail]
+    #cameras-container
+    > .camera-box:not([data-quanta-video])
+    :is(.bg-contrast\/80, .backdrop-blur) {
+    background: transparent;
+    backdrop-filter: none;
+}
+
+html.quanta-ui[data-quanta-rail="column"]
+    #cameras-container
+    > .camera-box:is([data-quanta-video], [data-quanta-share]) {
+    grid-column: 1 / -1;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    order: -1 !important;
+}
+
+/* A narrow rail (its default 320px) keeps two to a row, so names stay whole. */
+html.quanta-ui[data-quanta-rail="column"][data-quanta-rail-narrow] #cameras-container {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+html.quanta-ui[data-quanta-rail-call-folded] .presentation-layout > div:has(#cameras-container) {
+    display: none;
+}
+
+/* Under the stage (upright screens, phones): one row, the room's tile first (RailColumn.svelte), above the open
+   panel's band and the dock. A camera that is on is 16:9, everyone else square; the row scrolls sideways. */
+html.quanta-ui[data-quanta-rail="band"] .presentation-layout {
+    position: fixed;
+    z-index: 2;
+    top: auto;
+    left: var(--quanta-rail-row-left, 12px);
+    right: 12px;
+    bottom: var(--quanta-rail-row-bottom, 96px);
+    width: auto;
+    height: var(--quanta-rail-row-h, 96px);
+    margin: 0;
+    padding: 0;
+}
+
+html.quanta-ui[data-quanta-rail="band"] #cameras-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    height: var(--quanta-rail-row-h, 96px) !important;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    pointer-events: auto;
+}
+
+html.quanta-ui[data-quanta-rail="band"] #cameras-container {
+    scrollbar-width: none;
+}
+
+html.quanta-ui[data-quanta-rail="band"] #cameras-container::-webkit-scrollbar {
+    display: none;
+}
+
+html.quanta-ui[data-quanta-rail="band"] #cameras-container > .camera-box {
+    flex: none;
+    width: var(--quanta-rail-row-h, 96px) !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: var(--quanta-rail-row-h, 96px);
+    margin: 0 !important;
+    border-radius: 12px;
+}
+
+html.quanta-ui[data-quanta-rail="band"] #cameras-container > .camera-box:is([data-quanta-video], [data-quanta-share]) {
+    width: calc(var(--quanta-rail-row-h, 96px) * 16 / 9) !important;
+    order: -1 !important;
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui[data-quanta-rail="band"] .presentation-layout {
+        right: 8px;
+    }
+
+    /* A phone's row has no width for a tile's menu button: People has the same actions. */
+    html.quanta-ui[data-quanta-rail="band"] #cameras-container .user-menu-btn {
+        display: none;
+    }
+}
+
+/* Layouts A and C on an upright screen: the on-air line stands on what they put under the stage (A's row, an open
+   panel's band), as the notices do (QuantaDock.svelte), not over it. Beside the dock it stays where it is. */
+html.quanta-ui[data-quanta-lifted] .quanta-dock [data-testid="quanta-on-air-strip"] {
+    margin-bottom: var(--quanta-chat-below, 0px);
+}
+
+/* A and C give a share the stage's whole height: no strip above it. */
+html.quanta-ui:is([data-quanta-layout="a"], [data-quanta-layout="c"])[data-quanta-stage="share"] #highlighted-media {
+    top: 12px;
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui:is([data-quanta-layout="a"], [data-quanta-layout="c"])[data-quanta-stage="share"]
+        #highlighted-media {
+        top: 8px;
+    }
+}
+
+/* Layout C, bubbles (bubbles.ts, BubblesLayer.svelte). WA's tiles float at their corner of the stage: only those on
+   camera or talking, as round bubbles; everyone else is the face pile drawn beside them. A share takes them out of
+   the way into a band under it, where they park in a row. */
+html.quanta-ui[data-quanta-bubbles] .presentation-layout {
+    position: fixed;
+    z-index: 45;
+    top: var(--qb-top, auto);
+    right: var(--qb-right, auto);
+    bottom: var(--qb-bottom, auto);
+    left: var(--qb-left, auto);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+html.quanta-ui[data-quanta-bubbles] .presentation-layout > div:has(#cameras-container),
+html.quanta-ui[data-quanta-bubbles] .presentation-layout > div > div:has(> #cameras-container) {
+    width: auto;
+    height: auto !important;
+    max-height: none !important;
+}
+
+/* Dragged, the bubbles follow the pointer (BubblesLayer.svelte); only their own box moves, never the share beside them,
+   whose fixed place a moved ancestor would take it out of. */
+html.quanta-ui[data-quanta-bubbles] #cameras-container {
+    translate: var(--qb-shift-x, 0px) var(--qb-shift-y, 0px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    /* Room for each bubble's name under it (BubblesLayer.svelte), then the gap. */
+    gap: 36px;
+    width: auto;
+    max-width: none;
+    height: auto !important;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+html.quanta-ui[data-quanta-bubbles-corner$="l"] #cameras-container {
+    align-items: flex-start;
+}
+
+html.quanta-ui[data-quanta-bubbles="float"] #cameras-container {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    column-gap: 16px;
+    max-height: var(--qb-max-h, none);
+}
+
+html.quanta-ui[data-quanta-bubbles="float"][data-quanta-bubbles-corner$="r"] #cameras-container {
+    flex-wrap: wrap-reverse;
+}
+
+/* Everyone not on camera and not talking is in the pile, not a tile. */
+html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box {
+    display: none !important;
+}
+
+html.quanta-ui[data-quanta-bubbles]
+    #cameras-container
+    > .camera-box:is([data-quanta-video], [data-quanta-talking], [data-quanta-share]) {
+    display: block !important;
+    flex: none;
+    width: var(--qb-size, 104px) !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: var(--qb-size, 104px);
+    aspect-ratio: auto;
+    margin: 0 !important;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #2b3038;
+    box-shadow:
+        0 0 0 3px #1d2027,
+        0 6px 18px rgb(0 0 0 / 0.35);
+    touch-action: none;
+    cursor: grab;
+}
+
+html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box[data-quanta-talking] {
+    box-shadow:
+        0 0 0 3px #80da88,
+        0 6px 18px rgb(0 0 0 / 0.35);
+}
+
+html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box[data-quanta-share] {
+    width: calc(var(--qb-size, 104px) * 16 / 9) !important;
+    border-radius: 14px;
+}
+
+/* In a bubble the picture is all: the name is under it, and the tile's own name, meter and buttons go. A person
+   talking without a camera shows their woka, larger. */
+html.quanta-ui[data-quanta-bubbles]
+    #cameras-container
+    > .camera-box:not([data-quanta-share])
+    :is(.z-\[251\], .full-screen-button) {
+    display: none !important;
+}
+
+html.quanta-ui[data-quanta-bubbles]
+    #cameras-container
+    > .camera-box[data-quanta-video]:not([data-quanta-share])
+    .responsive-dimension {
+    display: none !important;
+}
+
+html.quanta-ui[data-quanta-bubbles]
+    #cameras-container
+    > .camera-box:not([data-quanta-video])
+    .responsive-dimension
+    .select-none {
+    display: none;
+}
+
+html.quanta-ui[data-quanta-bubbles]
+    #cameras-container
+    > .camera-box:not([data-quanta-video])
+    .responsive-dimension
+    [style*="pixelated"] {
+    width: calc(var(--qb-size, 104px) * 0.5) !important;
+}
+
+/* The video fills its circle. */
+html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box:not([data-quanta-share]) video {
+    object-fit: cover !important;
+}
+
+/* Parked under a share: a row from the band's right end, each name left of its bubble. */
+html.quanta-ui[data-quanta-bubbles="park"] #cameras-container {
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 108px;
+    padding-left: 104px;
+}
+
+html.quanta-ui[data-quanta-bubbles="park"][data-quanta-stage="share"] #highlighted-media {
+    bottom: calc(96px + var(--quanta-chat-below, 0px) + var(--quanta-park-h, 0px));
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+    html.quanta-ui[data-quanta-bubbles="park"][data-quanta-stage="share"] #highlighted-media {
+        bottom: calc(84px + var(--quanta-chat-below, 0px) + var(--quanta-park-h, 0px));
+    }
+}
+
+/* Parked, the map is behind the share and the band: only the room's pill stands for it. */
+html.quanta-ui[data-quanta-bubbles="park"] #game > canvas,
+html.quanta-ui[data-quanta-bubbles="park"] #game > div:has(+ canvas) {
+    visibility: hidden;
+}
+
+/* WA's own overlays fixed to the window (the Say/Think box and every popup, typed and global messages): centred on the
+   room's axis (QuantaDock.svelte), as the dock and the notices are, not on a window the chat column is part of. */
+html.quanta-ui .quanta-popups {
+    left: var(--quanta-room-x, 50%);
+    right: auto;
+    margin: 0;
+    transform: translateX(-50%);
+    max-width: min(80vw, calc(var(--quanta-room-w, 100vw) - 24px));
+}
+
+html.quanta-ui .quanta-text-messages {
+    left: var(--quanta-room-x, 50%);
+    right: auto;
+    width: calc(var(--quanta-room-w, 100vw) - 24px);
+    transform: translateX(-50%);
 }

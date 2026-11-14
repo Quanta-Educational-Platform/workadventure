@@ -41,7 +41,12 @@ export class FaviconManager {
                 ctx.fill();
 
                 // Replace favicon
-                link.href = canvas.toDataURL();
+                // quanta: a favicon from another origin without CORS taints the canvas; it keeps its own picture.
+                try {
+                    link.href = canvas.toDataURL();
+                } catch {
+                    // The badge can't be drawn on it.
+                }
             };
         }
     }
@@ -72,7 +77,12 @@ export class FaviconManager {
 
                 // Replace favicon
                 const link = document.createElement("link");
-                link.href = canvas.toDataURL();
+                // quanta: a favicon from another origin without CORS taints the canvas: the original address instead.
+                try {
+                    link.href = canvas.toDataURL();
+                } catch {
+                    link.href = img.src;
+                }
                 link.setAttribute("sizes", sizes);
                 link.type = "image/png";
                 link.rel = "icon";

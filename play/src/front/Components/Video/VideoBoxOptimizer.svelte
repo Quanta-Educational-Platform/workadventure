@@ -1,6 +1,10 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import MediaBox from "../Video/MediaBox.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { boxStateStore } from "../../quanta/boxState";
+    import { staffTarget } from "../../quanta/staffTargets";
+    import { canViewAsStudentStore } from "../../quanta/studentView";
     import type { VideoBox } from "../../Space/VideoBox";
     import type { ObservableElement } from "../../Interfaces/ObservableElement";
     import type { TokenRemovalHandle } from "../../Utils/TokenBucket";
@@ -17,6 +21,17 @@
     }
 
     let { videoBox, layout, intersectionObserver }: Props = $props();
+
+    // quanta: what the tile shows, for the class layouts that arrange tiles by it (quanta/boxState.ts).
+    let boxState = $derived(QUANTA_UI ? boxStateStore(videoBox) : undefined);
+    // quanta: a teacher's tile, which the folded strip shows first (quanta-ui.css); one's own from what the room says
+    // one is.
+    let staff = $derived(
+        QUANTA_UI &&
+            (videoBox.uniqueId === "-1"
+                ? $canViewAsStudentStore
+                : staffTarget(videoBox.spaceUser.uuid, videoBox.spaceUser.tags) === true),
+    );
 
     let isVisible = $state((() => !intersectionObserver)());
     let videoBoxElement: HTMLDivElement | undefined = $state();
@@ -162,6 +177,11 @@
     bind:this={videoBoxElement}
     style={layoutStyle}
     class={`pointer-events-auto overflow-hidden camera-box ${layoutClass}`}
+    data-quanta-box={QUANTA_UI ? videoBox.uniqueId : undefined}
+    data-quanta-video={$boxState?.video ? "" : undefined}
+    data-quanta-talking={$boxState?.talking ? "" : undefined}
+    data-quanta-share={$boxState?.share ? "" : undefined}
+    data-quanta-staff={staff ? "" : undefined}
 >
     {#if isVisible}
         <MediaBox {videoBox} />

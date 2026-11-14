@@ -1,5 +1,7 @@
 import type { Subscription } from "rxjs";
 import type { RoomConnection } from "../../Connection/RoomConnection";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { offerHint } from "../../quanta/dockHints";
 import type { GameScene } from "./GameScene";
 
 export class EmoteManager {
@@ -13,6 +15,8 @@ export class EmoteManager {
             const actor = this.scene.MapPlayersByKey.get(event.actorUserId);
             if (actor) {
                 actor.playEmote(event.emote);
+                // quanta: others reacting is when someone who has not found the reactions yet looks for them.
+                if (QUANTA_UI) offerHint("reactions");
             }
         });
     }

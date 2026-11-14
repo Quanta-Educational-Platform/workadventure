@@ -26,6 +26,8 @@ import { getAreaMapEditors, hasMeetingProperty } from "../../../Rules/MeetingRul
 import { extensionModuleStore } from "../../../Stores/GameSceneStore";
 import type { Entity } from "../../ECS/Entity";
 import { DEPTH_OVERLAY_INDEX } from "../DepthIndexes";
+import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
+import { tileLayerDepth } from "../../../quanta/layerDepth";
 import type { ITiledPlace } from "../GameMapPropertiesListener";
 import type { GameScene } from "../GameScene";
 import { EntitiesManager } from "./EntitiesManager";
@@ -119,6 +121,9 @@ export class GameMapFrontWrapper {
     private areasCollisionLayerDirty = true;
     private perLayerCollisionGridCache: Map<number, (0 | 1 | 2 | 3)[][]> = new Map<number, (0 | 1 | 2 | 3)[][]>();
     private dirtyLayerIndices: Set<number> = new Set<number>();
+    // Layers whose collisions a script switched off (WA.room.hideLayer). A layer hidden in the map file itself (a
+    // "collisions" layer) still collides for the player's body, so the pathfinding grid keeps it too.
+    private readonly collisionsOffLayers = new Set<RenderableTilemapLayer>();
 
     private lastProperties = new Map<string, string | boolean | number>();
     private propertiesChangeCallbacks = new Map<string, Array<PropertyChangeCallback>>();
@@ -171,7 +176,7 @@ export class GameMapFrontWrapper {
                 if (phaserLayer) {
                     this.phaserLayers.push(
                         phaserLayer
-                            .setDepth(depth)
+                            .setDepth(QUANTA_UI ? tileLayerDepth(layer.properties, depth) : depth)
                             .setScrollFactor(layer.parallaxx ?? 1, layer.parallaxy ?? 1)
                             .setAlpha(layer.opacity)
                             .setVisible(layer.visible),
@@ -458,11 +463,17 @@ export class GameMapFrontWrapper {
         return nearbyAreaIds;
     }
 
+    private setLayerCollisionsOn(layer: RenderableTilemapLayer, on: boolean): void {
+        if (on) this.collisionsOffLayers.delete(layer);
+        else this.collisionsOffLayers.add(layer);
+    }
+
     public setLayerVisibility(layerName: string, visible: boolean): void {
         const phaserLayer = this.findPhaserLayer(layerName);
         if (phaserLayer != undefined) {
             phaserLayer.setVisible(visible);
             phaserLayer.setCollisionByProperty({ collides: true }, visible);
+            this.setLayerCollisionsOn(phaserLayer, visible);
             this.invalidateCollisionGrid();
         } else {
             const phaserLayers = this.findPhaserLayers(layerName + "/");
@@ -477,6 +488,7 @@ export class GameMapFrontWrapper {
             for (let i = 0; i < phaserLayers.length; i++) {
                 phaserLayers[i].setVisible(visible);
                 phaserLayers[i].setCollisionByProperty({ collides: true }, visible);
+                this.setLayerCollisionsOn(phaserLayers[i], visible);
             }
             this.invalidateCollisionGrid();
         }
@@ -603,7 +615,7 @@ export class GameMapFrontWrapper {
         const grid: number[][] = Array.from(Array(map.height), (_) => Array(map.width).fill(PathTileType.Walkable));
         // go through all tilemap layers on map. Maintain order
         for (const layer of this.phaserLayers) {
-            if (!layer.visible && layer !== this.entitiesCollisionLayer && layer !== this.areasCollisionLayer) {
+            if (this.collisionsOffLayers.has(layer)) {
                 continue;
             }
             const cachedLayer = this.perLayerCollisionGridCache.get(layer.layerIndex);

@@ -1454,7 +1454,17 @@ message SpaceEvent {
     SpaceIsTyping spaceIsTyping = 2;
     MuteAudioForEverybodyPublicMessage muteAudioForEverybody = 3;
     MuteVideoForEverybodyPublicMessage muteVideoForEverybody = 4;
+    QuantaChatAction quantaChatAction = 5;
   }
+}
+
+// quanta: a reaction, edit or deletion in a nearby chat (a table's or a bubble's), naming the message by the id its
+// sender gave it (SpaceMessage.id). Everyone applies it; an edit or deletion only from the message's own sender.
+message QuantaChatAction {
+  string messageId = 1;
+  string op = 2;
+  string emoji = 3;
+  string text = 4;
 }
 
 message PrivateSpaceEvent {
@@ -1481,7 +1491,15 @@ message PrivateSpaceEvent {
     ProximityFileTransferOfferMessage proximityFileTransferOffer = 24;
     ProximityFileTransferSignalMessage proximityFileTransferSignal = 25;
     ProximityFileTransferDeclineMessage proximityFileTransferDecline = 26;
+    QuantaDirectMessage quantaDirectMessage = 27;
   }
+}
+
+// quanta: a private chat message between staff and one person in the room (the back delivers it only when one side
+// is staff).
+message QuantaDirectMessage {
+  string id = 1;
+  string text = 2;
 }
 
 message CommunicationStrategyMessage {
@@ -1514,6 +1532,8 @@ message SpaceMessage {
   string message = 1;
   repeated CharacterTextureMessage characterTextures = 2;
   optional string name = 3;
+  // quanta: the id the sender gave its message, the same for everyone, for reactions and edits (QuantaChatAction).
+  optional string id = 4;
 }
 
 message SpaceIsTyping {

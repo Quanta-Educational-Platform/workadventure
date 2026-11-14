@@ -1,3 +1,5 @@
+// quanta: before anything that might read or report the address: takes a sign-in code out of it.
+import "./front/quanta/signInCode";
 // quanta: first, before WA's own modules keep the native RTCPeerConnection.
 import "./front/quanta/peerConnections";
 import "./front/style/index.css";
@@ -11,8 +13,14 @@ import { QUANTA_UI } from "./front/Enum/EnvironmentVariable";
 import "@fontsource/fira-sans/400.css";
 import "@fontsource/fira-sans/500.css";
 import "@fontsource/fira-sans/600.css";
+// The weights the map's workspace signs are lettered in (quanta/brandAreas.ts).
+import "@fontsource/fira-sans/700.css";
+import "@fontsource/fira-sans/800.css";
 import "./front/quanta/quanta-ui.css";
 import { startRoomBridge } from "./front/quanta/roomBridge";
+import { startEmojiCentre } from "./front/quanta/emojiCentre";
+import { startStagingOverlay } from "./front/quanta/stagingOverlay";
+import { startPageMenu } from "./front/quanta/pageMenu";
 
 // Initialize E2E hooks
 declare global {
@@ -26,6 +34,9 @@ window.e2eHooks = e2eHooks;
 if (QUANTA_UI) {
     document.documentElement.classList.add("quanta-ui");
     startRoomBridge();
+    startEmojiCentre();
+    startStagingOverlay();
+    startPageMenu();
 }
 
 const app = mount(App, {

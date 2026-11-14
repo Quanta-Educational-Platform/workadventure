@@ -2,7 +2,9 @@
     import { readable } from "svelte/store";
     import type { ChatQuestionItem, ProximityChatSidePanelRoom } from "../../Connection/ChatConnection";
     import LL from "../../../../i18n/i18n-svelte";
+    import { QL } from "../../../quanta/i18n";
     import { createQuestionStateRowsStore } from "./QuestionStateRowsStore";
+    import { IconCheck, IconSend, IconThumbUp, IconTrash } from "@wa-icons";
 
     interface Props {
         room: ProximityChatSidePanelRoom;
@@ -53,63 +55,44 @@
     function removeQuestion(question: ChatQuestionItem): void {
         question.remove().catch((error) => console.error("Failed to delete question", error));
     }
-
-    function getFilterClass(filter: "open" | "answered"): string {
-        const activeClass = "border-white/25 bg-white/[0.14] text-white";
-        const inactiveClass = "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.1]";
-        return `m-0 rounded-full border border-solid px-3 py-1.5 text-xs font-semibold transition-colors ${
-            activeFilter === filter ? activeClass : inactiveClass
-        }`;
-    }
-
-    function getUpvoteClass(hasUpvoted: boolean): string {
-        const activeClass = "border-yellow-300/35 bg-yellow-400/15 text-yellow-100";
-        const inactiveClass = "border-white/10 bg-black/15 text-white/80 hover:bg-white/10";
-        return `m-0 flex items-center gap-1 rounded-full border border-solid px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-            hasUpvoted ? activeClass : inactiveClass
-        }`;
-    }
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-white/[0.02]" data-testid="proximityRoomSidePanelQuestions">
-    <div class="border border-solid border-x-0 border-t-0 border-white/10 px-4 py-4">
+<div class="flex h-full min-h-0 flex-col" data-testid="proximityRoomSidePanelQuestions">
+    {#if canCreateQuestion}
         <form
-            class="flex flex-col gap-2"
+            class="quanta-question-form"
             onsubmit={(event) => {
                 event.preventDefault();
                 createQuestion();
             }}
         >
-            <label class="text-xs font-bold uppercase tracking-widest text-white/55" for="proximity-question-input">
-                {$LL.chat.question.ask()}
-            </label>
             <textarea
                 id="proximity-question-input"
-                class="m-0 min-h-20 resize-none rounded-lg border border-solid border-white/10 bg-black/20 p-3 text-sm text-white placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+                rows="2"
+                aria-label={$LL.chat.question.ask()}
                 maxlength={maxQuestionLength}
                 placeholder={$LL.chat.question.placeholder()}
                 bind:value={draftQuestion}
-                disabled={!canCreateQuestion}
                 data-testid="proximityQuestionInput"
             ></textarea>
-            <div class="flex items-center justify-between gap-3">
-                <span class="text-xs text-white/45">{draftQuestion.trim().length}/{maxQuestionLength}</span>
-                <button
-                    type="submit"
-                    class="m-0 rounded-lg border border-solid border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-45"
-                    disabled={!canCreateQuestion || draftQuestion.trim().length === 0}
-                    data-testid="proximityQuestionSubmit"
-                >
-                    {$LL.chat.question.send()}
-                </button>
-            </div>
+            <button
+                type="submit"
+                class="quanta-card-action"
+                title={$LL.chat.question.send()}
+                aria-label={$LL.chat.question.send()}
+                disabled={draftQuestion.trim().length === 0}
+                data-testid="proximityQuestionSubmit"
+            >
+                <IconSend font-size={16} />
+            </button>
         </form>
-    </div>
+    {/if}
 
-    <div class="flex items-center gap-2 px-3 py-3">
+    <div class="quanta-panel-tabs" role="tablist">
         <button
             type="button"
-            class={getFilterClass("open")}
+            role="tab"
+            aria-selected={activeFilter === "open"}
             onclick={() => (activeFilter = "open")}
             data-testid="proximityQuestionsOpenFilter"
         >
@@ -117,7 +100,8 @@
         </button>
         <button
             type="button"
-            class={getFilterClass("answered")}
+            role="tab"
+            aria-selected={activeFilter === "answered"}
             onclick={() => (activeFilter = "answered")}
             data-testid="proximityQuestionsAnsweredFilter"
         >
@@ -125,76 +109,73 @@
         </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+    <div class="quanta-panel-list">
         {#if filteredQuestionRows.length === 0}
-            <div class="rounded-lg border border-solid border-white/10 bg-white/[0.04] p-4 text-sm text-white/55">
+            <p class="quanta-panel-empty">
                 {activeFilter === "open" ? $LL.chat.question.emptyOpen() : $LL.chat.question.emptyAnswered()}
-            </div>
+            </p>
         {:else}
-            <div class="flex flex-col gap-2">
-                {#each filteredQuestionRows as { question, state } (question.id)}
-                    <article
-                        class="rounded-lg border border-solid border-white/10 bg-white/[0.04] p-3 text-white"
-                        data-testid="proximityQuestionItem"
-                    >
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0 flex-1">
-                                <p class="m-0 whitespace-pre-wrap text-sm leading-5">{state.body}</p>
-                                <div class="mt-2 text-xs text-white/45">
-                                    {state.senderName ?? $LL.chat.question.unknownAuthor()} · {new Date(
-                                        state.createdAt,
-                                    ).toLocaleTimeString()}
-                                </div>
-                            </div>
-                            <div class="flex shrink-0 items-center gap-1.5">
-                                {#if state.isAnswered}
-                                    <span
-                                        class="rounded-full bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100"
-                                    >
-                                        {$LL.chat.question.answered()}
-                                    </span>
-                                {/if}
-
-                                <button
-                                    type="button"
-                                    class={getUpvoteClass(state.hasUpvoted)}
-                                    disabled={!state.canUpvote}
-                                    aria-label={$LL.chat.question.upvote()}
-                                    data-testid="proximityQuestionUpvoteButton"
-                                    onclick={() => toggleUpvote(question)}
-                                >
-                                    <span aria-hidden="true">👍</span>
-                                    <span>{state.upvoteCount}</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 flex flex-wrap items-center gap-2">
-                            {#if state.canMarkAnswered}
-                                <button
-                                    type="button"
-                                    class="m-0 rounded-full border border-solid border-emerald-300/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20"
-                                    data-testid="proximityQuestionMarkAnsweredButton"
-                                    onclick={() => markAnswered(question)}
-                                >
-                                    {$LL.chat.question.markAnswered()}
-                                </button>
-                            {/if}
-
-                            {#if state.canDelete}
-                                <button
-                                    type="button"
-                                    class="m-0 rounded-full border border-solid border-red-300/25 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-100 transition-colors hover:bg-red-500/20"
-                                    data-testid="proximityQuestionDeleteButton"
-                                    onclick={() => removeQuestion(question)}
-                                >
-                                    {$LL.chat.delete()}
-                                </button>
-                            {/if}
-                        </div>
-                    </article>
-                {/each}
-            </div>
+            {#each filteredQuestionRows as { question, state } (question.id)}
+                <article class="quanta-card quanta-card-full" data-testid="proximityQuestionItem">
+                    <div class="quanta-card-body quanta-card-body-first">{state.body}</div>
+                    <div class="quanta-card-meta">
+                        <span>{state.senderName ?? $LL.chat.question.unknownAuthor()}</span>
+                        <span
+                            >{new Date(state.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                            })}</span
+                        >
+                    </div>
+                    <div class="quanta-card-foot">
+                        <button
+                            type="button"
+                            class="quanta-card-action"
+                            class:quanta-card-action-on={state.hasUpvoted}
+                            disabled={!state.canUpvote}
+                            title={$LL.chat.question.upvote()}
+                            aria-label={$LL.chat.question.upvote()}
+                            aria-pressed={state.hasUpvoted}
+                            data-testid="proximityQuestionUpvoteButton"
+                            onclick={() => toggleUpvote(question)}
+                        >
+                            <IconThumbUp font-size={14} />
+                            <span>{state.upvoteCount}</span>
+                        </button>
+                        {#if state.isAnswered}
+                            <span class="quanta-card-done">
+                                <IconCheck font-size={14} />
+                                <span class="quanta-card-label">{$LL.chat.question.answered()}</span>
+                            </span>
+                        {:else if state.canMarkAnswered}
+                            <button
+                                type="button"
+                                class="quanta-card-action"
+                                title={$LL.chat.question.markAnswered()}
+                                aria-label={$LL.chat.question.markAnswered()}
+                                data-testid="proximityQuestionMarkAnsweredButton"
+                                onclick={() => markAnswered(question)}
+                            >
+                                <IconCheck font-size={14} />
+                                <span class="quanta-card-label">{$QL.questionMarkAnswered()}</span>
+                            </button>
+                        {/if}
+                        <span class="quanta-card-gap"></span>
+                        {#if state.canDelete}
+                            <button
+                                type="button"
+                                class="quanta-card-action"
+                                title={$LL.chat.delete()}
+                                aria-label={$LL.chat.delete()}
+                                data-testid="proximityQuestionDeleteButton"
+                                onclick={() => removeQuestion(question)}
+                            >
+                                <IconTrash font-size={14} />
+                            </button>
+                        {/if}
+                    </div>
+                </article>
+            {/each}
         {/if}
     </div>
 </div>

@@ -23,6 +23,17 @@ import {
     LIVEKIT_RECORDING_S3_REGION,
 } from "../../Enum/EnvironmentVariable";
 
+/** A Twirp "not found" from LiveKit (TwirpError: status 404, code not_found). */
+export function isNotFound(error: unknown): boolean {
+    if (typeof error !== "object" || error === null) return false;
+    const { status, code, message } = error as { status?: unknown; code?: unknown; message?: unknown };
+    return (
+        status === 404 ||
+        code === "not_found" ||
+        (typeof message === "string" && /\b(?:not found|could not find)\b/i.test(message))
+    );
+}
+
 const defaultRoomServiceClient = (livekitHost: string, livekitApiKey: string, livekitApiSecret: string) =>
     new RoomServiceClient(livekitHost, livekitApiKey, livekitApiSecret);
 
@@ -157,10 +168,32 @@ export class LiveKitService {
         return token.toJwt();
     }
 
+    /** quanta: a teacher turned someone's microphone or camera off: LiveKit mutes what they publish from it. */
+    async muteParticipantSource(roomName: string, spaceUserId: string, source: "microphone" | "camera"): Promise<void> {
+        const livekitRoomName = getLivekitRoomName(roomName);
+        const identity = this.getParticipantIdentity(spaceUserId);
+        const wanted = source === "microphone" ? TrackSource.MICROPHONE : TrackSource.CAMERA;
+        let tracks: { sid: string; source: TrackSource; muted: boolean }[];
+        try {
+            tracks = (await this.roomServiceClient.getParticipant(livekitRoomName, identity)).tracks;
+        } catch (error) {
+            // Not in this space's call (yet, or any more): nothing published to mute.
+            if (isNotFound(error)) return;
+            throw error;
+        }
+        await Promise.all(
+            tracks
+                .filter((track) => track.source === wanted && !track.muted)
+                .map((track) => this.roomServiceClient.mutePublishedTrack(livekitRoomName, identity, track.sid, true)),
+        );
+    }
+
     async deleteRoom(roomName: string): Promise<void> {
         try {
             await this.roomServiceClient.deleteRoom(getLivekitRoomName(roomName));
         } catch (error) {
+            // quanta: LiveKit closes an empty room on its own; one already gone is deleted.
+            if (isNotFound(error)) return;
             console.error(`Error deleting room ${roomName}:`, error);
             // Comment this out to avoid spamming Sentry with errors when rooms are deleted
             // Sentry.captureException(error);

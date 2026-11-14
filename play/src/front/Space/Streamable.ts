@@ -84,4 +84,6 @@ export interface Streamable {
      * Health of our own encoder(s), set on the local camera / screen share feedback tiles only.
      */
     readonly senderStats?: Readable<LocalEncoderStats | undefined>;
+    /** quanta: this person's own link to the call is weak (LiveKit rates it Poor or Lost for a while). */
+    readonly weakConnection?: Readable<boolean>;
 }

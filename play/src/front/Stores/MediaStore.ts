@@ -24,6 +24,7 @@ import {
 } from "../WebRtc/BackgroundProcessor/createBackgroundTransformer";
 import { LL } from "../../i18n/i18n-svelte";
 import { quantaCameraAwakeStore } from "../quanta/cameraAwake";
+import { startingMediaState } from "../quanta/joinMedia";
 import { currentRoomStore } from "./CurrentRoomStore";
 import { gameSceneIsLoadedStore } from "./GameSceneStore";
 import { MediaStreamConstraintsError } from "./Errors/MediaStreamConstraintsError";
@@ -85,7 +86,7 @@ export const microphoneAccessIssueStore = writable<MediaAccessIssue | null>(null
  * A store that contains the camera state requested by the user (on or off).
  */
 function createRequestedCameraState() {
-    const { subscribe, set } = writable(localUserStore.getRequestedCameraState());
+    const { subscribe, set } = writable(startingMediaState(() => localUserStore.getRequestedCameraState()));
 
     return {
         subscribe,
@@ -104,7 +105,7 @@ function createRequestedCameraState() {
  * A store that contains the microphone state requested by the user (on or off).
  */
 function createRequestedMicrophoneState() {
-    const { subscribe, set } = writable(localUserStore.getRequestedMicrophoneState());
+    const { subscribe, set } = writable(startingMediaState(() => localUserStore.getRequestedMicrophoneState()));
 
     return {
         subscribe,
@@ -597,7 +598,9 @@ export const mediaStreamConstraintsStore = derived(
             $myMicrophoneStore === false ||
             isInExternalService ||
             shouldDisableMicrophoneForPrivacy ||
-            isEnergySaving ||
+            // quanta: not inside the platform's frame (quanta/cameraAwake.ts): only a microphone the person left on
+            // reaches this, and telling them nobody hears them needs its level (quanta/notHeardHint.ts).
+            (isEnergySaving && !$quantaCameraAwakeStore) ||
             isUnavailableStatus;
 
         // Audio constraints always apply

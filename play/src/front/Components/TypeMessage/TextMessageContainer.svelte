@@ -8,7 +8,7 @@
 </script>
 
 {#if messages.length > 0}
-    <div class="fixed left-0 right-0 top-0 w-full z-[900] pointer-events-none pt-4">
+    <div class="quanta-text-messages fixed left-0 right-0 top-0 w-full z-[900] pointer-events-none pt-4">
         {#each messages as message (message.id)}
             <div class="flex justify-center">
                 <TextMessage {message} />

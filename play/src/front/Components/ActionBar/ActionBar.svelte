@@ -13,7 +13,7 @@
     import { mediaSettingsOpenStore, rightActionBarMenuItems } from "../../Stores/MenuStore";
     import { IconChevronUp } from "../Icons";
     import { hideActionBarStoreBecauseOfChatBar } from "../../Chat/ChatSidebarWidthStore";
-    import { screenSharingAvailableStore } from "../../Stores/ScreenSharingStore";
+    import { requestedScreenSharingState, screenSharingAvailableStore } from "../../Stores/ScreenSharingStore";
     import { isInRemoteConversation } from "../../Stores/StreamableCollectionStore";
     import { pictureInPictureSupportedStore } from "../../Stores/PeerStore";
     import MediaSettingsList from "./MediaSettingsList/MediaSettingsList.svelte";
@@ -120,7 +120,7 @@
                                 <!-- NAV : CAMERA END -->
 
                                 <!-- NAV : SCREENSHARING START -->
-                                {#if $screenSharingAvailableStore}
+                                {#if $screenSharingAvailableStore || $requestedScreenSharingState}
                                     <ScreenSharingMenuItem />
                                 {/if}
                                 {#if $isInRemoteConversation && $pictureInPictureSupportedStore}

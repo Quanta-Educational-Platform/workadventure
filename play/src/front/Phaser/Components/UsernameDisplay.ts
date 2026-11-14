@@ -3,6 +3,7 @@ import { AvailabilityStatus } from "@workadventure/messages";
 import type { GameScene } from "../Game/GameScene";
 import { waScaleManager, WaScaleManagerEvent } from "../Services/WaScaleManager";
 import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { nameTag } from "../../quanta/nameTag";
 import { PLAYER_NAME_GAP, PLAYER_NAME_HEIGHT } from "./UsernameDisplaySizes";
 import { UsernameMegaphoneDisplay } from "./UsernameMegaphoneDisplay";
 import { UsernameRaisedHandDisplay } from "./UsernameRaisedHandDisplay";
@@ -71,6 +72,7 @@ export class UsernameDisplay {
         this.updatePlayerDepth();
         this.element.append(
             this.statusDisplay.element,
+            ...(QUANTA_UI ? [this.createTalkBars()] : []),
             this.playerNameElement,
             this.megaphoneDisplay.element,
             this.raisedHandDisplay.element,
@@ -88,10 +90,22 @@ export class UsernameDisplay {
         });
 
         this.scene.game.events.on(WaScaleManagerEvent.ZoomChanged, this.onZoomChanged);
+        this.stopWatchingDisplay = this.gameScene.usernameDomLayer.onDisplayChange(() =>
+            this.onZoomChanged(waScaleManager.zoomModifier),
+        );
     }
+
+    private readonly stopWatchingDisplay: () => void;
 
     private getDisplayScale(zoomModifier: number): number {
         return Math.max(zoomModifier > 0 ? CORRECTION_RATE / zoomModifier : 1, 1);
+    }
+
+    public setDisplayedName(name: string): void {
+        const tag = nameTag(name);
+        if (this.playerNameElement.textContent === tag) return;
+        this.playerNameElement.textContent = tag;
+        this.applyStyles();
     }
 
     public setPlayerNameOutlineColor(outlineColor: number | undefined): void {
@@ -147,6 +161,7 @@ export class UsernameDisplay {
         this.megaphoneDisplay.destroy();
         this.raisedHandDisplay.destroy();
         this.scene.game.events.off(WaScaleManagerEvent.ZoomChanged, this.onZoomChanged);
+        this.stopWatchingDisplay();
     }
 
     private get gameScene(): GameScene {
@@ -169,7 +184,7 @@ export class UsernameDisplay {
     private createPlayerNameElement(): HTMLParagraphElement {
         const element = document.createElement("p");
 
-        element.textContent = this.playerName;
+        element.textContent = nameTag(this.playerName);
         element.style.margin = "0";
         element.style.marginRight = `calc(2px * var(--username-dom-scale, 1))`;
         element.style.color = "#ffffff";
@@ -245,6 +260,13 @@ export class UsernameDisplay {
     private updateUsernameBackgroundColor(color: number | undefined): void {
         this.element.style.background =
             color === undefined ? PLAYER_NAME_BACKGROUND_COLOR : `#${color.toString(16).padStart(6, "0")}`;
+    }
+
+    private createTalkBars(): HTMLSpanElement {
+        const bars = document.createElement("span");
+        bars.className = "quanta-talk-bars";
+        bars.append(...[0, 1, 2].map(() => document.createElement("i")));
+        return bars;
     }
 
     public setTalking(talking: boolean, isSpeaker: boolean): void {

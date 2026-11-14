@@ -2,21 +2,19 @@ import * as Sentry from "@sentry/svelte";
 import * as Phaser from "phaser";
 import { get } from "svelte/store";
 import type { CancelablePromise } from "cancelable-promise";
-import {
-    AskPositionMessage_AskType,
-    type PositionMessage,
-    type PositionMessage_Direction,
-    type SayMessage,
-} from "@workadventure/messages";
+import { AskPositionMessage_AskType, type PositionMessage_Direction, type SayMessage } from "@workadventure/messages";
+import { fullNamesStore } from "../../quanta/fullNames";
 import type { WokaMenuAction } from "../../Stores/WokaMenuStore";
 import { wokaMenuStore } from "../../Stores/WokaMenuStore";
 import { Character } from "../Entity/Character";
 import type { GameScene } from "../Game/GameScene";
+import type { HasPlayerMovedInterface } from "../../Api/Events/HasPlayerMovedInterface";
 import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
 import type { ActivatableInterface } from "../Game/ActivatableInterface";
 import { LL } from "../../../i18n/i18n-svelte";
 import { blackListManager } from "../../WebRtc/BlackListManager";
 import { openModerationModal } from "../../Components/Moderation/openModerationModal";
+import { mayBlockOrReport } from "../../quanta/staffTargets";
 import { iframeListener } from "../../Api/IframeListener";
 import banIcon from "../../Components/images/ban-icon.svg";
 import { openDirectChatRoom } from "../../Chat/Utils";
@@ -24,8 +22,10 @@ import chat from "../../Components/images/chat.png";
 import { userIsConnected } from "../../Stores/MenuStore";
 import RequiresLoginForChatModal from "../../Chat/Components/RequiresLoginForChatModal.svelte";
 import { analyticsClient } from "../../Administration/AnalyticsClient";
-import { IconCamera, IconUserPlus } from "@wa-icons";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { closeCharacterMenu, toggleCharacterMenu } from "../../quanta/characterMenu";
 import { modals } from "@wa-modals";
+import { IconCamera, IconUserPlus } from "@wa-icons";
 
 export enum RemotePlayerEvent {
     Clicked = "Clicked",
@@ -37,6 +37,7 @@ export enum RemotePlayerEvent {
 export class RemotePlayer extends Character implements ActivatableInterface {
     public readonly userId: number;
     public readonly userUuid: string;
+    private readonly stopFullName: () => void;
     public readonly activationRadius: number;
 
     private visitCardUrl: string | null;
@@ -71,12 +72,19 @@ export class RemotePlayer extends Character implements ActivatableInterface {
             this.say(sayMessage.message, sayMessage.type);
         }
 
+        this.stopFullName = fullNamesStore.subscribe((names) => this.setDisplayedName(names.get(userUuid)));
+
         this.bindEventHandlers();
         this.pathFollowingUpdateCallback = (_time: number, delta: number) => this.followPath(delta);
     }
 
-    public updatePosition(position: PositionMessage): void {
+    public updatePosition(position: HasPlayerMovedInterface): void {
+        // quanta: only its seat variable stands it up: the walk that ended on the seat can still be coming in.
+        if (this.seatId) return;
         this.stopMoveTo();
+        if (position.moving && position.oldX !== undefined && position.oldY !== undefined) {
+            this.observeMovement(position.x - position.oldX, position.y - position.oldY);
+        }
         this.playAnimation(position.direction, position.moving);
         this.setPosition(position.x, position.y);
 
@@ -160,9 +168,12 @@ export class RemotePlayer extends Character implements ActivatableInterface {
 
     public deactivate(): void {
         wokaMenuStore.removeRemotePlayer(this.userUuid);
+        if (QUANTA_UI) closeCharacterMenu(this.userUuid);
     }
 
     public destroy(): void {
+        if (QUANTA_UI) closeCharacterMenu(this.userUuid);
+        this.stopFullName();
         this.stopMoveTo();
         wokaMenuStore.removeRemotePlayer(this.userUuid);
         super.destroy();
@@ -187,6 +198,18 @@ export class RemotePlayer extends Character implements ActivatableInterface {
             return;
         }
 
+        // quanta: the person menu the call tiles have, by the character.
+        if (QUANTA_UI) {
+            toggleCharacterMenu({
+                userUuid: this.userUuid,
+                playerName: this.playerName,
+                screenBounds: () => this.screenBounds(),
+            });
+            const clicked = this.scene.getRemotePlayersRepository().getPlayers().get(this.userId);
+            if (clicked) iframeListener.sendRemotePlayerClickedEvent(clicked);
+            return;
+        }
+
         // Initialize the woka menu
         wokaMenuStore.initialize(this.playerName, this.userId, this.userUuid, this.visitCardUrl ?? undefined);
 
@@ -206,22 +229,38 @@ export class RemotePlayer extends Character implements ActivatableInterface {
         iframeListener.sendRemotePlayerClickedEvent(userFound);
     }
 
+    /** quanta: where the character is drawn, in the page's pixels. */
+    private screenBounds(): DOMRect {
+        const world = this.getBounds();
+        const camera = this.scene.cameras.main;
+        const canvas = this.scene.game.canvas.getBoundingClientRect();
+        const css = (canvas.width / this.scene.scale.width) * camera.zoom;
+        return new DOMRect(
+            canvas.left + (world.x - camera.worldView.x) * css,
+            canvas.top + (world.y - camera.worldView.y) * css,
+            world.width * css,
+            world.height * css,
+        );
+    }
+
     private getDefaultWokaMenuActions(): WokaMenuAction[] {
         const actions: WokaMenuAction[] = [];
-        actions.push({
-            actionName: get(LL).report.moderate.action(),
-            protected: true,
-            priority: -1,
-            style: "is-error bg-white/10 hover:bg-white/30 text-red-500",
-            testId: "wokamenu-block-user-button",
-            callback: () => {
-                // Track the report user action
-                analyticsClient.trackAdminEvent("user.report.clicked");
+        if (mayBlockOrReport({ uuid: this.userUuid })) {
+            actions.push({
+                actionName: get(LL).report.moderate.action(),
+                protected: true,
+                priority: -1,
+                style: "is-error bg-white/10 hover:bg-white/30 text-red-500",
+                testId: "wokamenu-block-user-button",
+                callback: () => {
+                    // Track the report user action
+                    analyticsClient.trackAdminEvent("user.report.clicked");
 
-                openModerationModal(this.userUuid, this.playerName);
-            },
-            actionIcon: banIcon,
-        });
+                    openModerationModal(this.userUuid, this.playerName);
+                },
+                actionIcon: banIcon,
+            });
+        }
         if (!blackListManager.isBlackListed(this.userUuid)) {
             actions.push({
                 actionName: get(LL).chat.userList.TalkTo(),

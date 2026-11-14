@@ -1,6 +1,7 @@
 import type * as Phaser from "phaser";
 import { DEPTH_INGAME_TEXT_INDEX } from "./DepthIndexes";
 import type { GameScene } from "./GameScene";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
 // Side of the square probe used to measure the ancestor scale. Large enough that sub-pixel rounding
 // on the measured on-screen size is negligible.
@@ -37,6 +38,82 @@ export class UsernameDomLayer {
         this.domElement = scene.add.dom(0, 0, this.container).setOrigin(0, 0).setDepth(DEPTH_INGAME_TEXT_INDEX);
 
         this.domElement.pointerEvents = "none";
+        // quanta: two people side by side (someone came to them, a seat pair) would have their names drawn over each
+        // other; the one further back steps up just clear of the nearer one, and back down once they part.
+        if (QUANTA_UI) this.unstackTimer = setInterval(() => this.unstackNames(), 250);
+    }
+
+    private unstackTimer: ReturnType<typeof setInterval> | undefined;
+    private readonly lifts = new WeakMap<HTMLElement, number>();
+
+    private unstackNames(): void {
+        const scale = this.getAncestorScale() || 1;
+        const labels: { el: HTMLElement; left: number; right: number; top: number; bottom: number; lift: number }[] =
+            [];
+        for (const child of this.container.children) {
+            if (!(child instanceof HTMLElement) || child === this.scaleProbe) continue;
+            const r = child.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            // Where it would stand without its lift (screen pixels).
+            const was = (this.lifts.get(child) ?? 0) * scale;
+            labels.push({ el: child, left: r.left, right: r.right, top: r.top + was, bottom: r.bottom + was, lift: 0 });
+        }
+        if (labels.length < 2 && labels.every((l) => !this.lifts.get(l.el))) return;
+        // Nearest (lowest on screen) first: it keeps its place. Two side by side (a seat pair) are level within a pixel
+        // or two of rounding: the one already down stays down, or the two would swap places on every check.
+        const liftOf = (el: HTMLElement) => this.lifts.get(el) ?? 0;
+        labels.sort((a, b) =>
+            Math.abs(a.bottom - b.bottom) < 3 ? liftOf(a.el) - liftOf(b.el) || a.left - b.left : b.bottom - a.bottom,
+        );
+        const placed: typeof labels = [];
+        for (const label of labels) {
+            for (let tries = 0; tries < 6; tries++) {
+                const hit = placed.find(
+                    (p) =>
+                        label.left < p.right - 1 &&
+                        label.right > p.left + 1 &&
+                        label.top - label.lift < p.bottom - p.lift &&
+                        label.bottom - label.lift > p.top - p.lift,
+                );
+                if (!hit) break;
+                label.lift = label.bottom - (hit.top - hit.lift) + 1;
+            }
+            placed.push(label);
+            const lift = Math.round(label.lift / scale);
+            if ((this.lifts.get(label.el) ?? 0) !== lift) {
+                this.lifts.set(label.el, lift);
+                label.el.style.transition = "translate 0.15s ease-out";
+                label.el.style.translate = lift ? `0 ${-lift}px` : "";
+            }
+        }
+    }
+
+    /**
+     * Calls `listener` when the window is resized or its device pixel ratio changes (browser zoom, a move to a screen
+     * of another density): the DOM layer's on-screen scale can change without the camera zoom changing.
+     */
+    public onDisplayChange(listener: () => void): () => void {
+        let query: MediaQueryList | undefined;
+        const changed = () => {
+            this.invalidateAncestorScale();
+            listener();
+            watch();
+        };
+        const watch = () => {
+            query?.removeEventListener("change", changed);
+            query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            query.addEventListener("change", changed, { once: true });
+        };
+        const resized = () => {
+            this.invalidateAncestorScale();
+            listener();
+        };
+        watch();
+        window.addEventListener("resize", resized);
+        return () => {
+            query?.removeEventListener("change", changed);
+            window.removeEventListener("resize", resized);
+        };
     }
 
     public setVisible(visible: boolean): void {
@@ -75,6 +152,7 @@ export class UsernameDomLayer {
     }
 
     public destroy(): void {
+        if (this.unstackTimer !== undefined) clearInterval(this.unstackTimer);
         this.domElement.destroy();
     }
 }

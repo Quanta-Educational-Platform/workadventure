@@ -3,6 +3,8 @@
     import type { ChatMessage } from "../../Connection/ChatConnection";
     import { selectedChatMessageToEdit } from "../../Stores/ChatStore";
     import LL from "../../../../i18n/i18n-svelte";
+    import { chatInputFromBody } from "../../../../common/quanta/chatBody";
+    import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
     import MessageInput from "./MessageInput.svelte";
 
     interface Props {
@@ -12,7 +14,13 @@
     let { message }: Props = $props();
     let messageInput: HTMLDivElement | undefined = $state();
 
-    let inputValue = $state((() => get(message.content).body)());
+    // quanta: the class chat's bodies are the box's text with newlines for its line breaks (common/quanta/chatBody.ts).
+    let inputValue = $state(
+        (() => {
+            const body = get(message.content).body;
+            return message.type === "proximity" ? chatInputFromBody(body) : body;
+        })(),
+    );
     let editError = $state(false);
 
     async function editMessage(newContent: string) {
@@ -34,7 +42,7 @@
         bind:message={inputValue}
         bind:messageInput
         dataTestid="editMessageInput"
-        inputClass=" p-1  !m-0 px-2 max-h-36 overflow-auto w-full h-full rounded-md !leading-6 block !text-sm !text-white !bg-white/20 placeholder:text-sm  !text-black border  resize-none  shadow-none focus:ring-0"
+        inputClass={`p-1 !m-0 px-2 max-h-36 overflow-auto w-full h-full rounded-md !leading-6 block !text-sm placeholder:text-sm border resize-none shadow-none focus:ring-0 ${QUANTA_UI ? "!bg-[#2b3038] !text-[#eceef1]" : "!text-white !bg-white/20 !text-black"}`}
         dataText={$LL.chat.enter()}
     />
 

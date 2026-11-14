@@ -14,7 +14,17 @@ import { Deferred } from "@workadventure/shared-utils";
 import type { ProximityPoll, ProximityQuestion, SpaceState } from "@workadventure/shared-utils";
 import { abortAny } from "@workadventure/shared-utils/src/Abort/AbortAny";
 import { type WAMSettings, WAMSettingsUtils } from "@workadventure/map-editor";
-import { applyRoomUpdate, roomSyncRetry, startModerationBridge } from "../../../quanta/moderationBridge";
+import {
+    applyRoomUpdate,
+    roomChatStatus,
+    roomSyncRetry,
+    startModerationBridge,
+    type RoomSnapshot,
+} from "../../../quanta/moderationBridge";
+import { receiveRoomActivity } from "../../../quanta/roomActivity";
+import { RoomChatOutbox } from "../../../quanta/roomChatOutbox";
+import { QL } from "../../../quanta/i18n";
+import { openModerationModal } from "../../../Components/Moderation/openModerationModal";
 import type {
     AnyKindOfUser,
     ChatAttachmentRecipient,
@@ -24,6 +34,7 @@ import type {
     ChatMessageAttachment,
     ChatMessageContent,
     ChatMessageReaction,
+    RoomChatReaction,
     ChatPollCreateOptions,
     ChatPollCreationCapability,
     ChatPollItem,
@@ -60,13 +71,14 @@ import { statusChanger } from "../../../Components/ActionBar/AvailabilityStatus/
 import type { GameScene } from "../../../Phaser/Game/GameScene";
 import { faviconManager } from "../../../WebRtc/FaviconManager";
 import { screenWakeLock } from "../../../Utils/ScreenWakeLock";
-import { PROXIMITY_FILE_TRANSFER_MAX_USERS } from "../../../Enum/EnvironmentVariable";
+import { PROXIMITY_FILE_TRANSFER_MAX_USERS, QUANTA_UI } from "../../../Enum/EnvironmentVariable";
 import type { PictureStore } from "../../../Stores/PictureStore";
 import { CharacterLayerManager } from "../../../Phaser/Entity/CharacterLayerManager";
 import { BubbleNotification as BasicNotification } from "../../../Notification/BubbleNotification";
 import { iceServersManager } from "../../../WebRtc/IceServersManager";
 import { analyticsClient } from "../../../Administration/AnalyticsClient";
 import { QUANTA_ROOM_CHAT_SPACE } from "../../../quanta/roomChatSpace";
+import { chatBodyFromInput, isBlankChatBody } from "../../../../common/quanta/chatBody";
 import { DEFAULT_PROXIMITY_SPACE_NAME, type ProximityChatRoomKind } from "./ProximityChatRoomManager";
 import { ProximityChatQuestion } from "./ProximityChatQuestion";
 import { canCreateProximityContent } from "./ProximityCreationPermissions";
@@ -77,11 +89,18 @@ import { createProximityTimelineItemsStore } from "./ProximityTimelineItemsStore
 import {
     getMessageTypeFromMimeType,
     ProximityFileTransferService,
+    shouldAutoAcceptProximityFile,
     type IncomingProximityFileTransferOffer,
     type OutgoingProximityFileTransferUpdate,
     type ProximityFileTransferUpdate,
 } from "./ProximityFileTransferService";
 import { estimateProximityFileTransferRemainingSeconds } from "./ProximityFileTransferEta";
+import { normalizeChatImage } from "./ProximityImageNormalizer";
+import { directEntriesStore, type DirectEntry } from "../../../quanta/directEntries";
+import { mentionIdsIn, type Mention } from "../../../quanta/mentions";
+import { announceMention } from "../../../quanta/mentionAlert";
+import { pinnedMessagesStore } from "../../../quanta/pinnedMessages";
+import { receivePoke } from "../../../quanta/poke";
 
 const debug = Debug("ProximityChatRoom");
 
@@ -94,6 +113,14 @@ export class ProximityChatMessage implements ChatMessage {
     canReact = writable(false);
     canDelete = writable(false);
     reactions: MapStore<string, ChatMessageReaction> = new MapStore();
+    roomReactions: Writable<RoomChatReaction[]> = writable([]);
+    /** quanta: who the message names with @ (quanta/mentions.ts). */
+    mentions: Writable<Mention[]> = writable([]);
+    /** quanta: staff pin a class message at the top of the chat (quanta/pinnedMessages.ts). */
+    canPin = writable(false);
+    isPinned = writable(false);
+    onPin?: (on: boolean) => void;
+    onReact?: (emoji: string) => void;
     constructor(
         public id: string,
         public sender: AnyKindOfUser,
@@ -108,12 +135,15 @@ export class ProximityChatMessage implements ChatMessage {
     remove(): void {
         this.onRemove?.();
     }
+    onEdit?: (newContent: string) => Promise<void>;
     edit(newContent: string): Promise<void> {
+        if (this.onEdit) return this.onEdit(newContent);
         console.info("Function not implemented.", newContent);
         return Promise.resolve();
     }
     addReaction(reaction: string): Promise<void> {
-        console.info("Function not implemented.", reaction);
+        if (this.onReact) this.onReact(reaction);
+        else console.info("Function not implemented.", reaction);
         return Promise.resolve();
     }
 }
@@ -193,6 +223,11 @@ export class ProximityChatRoom implements ChatRoom {
     private _space: SpaceInterface | undefined;
     private spaceMessageSubscription: Subscription | undefined;
     private spaceIsTypingSubscription: Subscription | undefined;
+    private chatActionSubscription: Subscription | undefined;
+    /** quanta: a nearby chat's messages by the id their sender gave them, for reactions and edits (QuantaChatAction). */
+    private nearbyMessages = new Map<string, { message: ProximityChatMessage; senderId: string }>();
+    /** quanta: each nearby message's reactions: emoji, then who (space user id) with their name. */
+    private nearbyReactions = new Map<string, Map<string, Map<string, string>>>();
     private spaceStateUnsubscriber: Unsubscriber | undefined;
     private roomSidePanelUnsubscriber: Unsubscriber;
     private selectedRoomUnsubscriber: Unsubscriber;
@@ -214,7 +249,22 @@ export class ProximityChatRoom implements ChatRoom {
     hasUserInProximityChat = writable(false);
     isJoined = writable(false);
     isChatDisabled = writable(false);
+    /** quanta: the teacher muted this person in the room's chat: the composer says so instead of taking messages. */
+    private roomChatOutbox: RoomChatOutbox | undefined;
+    /** quanta: the room's server sent its chat history at least once since this page opened. */
+    private roomChatHistoryLoaded = false;
+    readonly chatMutedByTeacher = writable(false);
+    /** quanta: the room server's word on what was just sent (too fast, refused), shown by the composer. */
+    readonly chatNotice = writable<string | undefined>(undefined);
+    readonly canSendMessages = derived(this.chatMutedByTeacher, (muted) => !muted);
     intentionallyClosed = writable(false);
+    // quanta: the lecture's audio (a megaphone space) is joined and left without a chime. In a class it says nothing,
+    // and a teacher crossing the room or a student arriving rang it for everyone.
+    private lectureQuiet(): boolean {
+        const kind = get(this.kind);
+        return QUANTA_UI && (kind === "listener" || kind === "speaker");
+    }
+
     /** quanta: the whole room's chat (quanta/roomChat.ts), not a conversation's. */
     private get roomWide(): boolean {
         return this.spaceName === QUANTA_ROOM_CHAT_SPACE;
@@ -239,6 +289,7 @@ export class ProximityChatRoom implements ChatRoom {
     }
     currentMatrixRoom: ChatConversation | undefined;
     currentChatVisibility = false;
+    private chatOpenedByItself = false;
 
     private unknownUser = {
         chatId: "0",
@@ -342,6 +393,18 @@ export class ProximityChatRoom implements ChatRoom {
         );
     }
 
+    /** quanta: a message or an edit, sent again after the wait when the room's server says it came too fast. */
+    private sendRoomChatCommand(command: { op: string } & Record<string, unknown>): Promise<void> {
+        if (this.roomChatOutbox) return this.roomChatOutbox.send(command);
+        this.sendRoomCommand(command);
+        return Promise.resolve();
+    }
+
+    /** quanta: tells staff what this student just did on the map (quanta/roomActivity.ts). */
+    public reportActivity(kind: string, text: string): void {
+        if (this.roomWide) this.sendRoomCommand({ op: "activity", kind, text });
+    }
+
     private sendRoomCommand(command: object): void {
         this._space?.emitPublicMessage({
             $case: "spaceMessage",
@@ -353,9 +416,187 @@ export class ProximityChatRoom implements ChatRoom {
         });
     }
 
+    /** quanta: a direct message to one person, through the class chat (quanta/directMessages.ts). */
+    public sendDirectMessage(peerId: string, body: string): Promise<void> {
+        if (!this.roomWide) return Promise.reject(new Error("Not the room's chat."));
+        return this.sendRoomChatCommand({ op: "send", body, to: peerId, mentions: mentionIdsIn(body, peerId) });
+    }
+
+    /** quanta: the room chat as last heard, in place of whatever was shown; its direct messages go to theirs. */
+    private renderRoomChat(snapshot: RoomSnapshot): void {
+        const { muted, notice } = roomChatStatus(snapshot);
+        const attachments = [...this.messages].filter((message) => message.attachment);
+        this.messages.clear();
+        const direct: DirectEntry[] = [];
+        let classCount = 0;
+        let newestId = 0;
+        const pinned = new Set((snapshot.pins ?? []).map((pin) => pin.id));
+        for (const entry of snapshot.messages) {
+            newestId = Math.max(newestId, Number(entry.id) || 0);
+            // quanta: blank bodies a pusher accepted before it checked for them.
+            if (isBlankChatBody(entry.body)) continue;
+            // A teacher's mute is the class chat's: a muted student still writes and reacts to a teacher directly.
+            const silenced = muted && entry.to === undefined;
+            const message = new ProximityChatMessage(
+                entry.id,
+                {
+                    ...this.unknownUser,
+                    username: entry.name,
+                    spaceUserId: entry.sender,
+                    uuid: entry.sender,
+                },
+                writable({ body: entry.body, url: undefined }),
+                new Date(entry.at),
+                entry.sender === snapshot.self,
+                "proximity",
+            );
+            message.canDelete.set(snapshot.canModerate || message.isMyMessage);
+            message.onRemove = () => this.sendRoomCommand({ op: "delete", id: entry.id });
+            message.isModified.set(entry.edited === true);
+            message.canReact.set(!silenced);
+            message.onReact = (emoji) => this.sendRoomCommand({ op: "react", id: entry.id, emoji });
+            message.mentions.set(entry.mentions ?? []);
+            if (entry.to === undefined) {
+                message.isPinned.set(pinned.has(entry.id));
+                message.canPin.set(snapshot.canModerate);
+                message.onPin = (on) => this.pinRoomMessage(entry.id, on);
+            }
+            message.roomReactions.set(
+                Object.entries(entry.reactions ?? {}).map(([emoji, people]) => ({
+                    emoji,
+                    people: people.map(({ id, name }) => ({ uuid: id, name })),
+                    mine: people.some(({ id }) => id === snapshot.self),
+                })),
+            );
+            if (message.isMyMessage && !silenced) {
+                message.canEdit.set(true);
+                message.onEdit = (input) => this.editRoomMessage(entry, input);
+            }
+            if (entry.to !== undefined) {
+                const mine = entry.sender === snapshot.self;
+                direct.push({
+                    id: entry.id,
+                    peerId: mine ? entry.to : entry.sender,
+                    peerName: mine ? (entry.toName ?? "") : entry.name,
+                    mine,
+                    message,
+                });
+                continue;
+            }
+            classCount++;
+            this.messages.push(message);
+        }
+        for (const message of attachments) this.messages.push(message);
+        // A state-only update renders before the history arrives: its empty list is no baseline for what is news.
+        directEntriesStore.set({ entries: direct, newestId: this.roomChatHistoryLoaded ? newestId : undefined });
+        pinnedMessagesStore.set({
+            pins: snapshot.pins ?? [],
+            canPin: snapshot.canModerate,
+            unpin: (id) => this.pinRoomMessage(id, false),
+        });
+        this.chatMutedByTeacher.set(muted);
+        this.chatNotice.set(notice);
+        this.hasUserMessages.set(classCount > 0 || attachments.length > 0);
+    }
+
+    /**
+     * quanta: a nearby chat's message (a table's, a bubble's) reacts, edits and deletes as the class chat's does. The id
+     * is the sender's (SpaceMessage.id), so everyone names it alike; reactions are anyone's, an edit or deletion only
+     * its sender's, here and on every other client (applyNearbyAction).
+     */
+    private makeNearbyMessage(message: ProximityChatMessage, senderId: string): void {
+        if (this.roomWide) return;
+        this.nearbyMessages.set(message.id, { message, senderId });
+        message.canReact.set(true);
+        message.onReact = (emoji) => {
+            this.applyNearbyAction(this._spaceUserId, { messageId: message.id, op: "react", emoji, text: "" });
+            this.emitNearbyAction({ messageId: message.id, op: "react", emoji, text: "" });
+        };
+        if (senderId !== this._spaceUserId) return;
+        message.canEdit.set(true);
+        message.canDelete.set(true);
+        message.onEdit = (input) => {
+            const text = input.trim().slice(0, 4000);
+            if (!text) return Promise.reject(new Error("Blank message."));
+            this.applyNearbyAction(this._spaceUserId, { messageId: message.id, op: "edit", emoji: "", text });
+            this.emitNearbyAction({ messageId: message.id, op: "edit", emoji: "", text });
+            return Promise.resolve();
+        };
+        message.onRemove = () => {
+            this.applyNearbyAction(this._spaceUserId, { messageId: message.id, op: "delete", emoji: "", text: "" });
+            this.emitNearbyAction({ messageId: message.id, op: "delete", emoji: "", text: "" });
+        };
+    }
+
+    private emitNearbyAction(action: { messageId: string; op: string; emoji: string; text: string }): void {
+        this._space?.emitPublicMessage({ $case: "quantaChatAction", quantaChatAction: action });
+    }
+
+    private applyNearbyAction(
+        from: string,
+        action: { messageId: string; op: string; emoji: string; text: string },
+    ): void {
+        const known = this.nearbyMessages.get(action.messageId);
+        if (!known) return;
+        const { message, senderId } = known;
+        if (action.op === "react" && action.emoji) {
+            const byEmoji = this.nearbyReactions.get(message.id) ?? new Map<string, Map<string, string>>();
+            this.nearbyReactions.set(message.id, byEmoji);
+            const people = byEmoji.get(action.emoji) ?? new Map<string, string>();
+            if (people.has(from)) people.delete(from);
+            else people.set(from, this.nearbyName(from));
+            if (people.size) byEmoji.set(action.emoji, people);
+            else byEmoji.delete(action.emoji);
+            message.roomReactions.set(
+                [...byEmoji].map(([emoji, who]) => ({
+                    emoji,
+                    people: [...who].map(([uuid, name]) => ({ uuid, name })),
+                    mine: who.has(this._spaceUserId),
+                })),
+            );
+            return;
+        }
+        // Only the sender edits or deletes their own message.
+        if (from !== senderId) return;
+        if (action.op === "edit" && action.text) {
+            (message.content as Writable<ChatMessageContent>).set({ body: action.text, url: undefined });
+            message.isModified.set(true);
+        } else if (action.op === "delete") {
+            message.isDeleted.set(true);
+            message.canEdit.set(false);
+            message.canReact.set(false);
+            message.canDelete.set(false);
+        }
+    }
+
+    private nearbyName(spaceUserId: string): string {
+        return this.users?.get(spaceUserId)?.name ?? this.unknownUserName;
+    }
+
+    /** quanta: the room chat's own messages are edited on the room's server, which checks the author again. */
+    private editRoomMessage(
+        entry: { id: string; body: string; sender: string; to?: string },
+        input: string,
+    ): Promise<void> {
+        const body = chatBodyFromInput(input);
+        if (isBlankChatBody(body) || body.length > 4000) return Promise.reject(new Error("Blank or too long."));
+        // Our own message: in a direct one, the other person is its recipient.
+        const mentions = mentionIdsIn(body, entry.to);
+        // Done once the room's server took it: a refused edit keeps the editor open with the failure.
+        return body !== entry.body
+            ? this.sendRoomChatCommand({ op: "edit", id: entry.id, body, mentions })
+            : Promise.resolve();
+    }
+
+    /** quanta: staff pin a class message at the top of the chat; the room's server checks they are staff. */
+    private pinRoomMessage(id: string, on: boolean): void {
+        if (this.roomWide) this.sendRoomCommand({ op: "pin", id, on });
+    }
+
     sendMessage(message: string, action: ChatMessageType = "proximity", broadcast = true): void {
         if (this.roomWide && action === "proximity") {
-            if (broadcast) this.sendRoomCommand({ op: "send", body: message });
+            if (broadcast)
+                void this.sendRoomChatCommand({ op: "send", body: message, mentions: mentionIdsIn(message) });
             return;
         }
         // Create content message
@@ -379,6 +620,7 @@ export class ProximityChatRoom implements ChatRoom {
             true,
             action,
         );
+        if (action === "proximity") this.makeNearbyMessage(newMessage, this._spaceUserId);
 
         // Add message to the list
         this.messages.push(newMessage);
@@ -396,6 +638,7 @@ export class ProximityChatRoom implements ChatRoom {
                     message: message,
                     characterTextures: spaceUser?.characterTextures ?? [],
                     name: chatUser.username ?? this.unknownUserName,
+                    id: newMessage.id,
                 },
             });
         }
@@ -444,6 +687,7 @@ export class ProximityChatRoom implements ChatRoom {
         senderUserId: string,
         characterTextures: CharacterTextureMessage[],
         name: string,
+        id?: string,
     ): void {
         // Ignore messages from the current user
         if (senderUserId === this._spaceUserId) {
@@ -481,13 +725,14 @@ export class ProximityChatRoom implements ChatRoom {
 
         // Create message
         const newMessage = new ProximityChatMessage(
-            uuidv4(),
+            id || uuidv4(),
             chatUser,
             writable(newChatMessageContent),
             new Date(),
             false,
             "proximity",
         );
+        this.makeNearbyMessage(newMessage, senderUserId);
 
         // Add message to the list
         this.messages.push(newMessage);
@@ -524,7 +769,7 @@ export class ProximityChatRoom implements ChatRoom {
         const spaceUser = this.users?.get(this._spaceUserId);
         const chatUser = spaceUser ? mapExtendedSpaceUserToChatUser(spaceUser) : this.unknownUser;
         const offers = this.fileTransferService.createOutgoingOffers(
-            Array.from(files),
+            await Promise.all(Array.from(files).map((file) => normalizeChatImage(file))),
             recipients.map((user) => user.spaceUserId),
         );
         for (const offer of offers) {
@@ -537,6 +782,7 @@ export class ProximityChatRoom implements ChatRoom {
             const attachmentRecipients = writable<ChatAttachmentRecipient[]>(
                 recipients.map((user) => ({
                     spaceUserId: user.spaceUserId,
+                    uuid: user.uuid,
                     name: user.name,
                     pictureStore: user.pictureStore,
                     color: user.color,
@@ -558,6 +804,8 @@ export class ProximityChatRoom implements ChatRoom {
                     delivery: attachmentRecipients,
                 },
             );
+            message.canDelete.set(true);
+            message.onRemove = () => this.fileTransferService?.deleteOutgoing(offer.transferId);
             this.messages.push(message);
             this.lastMessageTimestamp = message.date.getTime();
         }
@@ -591,7 +839,7 @@ export class ProximityChatRoom implements ChatRoom {
         }
 
         if (!get(this.intentionallyClosed)) {
-            chatVisibilityStore.set(true);
+            this.openChatByItself();
             chatNotificationStore.clearRoom(this.id);
             return;
         }
@@ -633,7 +881,7 @@ export class ProximityChatRoom implements ChatRoom {
         }
 
         if (!get(this.intentionallyClosed)) {
-            chatVisibilityStore.set(true);
+            this.openChatByItself();
             chatNotificationStore.clearRoom(this.id);
             return;
         }
@@ -859,6 +1107,21 @@ export class ProximityChatRoom implements ChatRoom {
             canExchangeWith: (spaceUserId) => !this.isBlackListedSpaceUser(spaceUserId),
         });
         this.fileTransferSubscriptions.add(
+            this.fileTransferService.deletions.subscribe((transferId) => {
+                const message = [...this.messages].find((entry) => entry.id === transferId && entry.attachment);
+                if (!(message instanceof ProximityChatMessage)) return;
+                const url = get(message.content).url;
+                if (url) {
+                    URL.revokeObjectURL(url);
+                    this.fileTransferObjectUrls.delete(url);
+                }
+                this.fileTransfers.get(transferId)?.content.update((content) => ({ ...content, url: undefined }));
+                this.outgoingFileTransfers.delete(transferId);
+                message.isDeleted.set(true);
+                message.canDelete.set(false);
+            }),
+        );
+        this.fileTransferSubscriptions.add(
             this.fileTransferService.incomingOffers.subscribe((offer) => {
                 if (this.isBlackListedSpaceUser(offer.senderSpaceUserId)) {
                     return;
@@ -928,6 +1191,13 @@ export class ProximityChatRoom implements ChatRoom {
         this.lastMessageTimestamp = message.date.getTime();
         this.notifyNewMessage(message);
 
+        // quanta: a class chat shows a small photo straight away instead of asking to accept it first.
+        if (QUANTA_UI && shouldAutoAcceptProximityFile(offer)) {
+            this.fileTransferService?.download(offer.transferId).catch((error) => {
+                console.warn("Unable to fetch a proximity image", error);
+            });
+        }
+
         const isRoomDisplayed = get(selectedRoomStore)?.id === this.id && get(chatVisibilityStore);
         if (!isRoomDisplayed) {
             this.hasUnreadMessages.set(true);
@@ -971,7 +1241,7 @@ export class ProximityChatRoom implements ChatRoom {
             transfer.downloadStartedAt = undefined;
             // A file already received stays usable whatever happens to the connection afterwards.
             if (get(content).url === undefined) {
-                status.set({ state: "error", error: update.error === "unavailable" ? "unavailable" : "download" });
+                status.set({ state: "error", error: attachmentErrorFor(update.error) });
             }
             return;
         }
@@ -1290,8 +1560,21 @@ export class ProximityChatRoom implements ChatRoom {
         let lastRoomMessageId: string | undefined;
         let currentRoomSnapshot: ReturnType<typeof applyRoomUpdate>;
         const retrySync = roomSyncRetry(() => this.sendRoomCommand({ op: "sync" }), moderationSignal);
+        this.roomChatOutbox?.dispose();
+        const outbox = this.roomWide
+            ? new RoomChatOutbox(
+                  (command) => this.sendRoomCommand(command),
+                  (seconds) => {
+                      if (!currentRoomSnapshot) return;
+                      currentRoomSnapshot = { ...currentRoomSnapshot, notice: get(QL).chatSlowDown({ seconds }) };
+                      this.renderRoomChat(currentRoomSnapshot);
+                  },
+              )
+            : undefined;
+        this.roomChatOutbox = outbox;
+        moderationSignal.addEventListener("abort", () => outbox?.dispose(), { once: true });
         const publishModeration = this.roomWide
-            ? startModerationBridge((command) => this.sendRoomCommand(command), moderationSignal)
+            ? startModerationBridge((command) => this.sendRoomCommand(command), moderationSignal, openModerationModal)
             : undefined;
         this.spaceMessageSubscription = this._space.observePublicEvent("spaceMessage").subscribe((event) => {
             if (this.roomWide) {
@@ -1299,10 +1582,19 @@ export class ProximityChatRoom implements ChatRoom {
                 try {
                     const update: unknown = JSON.parse(event.spaceMessage.message);
                     retrySync(update);
-                    const snapshot = applyRoomUpdate(currentRoomSnapshot, update);
+                    outbox?.answer(update);
+                    if (receiveRoomActivity(update) || receivePoke(update)) return;
+                    const before = currentRoomSnapshot;
+                    const snapshot = applyRoomUpdate(before, update);
                     if (!snapshot) return;
                     currentRoomSnapshot = snapshot;
-                    const newest = snapshot.messages.at(-1);
+                    // A valid update carrying the messages is the room's history (a refused one leaves the snapshot as it was).
+                    if (snapshot !== before && typeof update === "object" && update !== null && "messages" in update)
+                        this.roomChatHistoryLoaded = true;
+                    // Direct messages count in their own conversation (quanta/directMessages.ts), not the class's.
+                    let newest: (typeof snapshot.messages)[number] | undefined;
+                    for (let i = snapshot.messages.length - 1; i >= 0 && !newest; i--)
+                        if (snapshot.messages[i].to === undefined) newest = snapshot.messages[i];
                     if (
                         lastRoomMessageId !== undefined &&
                         newest &&
@@ -1313,36 +1605,24 @@ export class ProximityChatRoom implements ChatRoom {
                         this.unreadMessagesCount.set(get(this.unreadMessagesCount) + 1);
                         chatNotificationStore.addNotification(newest.name, newest.body.slice(0, 60), this, newest.id);
                     }
-                    lastRoomMessageId = newest?.id ?? lastRoomMessageId ?? "0";
-                    this.messages.clear();
-                    for (const entry of snapshot.messages) {
-                        const message = new ProximityChatMessage(
-                            entry.id,
-                            { ...this.unknownUser, username: entry.name, spaceUserId: entry.sender },
-                            writable({ body: entry.body, url: undefined }),
-                            new Date(entry.at),
-                            entry.sender === snapshot.self,
-                            "proximity",
+                    if (
+                        lastRoomMessageId !== undefined &&
+                        typeof update === "object" &&
+                        update !== null &&
+                        "append" in update
+                    ) {
+                        const appended = snapshot.messages.find(
+                            (entry) => entry.id === (update as { append?: { id?: unknown } }).append?.id,
                         );
-                        message.canDelete.set(snapshot.canModerate || message.isMyMessage);
-                        message.onRemove = () => this.sendRoomCommand({ op: "delete", id: entry.id });
-                        this.messages.push(message);
+                        if (
+                            appended &&
+                            appended.sender !== snapshot.self &&
+                            appended.mentions?.some((mention) => mention.id === snapshot.self)
+                        )
+                            announceMention(appended, this);
                     }
-                    const notice =
-                        snapshot.notice ??
-                        (snapshot.muted.includes(snapshot.self) ? "Your chat is muted by the teacher." : undefined);
-                    if (notice)
-                        this.messages.push(
-                            new ProximityChatMessage(
-                                "quanta-notice",
-                                this.unknownUser,
-                                writable({ body: notice, url: undefined }),
-                                new Date(),
-                                false,
-                                "proximity",
-                            ),
-                        );
-                    this.hasUserMessages.set(snapshot.messages.length > 0);
+                    lastRoomMessageId = newest?.id ?? lastRoomMessageId ?? "0";
+                    this.renderRoomChat(snapshot);
                     publishModeration?.(snapshot);
                 } catch (error) {
                     console.warn("Invalid room chat snapshot", error);
@@ -1358,6 +1638,7 @@ export class ProximityChatRoom implements ChatRoom {
                 event.sender,
                 event.spaceMessage.characterTextures ?? [],
                 event.spaceMessage.name ?? "",
+                event.spaceMessage.id,
             );
 
             // Get the last message to use for notification
@@ -1368,7 +1649,7 @@ export class ProximityChatRoom implements ChatRoom {
             const readingRoomChat = this.roomWide && get(chatVisibilityStore) && get(selectedRoomStore) === this;
             if (readingRoomChat || (!this.roomWide && !get(this.intentionallyClosed))) {
                 if (!this.roomWide) {
-                    chatVisibilityStore.set(true);
+                    this.openChatByItself();
                 }
                 chatNotificationStore.clearRoom(this.id);
             } else {
@@ -1389,6 +1670,15 @@ export class ProximityChatRoom implements ChatRoom {
         });
 
         if (this.roomWide) this.sendRoomCommand({ op: "sync" });
+
+        // quanta: a nearby chat's reactions, edits and deletions, as the class chat has them (its server does those).
+        this.chatActionSubscription?.unsubscribe();
+        if (!this.roomWide) {
+            this.chatActionSubscription = this._space.observePublicEvent("quantaChatAction").subscribe((event) => {
+                if (isBlackListed(event.sender)) return;
+                this.applyNearbyAction(event.sender, event.quantaChatAction);
+            });
+        }
 
         this.spaceIsTypingSubscription?.unsubscribe();
         this.spaceIsTypingSubscription = this._space.observePublicEvent("spaceIsTyping").subscribe((event) => {
@@ -1416,8 +1706,11 @@ export class ProximityChatRoom implements ChatRoom {
             ) {
                 // If the user is not on the mobile, open the chat
                 // The user experience is disrupted by the chat on mobile
-                if (!isMediaBreakpointUp("md")) {
-                    chatVisibilityStore.set(true);
+                // quanta: nor where its column would cover the whole map (a room under 320px of map beside it, as in
+                // a guest call's room beside the board); the dock's Chat button keeps the unread count.
+                const chatWouldCover = QUANTA_UI && window.innerWidth - 320 - 12 < 320;
+                if (!isMediaBreakpointUp("md") && !chatWouldCover) {
+                    this.openChatByItself();
                     chatNotificationStore.clearRoom(this.id);
                 }
             }
@@ -1454,7 +1747,7 @@ export class ProximityChatRoom implements ChatRoom {
             this.soundManager.playBubbleInSound();
         } else if (!this.roomWide) {
             this.sendMessage(get(LL).chat.timeLine.youJoinedMeetingRoom(), "incoming", false);
-            this.soundManager.playMeetingInSound();
+            if (!this.lectureQuiet()) this.soundManager.playMeetingInSound();
         }
 
         // Request a screen wake lock so the device does not go to sleep while chatting (proximity or meeting room).
@@ -1535,7 +1828,7 @@ export class ProximityChatRoom implements ChatRoom {
                 }
 
                 if (this.users && this.users.size <= MAX_PARTICIPANTS_FOR_SOUND_NOTIFICATIONS) {
-                    this.soundManager.playMeetingInSound();
+                    if (!this.lectureQuiet()) this.soundManager.playMeetingInSound();
                 }
             })().catch((e) => {
                 if (!(e instanceof AbortError)) {
@@ -1563,7 +1856,7 @@ export class ProximityChatRoom implements ChatRoom {
                 }
 
                 if (this.users && this.users.size <= MAX_PARTICIPANTS_FOR_SOUND_NOTIFICATIONS) {
-                    this.soundManager.playMeetingOutSound();
+                    if (!this.lectureQuiet()) this.soundManager.playMeetingOutSound();
                 }
             }
             this.removeTypingUserbyID(spaceUser.spaceUserId);
@@ -1630,6 +1923,9 @@ export class ProximityChatRoom implements ChatRoom {
         this.moderationBridgeAbortController?.abort();
         this.spaceMessageSubscription = undefined;
         this.spaceIsTypingSubscription?.unsubscribe();
+        this.chatActionSubscription?.unsubscribe();
+        this.nearbyMessages.clear();
+        this.nearbyReactions.clear();
         this.spaceIsTypingSubscription = undefined;
         this.spaceStateUnsubscriber?.();
         this.spaceStateUnsubscriber = undefined;
@@ -1835,7 +2131,7 @@ export class ProximityChatRoom implements ChatRoom {
         if (!isMeetingRoomChat) {
             this.soundManager.playBubbleOutSound();
         } else if (!this.roomWide) {
-            this.soundManager.playMeetingOutSound();
+            if (!this.lectureQuiet()) this.soundManager.playMeetingOutSound();
         }
 
         if (this.screenWakeRelease) {
@@ -1884,6 +2180,9 @@ export class ProximityChatRoom implements ChatRoom {
         this.spaceMessageSubscription?.unsubscribe();
         this.moderationBridgeAbortController?.abort();
         this.spaceIsTypingSubscription?.unsubscribe();
+        this.chatActionSubscription?.unsubscribe();
+        this.nearbyMessages.clear();
+        this.nearbyReactions.clear();
         this.spaceStateUnsubscriber?.();
         this.spaceStateUnsubscriber = undefined;
         this.cleanupFileTransferService();
@@ -1907,8 +2206,15 @@ export class ProximityChatRoom implements ChatRoom {
             selectedRoomStore.set(this.currentMatrixRoom);
         }
 
-        chatVisibilityStore.set(this.currentChatVisibility);
+        // quanta: a chat its owner opened stays open when the bubble ends; they may be writing in it.
+        if (!QUANTA_UI || this.chatOpenedByItself) chatVisibilityStore.set(this.currentChatVisibility);
+        this.chatOpenedByItself = false;
         shouldRestoreChatStateStore.set(false);
+    }
+
+    private openChatByItself() {
+        if (!get(chatVisibilityStore)) this.chatOpenedByItself = true;
+        chatVisibilityStore.set(true);
     }
 
     private saveChatState() {
@@ -1989,6 +2295,9 @@ export class ProximityChatRoom implements ChatRoom {
         this.spaceMessageSubscription?.unsubscribe();
         this.moderationBridgeAbortController?.abort();
         this.spaceIsTypingSubscription?.unsubscribe();
+        this.chatActionSubscription?.unsubscribe();
+        this.nearbyMessages.clear();
+        this.nearbyReactions.clear();
         this.spaceStateUnsubscriber?.();
         this.roomSidePanelUnsubscriber();
         this.selectedRoomUnsubscriber();
@@ -2025,4 +2334,8 @@ export class ProximityChatRoom implements ChatRoom {
         }
         this.fileTransferObjectUrls.clear();
     }
+}
+
+function attachmentErrorFor(failure: string): "download" | "unavailable" | "connection" | "interrupted" {
+    return failure === "unavailable" || failure === "connection" || failure === "interrupted" ? failure : "download";
 }

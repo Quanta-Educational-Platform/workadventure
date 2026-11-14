@@ -545,6 +545,27 @@ describe("LiveKitRoom", () => {
         expect(queueScreenShareUpdate).toHaveBeenLastCalledWith(undefined);
     });
 
+    it("should publish the same running screen share again when the space allows it again", () => {
+        const shouldPublishScreenShareStore = writable(true);
+        const screenShareStream = createScreenShareStream();
+        const room = createLiveKitRoom({
+            screenSharingLocalStreamStore: writable(screenShareStream),
+            shouldPublishScreenShareStore,
+        });
+        const queueScreenShareUpdate = vi.fn();
+        room["queueScreenShareUpdate"] = queueScreenShareUpdate;
+
+        room["synchronizeMediaState"]();
+        shouldPublishScreenShareStore.set(false);
+        shouldPublishScreenShareStore.set(true);
+
+        expect(queueScreenShareUpdate.mock.calls.map(([stream]) => stream)).toEqual([
+            screenShareStream,
+            undefined,
+            screenShareStream,
+        ]);
+    });
+
     it("should remove a remote participant that left after a full reconnection", () => {
         const room = createLiveKitRoom({
             screenSharingLocalStreamStore: writable(undefined),

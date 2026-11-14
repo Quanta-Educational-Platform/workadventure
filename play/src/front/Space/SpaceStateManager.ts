@@ -222,7 +222,15 @@ export class SpaceStateManager {
     private change(query: NonNullable<SpaceStateQuery["query"]>, optimisticChange?: StateChange): Promise<void> {
         return this.alter(query, { optimisticChange }).catch((error) => {
             console.error(`Space state change "${query.$case}" failed in space ${this.spaceName}`, error);
-            notificationPlayingStore.playNotification(get(LL).notification.actionFailed());
+            notificationPlayingStore.playNotification(
+                get(LL).notification.actionFailed(),
+                undefined,
+                undefined,
+                undefined,
+                {
+                    tone: "problem",
+                },
+            );
         });
     }
 

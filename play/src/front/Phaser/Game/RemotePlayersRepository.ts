@@ -8,6 +8,7 @@ import type { AddPlayerEvent } from "../../Api/Events/AddPlayerEvent";
 import { iframeListener } from "../../Api/IframeListener";
 import { RoomConnection } from "../../Connection/RoomConnection";
 import { debugAddPlayer, debugRemovePlayer } from "../../Utils/Debuggers";
+import { SEAT_VARIABLE } from "../../quanta/seats";
 
 export interface RemotePlayerData extends MessageUserJoined {
     showVoiceIndicator: boolean;
@@ -21,6 +22,7 @@ export type PlayerDetailsUpdate = {
         availabilityStatus: boolean;
         chatID: boolean;
         sayMessage: boolean;
+        seat: boolean;
     };
 };
 
@@ -63,6 +65,7 @@ export class RemotePlayersRepository {
                     showVoiceIndicator: true,
                     chatID: true,
                     sayMessage: true,
+                    seat: true,
                 },
                 player,
             });
@@ -126,6 +129,7 @@ export class RemotePlayersRepository {
                     showVoiceIndicator: false,
                     chatID: false,
                     sayMessage: false,
+                    seat: false,
                 },
                 player,
             };
@@ -159,6 +163,7 @@ export class RemotePlayersRepository {
         if (details.setVariable !== undefined) {
             const value = RoomConnection.unserializeVariable(details.setVariable.value);
             player.variables.set(details.setVariable.name, value);
+            if (details.setVariable.name === SEAT_VARIABLE) updateStruct.updated.seat = true;
 
             // TODO: is it the responsibility of RemotePlayersRepository to send messages to the iframe?
             // TODO: is it the responsibility of RemotePlayersRepository to send messages to the iframe?

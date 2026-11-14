@@ -89,7 +89,7 @@ const camera: DeepPartial<Translation["camera"]> = {
         moreAction: "Інші дії",
         closeMenu: "Закрити меню",
         senPrivateMessage: "Надіслати особисте повідомлення (незабаром)",
-        giveFloor: "Надати слово",
+        giveFloor: "Дати слово всьому класу",
         revokeFloor: "Забрати слово",
         muteAudioUser: "Вимкнути звук",
         askToMuteAudioUser: "Попросити вимкнути звук",

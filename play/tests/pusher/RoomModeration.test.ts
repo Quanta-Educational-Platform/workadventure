@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mock } from "vitest-mock-extended";
 import type { SocketData } from "../../src/pusher/models/Websocket/SocketData";
 import type { PusherWebSocket } from "../../src/pusher/services/PusherWebSocket";
+vi.mock("../../src/pusher/enums/EnvironmentVariable", () => import("./mocks/pusherEnvironmentVariableMock"));
 import {
     handleRoomChat,
     joinModeratedRoom as admit,
@@ -61,17 +62,22 @@ describe("room chat transport", () => {
         expect(teacher.end.mock.calls).toHaveLength(0);
         command(teacher, { op: "moderate", action: "remove", id: "staff" });
         expect(otherStaff.end.mock.calls).toHaveLength(0);
-        command(teacher, { op: "moderate", action: "mute_mic", id: "student" });
-        expect(student.emitInBatch.mock.calls.flat()).toContainEqual(
+        const forced = (event: object) =>
             expect.objectContaining({
                 message: expect.objectContaining({
                     $case: "privateEvent",
-                    privateEvent: expect.objectContaining({
-                        spaceEvent: { event: { $case: "muteAudio", muteAudio: { force: true } } },
-                    }),
+                    privateEvent: expect.objectContaining({ spaceEvent: { event } }),
                 }),
-            }),
-        );
+            });
+        const muteAudio = forced({ $case: "muteAudio", muteAudio: { force: true } });
+        const muteVideo = forced({ $case: "muteVideo", muteVideo: { force: true } });
+        command(teacher, { op: "moderate", action: "mute_mic", id: "student" });
+        expect(student.emitInBatch.mock.calls.flat()).toContainEqual(muteAudio);
+        expect(student.emitInBatch.mock.calls.flat()).not.toContainEqual(muteVideo);
+        command(teacher, { op: "moderate", action: "mute_camera", id: "student" });
+        expect(student.emitInBatch.mock.calls.flat()).toContainEqual(muteVideo);
+        command(student, { op: "moderate", action: "mute_camera", id: "teacher" });
+        expect(teacher.emitInBatch.mock.calls.flat()).not.toContainEqual(muteVideo);
         command(teacher, { op: "moderate", action: "remove", id: "student" });
         expect(student.end.mock.calls.length).toBeGreaterThan(0);
         expect(secondTab.end.mock.calls.length).toBeGreaterThan(0);
@@ -86,13 +92,14 @@ describe("room chat transport", () => {
             teacher = socket("teacher", true, "history");
         for (const client of [student, other, teacher]) joinModeratedRoom(client);
         command(student, { op: "send", body: "help" });
-        command(other, { op: "delete", id: "1" });
+        const help = roomSessions.get("history").messages[0].id;
+        command(other, { op: "delete", id: help });
         const late = socket("late", false, "history");
         joinModeratedRoom(late);
         command(late, { op: "sync" });
         expect(JSON.stringify(late.emitInBatch.mock.calls)).toContain("help");
         expect(JSON.stringify(late.emitInBatch.mock.calls)).not.toContain("spoofed");
-        command(teacher, { op: "delete", id: "1" });
+        command(teacher, { op: "delete", id: help });
         late.emitInBatch.mockClear();
         expect(JSON.stringify(late.emitInBatch.mock.calls)).not.toContain("help");
         command(teacher, { op: "moderate", action: "mute_chat", id: "writer" });
@@ -157,7 +164,7 @@ it("does not amplify no-op deletes or invalid commands into history and shares r
     vi.advanceTimersByTime(10000);
     student.emitInBatch.mockClear();
     teacher.emitInBatch.mockClear();
-    command(student, { op: "delete", id: "100" });
+    command(student, { op: "delete", id: session.messages.at(-1)?.id });
     expect(JSON.stringify(teacher.emitInBatch.mock.calls)).toContain("deleted");
     expect(JSON.stringify(teacher.emitInBatch.mock.calls).length).toBeLessThan(1000);
     expect(session.messages).toHaveLength(99);
@@ -173,4 +180,63 @@ it("does not amplify no-op deletes or invalid commands into history and shares r
     command(student, { op: "sync" });
     expect(student.end.mock.calls).toHaveLength(1);
     expect(student.emitInBatchBounded.mock.calls.at(-1)?.[1]).toBe(ROOM_CHAT_QUEUE_BYTES);
+});
+it("lets only the author edit a message, keeps the blank rules and tells everyone in place", () => {
+    const author = socket("author", false, "edits"),
+        other = socket("other", false, "edits"),
+        teacher = socket("teacher", true, "edits");
+    for (const client of [author, other, teacher]) joinModeratedRoom(client);
+    command(author, { op: "send", body: "2+2=5" });
+    command(other, { op: "send", body: "next" });
+    const session = roomSessions.get("edits");
+    const id = session.messages[0].id;
+    command(other, { op: "edit", id, body: "hijacked" });
+    command(teacher, { op: "edit", id, body: "hijacked" });
+    expect(session.messages[0]).toMatchObject({ body: "2+2=5" });
+    expect(session.messages[0].edited).toBeUndefined();
+    for (const blank of ["", "&nbsp;<br>", "<div><br></div>", 42])
+        command(author, { op: "edit", id, body: blank });
+    expect(session.messages[0].body).toBe("2+2=5");
+    other.emitInBatch.mockClear();
+    command(author, { op: "edit", id, body: "2+2=4" });
+    expect(session.messages.map((message) => message.body)).toEqual(["2+2=4", "next"]);
+    expect(session.messages[0].edited).toBe(true);
+    const seen = JSON.stringify(other.emitInBatch.mock.calls);
+    expect(seen).toContain("edited");
+    expect(seen).toContain("2+2=4");
+    other.emitInBatch.mockClear();
+    command(author, { op: "edit", id, body: "2+2=4" });
+    expect(other.emitInBatch.mock.calls).toHaveLength(0);
+    command(teacher, { op: "moderate", action: "mute_chat", id: "author" });
+    command(author, { op: "edit", id, body: "while muted" });
+    expect(session.messages[0].body).toBe("2+2=4");
+});
+it("answers a message sent too fast with its reference and the time left, and the sender's copy with its own", () => {
+    vi.useFakeTimers();
+    const student = socket("student", false, "fast"),
+        other = socket("other", false, "fast");
+    joinModeratedRoom(student);
+    joinModeratedRoom(other);
+    const answers = () =>
+        student.emitInBatch.mock.calls.map(([message]) =>
+            JSON.parse(
+                (
+                    message as {
+                        message: { publicEvent: { spaceEvent: { event: { spaceMessage: { message: string } } } } };
+                    }
+                ).message.publicEvent.spaceEvent.event.spaceMessage.message,
+            ),
+        );
+    command(student, { op: "send", body: "first", ref: "c1" });
+    expect(answers().at(-1)).toMatchObject({ append: { body: "first" }, ref: "c1" });
+    expect(JSON.stringify(other.emitInBatch.mock.calls)).not.toContain("c1");
+    for (let i = 2; i <= 10; i++) command(student, { op: "send", body: `m${i}`, ref: `c${i}` });
+    vi.advanceTimersByTime(3000);
+    command(student, { op: "send", body: "eleventh", ref: "c11" });
+    expect(answers().at(-1)).toEqual({ quanta: 1, retryAfterMs: 7000, ref: "c11" });
+    expect(roomSessions.get("fast").messages).toHaveLength(10);
+    command(student, { op: "send", body: "", ref: "c12" });
+    vi.advanceTimersByTime(7000);
+    command(student, { op: "send", body: " ", ref: "c13" });
+    expect(answers().at(-1)).toMatchObject({ notice: expect.any(String), ref: "c13" });
 });

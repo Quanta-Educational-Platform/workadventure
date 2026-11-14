@@ -13,8 +13,8 @@
 </script>
 
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte";
-    import { readable } from "svelte/store";
+    import { onDestroy, onMount, tick } from "svelte";
+    import { get, readable } from "svelte/store";
     import { v4 as uuid } from "uuid";
     import type { EmojiClickEvent } from "emoji-picker-element/shared";
     import { defaultNativeIntegrationAppName } from "@workadventure/shared-utils";
@@ -22,12 +22,26 @@
         hasChatRoomPollCreation,
         hasProximityChatSidePanel,
         type ChatConversation,
+        type ChatMessage,
     } from "../../Connection/ChatConnection";
-    import { selectedChatMessageToReply } from "../../Stores/ChatStore";
+    import { selectedChatMessageToEdit, selectedChatMessageToReply } from "../../Stores/ChatStore";
     import { roomSidePanelStore } from "../../Stores/RoomSidePanelStore";
     import { chatInputFocusStore } from "../../../Stores/ChatStore";
     import { warningMessageStore } from "../../../Stores/ErrorStore";
-    import { PROXIMITY_FILE_TRANSFER_MAX_USERS } from "../../../Enum/EnvironmentVariable";
+    import { PROXIMITY_FILE_TRANSFER_MAX_USERS, QUANTA_UI } from "../../../Enum/EnvironmentVariable";
+    import { userIsAdminStore } from "../../../Stores/GameStore";
+    import { isHandRaisedStore, requestedHandRaiseState } from "../../../Stores/RaiseHandStore";
+    import { roomHandSpaceStore } from "../../../quanta/roomHand";
+    import { isClassChat, tableChatStore } from "../../../quanta/chatAudience";
+    import { QL } from "../../../quanta/i18n";
+    import MentionPicker from "../../../quanta/MentionPicker.svelte";
+    import {
+        mentionMatches,
+        mentionPeople,
+        mentionQueryBefore,
+        type MentionPerson,
+    } from "../../../quanta/mentions";
+    import { chatBodyFromInput, chatInputFromBody, isBlankChatBody } from "../../../../common/quanta/chatBody";
     import LL from "../../../../i18n/i18n-svelte";
     import { ProximityChatRoom } from "../../Connection/Proximity/ProximityChatRoom";
     import {
@@ -39,6 +53,7 @@
     import { gameManager } from "../../../Phaser/Game/GameManager";
     import { localUserStore } from "../../../Connection/LocalUserStore";
     import { draftMessageService } from "../../Services/DraftMessageService";
+    import { onVersionReload } from "../../../quanta/versionReload";
     import { analyticsClient } from "../../../Administration/AnalyticsClient";
     import { showFloatingUi } from "../../../Utils/svelte-floatingui-show";
     import { formatFileSize } from "../../../Utils/FileSize";
@@ -60,11 +75,13 @@
     import MessageInput from "./MessageInput.svelte";
     import {
         IconAlertTriangle,
+        IconCheck,
         IconHelpCircle,
         IconList,
         IconLoader,
         IconMoodSmile,
         IconPaperclip,
+        IconPencil,
         IconSend,
         IconX,
     } from "@wa-icons";
@@ -77,10 +94,42 @@
 
     let { room: roomProp, disabled = false }: Props = $props();
 
+    // quanta: students ask for help in the class chat, where a request scrolls away: the queue keeps their place.
+    let quickFileInput: HTMLInputElement | undefined = $state();
+    const quickRowClass =
+        "m-0 flex min-h-10 w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50";
+    const ASKS_FOR_HELP = /підійд|подійд|підійт|допоможі|допомогт|підкажі|подойд|помоги|come over|help/i;
+    const HAND_HINT_MS = 30000;
+    let handHint = $state(false);
+    let handHintTimer: ReturnType<typeof setTimeout> | undefined;
+    function offerHand(text: string): void {
+        if (!QUANTA_UI || !isClassChat(roomProp) || !ASKS_FOR_HELP.test(text)) return;
+        if (get(userIsAdminStore) || get(isHandRaisedStore) || !get(roomHandSpaceStore)) return;
+        handHint = true;
+        clearTimeout(handHintTimer);
+        handHintTimer = setTimeout(() => (handHint = false), HAND_HINT_MS);
+    }
+    function raiseHandFromChat(): void {
+        const space = get(roomHandSpaceStore);
+        if (space) requestedHandRaiseState.raise(space.getName());
+        handHint = false;
+        clearTimeout(handHintTimer);
+    }
+    // quanta: in the side column the box says who will read the message (quanta/chatAudience.ts).
+    let placeholder = $derived(
+        QUANTA_UI && isClassChat(roomProp)
+            ? $QL.messageClass()
+            : QUANTA_UI && roomProp === $tableChatStore?.room
+              ? $QL.messageNearby()
+              : $LL.chat.enter(),
+    );
+
     // Room is keyed in the parent component, so it will be re-created when the room changes.
     const room = (() => roomProp)();
 
     let message = $state("");
+    // quanta: spaces-only or line-break-only text (&nbsp;, <br>) is not a message.
+    let messageIsBlank = $derived(isBlankChatBody(message));
     let messageInput: HTMLDivElement | undefined = $state();
     let messageBarRef: HTMLDivElement;
     let stopTypingTimeOutID: undefined | ReturnType<typeof setTimeout>;
@@ -110,6 +159,8 @@
     const proximityFilesAllowed = room instanceof ProximityChatRoom ? room.canSendFiles : readable(true);
     const cannotCreatePoll = readable(false);
     const canSendMessages = room.canSendMessages ?? readable(true);
+    const chatMutedByTeacher = room instanceof ProximityChatRoom ? room.chatMutedByTeacher : inactiveProximityState;
+    const chatNotice = room instanceof ProximityChatRoom ? room.chatNotice : readable<string | undefined>(undefined);
 
     function getPollCreationCapability(currentRoom: ChatConversation) {
         return hasChatRoomPollCreation(currentRoom) ? currentRoom.pollCreation : undefined;
@@ -143,8 +194,9 @@
         new Set(files.filter(({ file }) => fileValidation.tooLargeFiles.includes(file)).map(({ id }) => id)),
     );
     let fileErrors: { title: string; hint?: string }[] = $derived([
-        // The chat can grow past the limit after the files were picked.
-        ...(tooManyUsersForFiles
+        // The chat can grow past the limit after the files were picked. quanta: only with files picked; otherwise a
+        // class chat past the limit (the whole room) could not send text at all.
+        ...(tooManyUsersForFiles && files.length > 0
             ? [{ title: $LL.chat.fileAttachment.tooManyUsers({ max: PROXIMITY_FILE_TRANSFER_MAX_USERS }) }]
             : []),
         ...(fileValidation.tooLargeFiles.length > 0
@@ -186,7 +238,134 @@
         }
     });
 
+    // quanta: a message is edited here in the box, as in Telegram; what was being typed comes back afterwards.
+    let editingMessage = $state<ChatMessage | null>(null);
+    let editFailed = $state(false);
+    let draftBeforeEdit = "";
+    // A save answered late (held back by the server's limit) belongs to the edit it was made for, not to one begun since.
+    let editAttempt = 0;
+    let editingSnippet = $derived(editingMessage ? get(editingMessage.content).body.replace(/\n/g, " ") : "");
+    const stopWatchingEdit = selectedChatMessageToEdit.subscribe((toEdit) => {
+        if (!QUANTA_UI) return;
+        editAttempt++;
+        if (toEdit) {
+            if (!editingMessage) draftBeforeEdit = message;
+            editingMessage = toEdit;
+            editFailed = false;
+            const body = get(toEdit.content).body;
+            message = toEdit.type === "proximity" ? chatInputFromBody(body) : body;
+            tick()
+                .then(focusAtEnd)
+                .catch((error) => console.error(error));
+        } else if (editingMessage) {
+            editingMessage = null;
+            message = draftBeforeEdit;
+            draftBeforeEdit = "";
+        }
+    });
+
+    function focusAtEnd() {
+        if (!messageInput) return;
+        messageInput.focus();
+        window.getSelection()?.selectAllChildren(messageInput);
+        window.getSelection()?.collapseToEnd();
+    }
+
+    async function saveEdit() {
+        if (!editingMessage) return;
+        const attempt = ++editAttempt;
+        try {
+            await editingMessage.edit(message);
+            if (attempt === editAttempt) selectedChatMessageToEdit.set(null);
+        } catch (error) {
+            console.error(error);
+            if (attempt === editAttempt) editFailed = true;
+        }
+    }
+
+    // A teacher can mute someone mid-edit, and the box goes away.
+    $effect(() => {
+        if ($chatMutedByTeacher && editingMessage) selectedChatMessageToEdit.set(null);
+    });
+
+    // quanta: "@" in the class chat's box offers the people in the room (quanta/mentions.ts).
+    const mentionsHere = QUANTA_UI && isClassChat(room);
+    let mention = $state<{ people: MentionPerson[]; active: number; node: Text; start: number; end: number }>();
+    let mentionDismissed: { node: Text; start: number } | undefined;
+    const mentionListId = `mention-list-${uuid()}`;
+
+    function updateMention(): void {
+        mention = undefined;
+        if (!mentionsHere || !messageInput) return;
+        const selection = window.getSelection();
+        const node = selection?.anchorNode;
+        if (!selection?.isCollapsed || !(node instanceof Text) || !messageInput.contains(node)) return;
+        const offset = selection.anchorOffset;
+        const query = mentionQueryBefore(node.data.slice(0, offset).replace(/\u00a0/g, " "));
+        if (query === undefined) return;
+        const start = offset - query.length - 1;
+        if (mentionDismissed?.node === node && mentionDismissed.start === start) return;
+        const people = mentionMatches(mentionPeople(), query);
+        if (people.length) mention = { people, active: 0, node, start, end: offset };
+    }
+
+    function pickMention(person: MentionPerson): void {
+        const target = mention;
+        mention = undefined;
+        if (!target || !messageInput) return;
+        const { node, start, end } = target;
+        // Everyone reads the class chat: it carries the server's name, and a teacher's room shows the real one on reading.
+        const inserted = `@${person.name}\u00a0`;
+        node.replaceData(start, end - start, inserted);
+        const range = document.createRange();
+        range.setStart(node, start + inserted.length);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        messageInput.focus();
+        message = messageInput.innerHTML;
+    }
+
+    /** True when the key was the open list's. */
+    function mentionKey(event: KeyboardEvent): boolean {
+        if (!mention) return false;
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+            mention = undefined;
+            return false;
+        }
+        const count = mention.people.length;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            mention.active = (mention.active + (event.key === "ArrowDown" ? 1 : count - 1)) % count;
+            return true;
+        }
+        if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+            event.preventDefault();
+            pickMention(mention.people[mention.active]);
+            return true;
+        }
+        if (event.key === "Escape") {
+            event.preventDefault();
+            mentionDismissed = { node: mention.node, start: mention.start };
+            mention = undefined;
+            return true;
+        }
+        return false;
+    }
+
     function sendMessageOrEscapeLine(keyDownEvent: KeyboardEvent) {
+        if (mentionKey(keyDownEvent)) return;
+        if (editingMessage) {
+            if (keyDownEvent.key === "Escape") {
+                keyDownEvent.preventDefault();
+                selectedChatMessageToEdit.set(null);
+            } else if (keyDownEvent.key === "Enter" && !keyDownEvent.shiftKey) {
+                keyDownEvent.preventDefault();
+                if (!messageIsBlank && $canSendMessages) saveEdit().catch((error) => console.error(error));
+            }
+            return;
+        }
         // Escape hands the keyboard back to the map, so arrows and WASD move the avatar again; the draft stays.
         if (keyDownEvent.key === "Escape") {
             keyDownEvent.preventDefault();
@@ -198,8 +377,7 @@
         }
         if (stopTypingTimeOutID) clearTimeout(stopTypingTimeOutID);
 
-        const isEmptyMessage = message.replace(/<br>/g, "").trim() == "" || message == undefined;
-        if (keyDownEvent.key === "Enter" || isEmptyMessage) {
+        if (keyDownEvent.key === "Enter" || messageIsBlank) {
             room.stopTyping().catch((error) => console.error(error));
         } else {
             room.startTyping()
@@ -219,18 +397,19 @@
             keyDownEvent.preventDefault();
         }
 
-        if (keyDownEvent.key === "Enter" && !isEmptyMessage) {
-            // message contains HTML tags. Actually, the only tags we allow are for the new line, ie. <br> tags.
-            // We can turn those back into carriage returns.
-            const messageToSend = message.replace(/<br>/g, "\n");
-            sendMessage(messageToSend).catch((error) => console.error(error));
+        if (keyDownEvent.key === "Enter" && !messageIsBlank) {
+            sendMessage().catch((error) => console.error(error));
         }
     }
 
-    async function sendMessage(messageToSend: string) {
+    async function sendMessage() {
         // The files are only removed from the preview once uploaded: a second Enter or click during the
         // upload would send them again.
         if (!$canSendMessages || sendingFiles || fileErrors.length > 0) {
+            return;
+        }
+        if (editingMessage) {
+            await saveEdit();
             return;
         }
         if (applicationProperty && applicationProperty.link.length !== 0) {
@@ -264,8 +443,10 @@
         }
 
         // send message
-        if (messageToSend.trim().length !== 0) {
+        const messageToSend = chatBodyFromInput(message);
+        if (!isBlankChatBody(messageToSend)) {
             room?.sendMessage(messageToSend);
+            offerHand(messageToSend);
             analyticsClient.trackAdminEvent("chat.message_sent", {
                 chatContext: room instanceof ProximityChatRoom ? "proximity" : "room",
             });
@@ -285,9 +466,8 @@
     }
 
     function onInputHandler() {
-        // We remove the <br> tags and the whitespace to check if the message is empty
-        const messageToSend = message.replace(/<br>/g, "").trim();
-        if (messageToSend == "" || messageToSend == undefined) {
+        updateMention();
+        if (messageIsBlank) {
             if (stopTypingTimeOutID) clearTimeout(stopTypingTimeOutID);
             room.stopTyping().catch((error) => console.error(error));
         }
@@ -305,12 +485,24 @@
         }
     });
 
+    // quanta: a reload for a new build (quanta/versionReload.ts) runs no onDestroy; the draft is kept first.
+    const stopKeepingDraftOnReload = onVersionReload(() =>
+        draftMessageService.saveDraftAndWait({
+            id: draftId,
+            roomId: room.id,
+            userId: localUserStore.getChatId(),
+            message: editingMessage ? draftBeforeEdit : message,
+            replyingToMessageId: replyMessageId ?? null,
+        }),
+    );
+
     onDestroy(() => {
+        stopKeepingDraftOnReload();
         draftMessageService.saveDraft({
             id: draftId,
             roomId: room.id,
             userId: localUserStore.getChatId(),
-            message,
+            message: editingMessage ? draftBeforeEdit : message,
             replyingToMessageId: replyMessageId ?? null,
         });
         if (setTimeOutProperty) clearTimeout(setTimeOutProperty);
@@ -322,6 +514,9 @@
         closeEmojiPicker?.();
         closeEmojiPicker = undefined;
         selectedChatChatMessageToReplyUnsubscriber();
+        stopWatchingEdit();
+        editAttempt++;
+        if (editingMessage) selectedChatMessageToEdit.set(null);
     });
 
     let closeEmojiPicker: (() => void) | undefined = undefined;
@@ -347,7 +542,7 @@
                     placement: "top-end",
                 },
                 12,
-                true,
+                !QUANTA_UI,
             );
         }
     }
@@ -591,7 +786,7 @@
     let quotedMessageContent = $derived($selectedChatMessageToReply?.content);
 
     const applicationButtonClass =
-        "p-2 m-0 flex flex-col w-36 min-h-32 items-center justify-start hover:bg-white/10 rounded-2xl gap-2 disabled:opacity-50 text-center";
+        "application-picker-item p-2 m-0 flex flex-col w-36 min-h-32 items-center justify-start hover:bg-white/10 rounded-2xl gap-2 disabled:opacity-50 text-center";
     const applicationTitleClass = "text-sm p-0 m-0 w-full leading-tight whitespace-normal break-words";
     const applicationDescriptionClass =
         "text-xs p-0 m-0 min-h-12 w-full leading-tight whitespace-normal break-words text-gray-400";
@@ -660,9 +855,54 @@
         </div>
     </div>
 {/if}
-{#if applicationComponentOpened}
+{#if applicationComponentOpened && QUANTA_UI}
+    <!-- quanta: what a class actually uses, as a short list; a file goes straight to the system's picker. -->
+    <div class="flex w-full flex-col gap-0.5 p-2" data-testid="quantaChatAttachMenu">
+        <input
+            bind:this={quickFileInput}
+            type="file"
+            multiple
+            hidden
+            onchange={(event) => {
+                const picked = event.currentTarget.files;
+                if (picked && picked.length > 0) handleFiles(picked);
+                event.currentTarget.value = "";
+                applicationComponentOpened = false;
+            }}
+        />
+        <button
+            type="button"
+            data-testid="fileAttachmentButton"
+            class={quickRowClass}
+            disabled={!canAttachFiles}
+            onclick={() => quickFileInput?.click()}
+        >
+            <IconPaperclip font-size={20} class="shrink-0" />
+            <span class="min-w-0">
+                <span class="block text-sm">{$QL.chatAttachFile()}</span>
+                <span class="block text-xs text-white/60">
+                    {#if !fileAttachementEnabled}
+                        {$LL.chat.fileAttachment.featureComingSoon()}
+                    {:else if tooManyUsersForFiles}
+                        {$LL.chat.fileAttachment.tooManyUsers({ max: PROXIMITY_FILE_TRANSFER_MAX_USERS })}
+                    {:else if isClassChat(roomProp)}
+                        {$QL.chatFileInRoom()}
+                    {:else if isProximityChatRoom}
+                        {$LL.chat.fileAttachment.proximityDescription()}
+                    {/if}
+                </span>
+            </span>
+        </button>
+        {#if pollCreation && $canCreatePoll}
+            <button type="button" data-testid="createPollButton" class={quickRowClass} onclick={openPollCreationModal}>
+                <IconList font-size={20} class="shrink-0" />
+                <span class="text-sm">{$LL.chat.poll.title()}</span>
+            </button>
+        {/if}
+    </div>
+{:else if applicationComponentOpened}
     <div class="w-full bg-contrast/50 rounded-t-2xl">
-        <div class="flex flex-wrap w-full justify-between items-center p-2 gap-2">
+        <div class="application-picker flex flex-wrap w-full justify-between items-center p-2 gap-2">
             <button
                 data-testid="youtubeApplicationButton"
                 class={applicationButtonClass}
@@ -824,7 +1064,7 @@
             </button>
         </div>
 
-        <div class="flex flex-wrap w-full justify-between items-center p-2 gap-2">
+        <div class="application-picker flex flex-wrap w-full justify-between items-center p-2 gap-2">
             {#each applicationManager.applications as app, index (`my-own-app-${index}`)}
                 <button
                     data-testid="{app.name}ApplicationButton"
@@ -839,7 +1079,7 @@
             {/each}
         </div>
 
-        <div class="flex flex-wrap w-full justify-between items-center p-2 gap-2">
+        <div class="application-picker flex flex-wrap w-full justify-between items-center p-2 gap-2">
             <button
                 data-testid="fileAttachmentButton"
                 class={applicationButtonClass}
@@ -892,6 +1132,23 @@
         </div>
     </div>
 {/if}
+{#if handHint && !$isHandRaisedStore}
+    <div
+        class="flex w-full flex-none items-center gap-2 px-4 pb-1 text-xs text-white/80"
+        role="status"
+        data-testid="chatHandHint"
+    >
+        <span class="min-w-0 flex-1">{$QL.chatHandHint()}</span>
+        <button type="button" class="btn btn-sm btn-secondary shrink-0" onclick={raiseHandFromChat}
+            >{$QL.chatHandButton()}</button
+        >
+    </div>
+{/if}
+{#if $chatNotice}
+    <p class="m-0 w-full flex-none px-4 pb-1 text-xs text-white/70" role="status" data-testid="chatNotice">
+        {$chatNotice}
+    </p>
+{/if}
 {#if applicationProperty}
     <div
         class="flex w-full flex-none items-center border border-solid border-b-0 border-x-0 border-t-1 border-white/10 bg-contrast/50"
@@ -912,6 +1169,22 @@
         }}
         fileUploaded={() => closeFileAttachmentComponent()}
     />
+{/if}
+{#if editingMessage}
+    <div class="quanta-edit-strip" class:failed={editFailed} data-testid="editStrip">
+        <IconPencil font-size={16} />
+        <div class="quanta-edit-strip-text">
+            <span>{editFailed ? $LL.chat.messageEditedError() : $QL.editingMessage()}</span>
+            <span>{editingSnippet}</span>
+        </div>
+        <button
+            type="button"
+            aria-label={$LL.chat.createRoom.buttons.cancel()}
+            title={$LL.chat.createRoom.buttons.cancel()}
+            data-testid="cancelMessageEditionButton"
+            onclick={() => selectedChatMessageToEdit.set(null)}><IconX font-size={16} /></button
+        >
+    </div>
 {/if}
 <div
     class="flex w-full flex-none items-center border border-solid border-b-0 border-x-0 border-t-1 border-white/10 bg-contrast/50 relative"
@@ -942,51 +1215,80 @@
             </div>
         </div>
     {/if}
-    <MessageInput
-        onkeydown={sendMessageOrEscapeLine}
-        oninput={onInputHandler}
-        pasteFiles={handleFiles}
-        {focusin}
-        {focusout}
-        bind:message
-        bind:messageInput
-        disabled={messageInputDisabled}
-        inputClass="message-input flex-grow !m-0 px-4 py-2.5 max-h-36 overflow-auto h-full rounded-lg block text-sm text-white placeholder:text-white/50 placeholder:text-sm border border-white/10 !bg-white/5 resize-none outline-none shadow-none focus:ring-0 focus:border-white/20"
-        dataText={$LL.chat.enter()}
-        dataTestid="messageInput"
-    />
-    <button
-        data-testid="addApplicationButton"
-        class="p-0 m-0 h-11 w-11 flex items-center justify-center hover:bg-white/10 rounded-md shrink-0"
-        class:bg-secondary-800={applicationComponentOpened}
-        onclick={toggleApplicationComponent}
-    >
-        <IconX
-            font-size={18}
-            class={applicationComponentOpened ? "rotate-0" : "rotate-45"}
-            style="transition: all .2s ease-out;"
+    {#if mention}
+        <MentionPicker
+            people={mention.people}
+            active={mention.active}
+            id={mentionListId}
+            onpick={pickMention}
+            insertsName
         />
-    </button>
-    <button
-        class="p-0 m-0 h-11 w-11 flex items-center justify-center hover:bg-white/10 rounded-md shrink-0"
-        onclick={openCloseEmojiPicker}
-    >
-        <IconMoodSmile font-size={18} />
-    </button>
-    {#if message.trim().length !== 0 || files.length !== 0 || (applicationProperty && applicationProperty.link.length !== 0)}
+    {/if}
+    {#if $chatMutedByTeacher}
+        <!-- quanta: a muted person sees why there is nowhere to type, not a box that swallows what they write. -->
+        <p class="m-0 flex-grow px-4 py-3 text-sm text-white/60" role="status" data-testid="chatMutedNotice">
+            {$QL.chatMuted()}
+        </p>
+    {:else}
+        <MessageInput
+            onkeydown={sendMessageOrEscapeLine}
+            oninput={onInputHandler}
+            pasteFiles={handleFiles}
+            {focusin}
+            focusout={(event) => {
+                mention = undefined;
+                focusout(event);
+            }}
+            bind:message
+            bind:messageInput
+            disabled={messageInputDisabled}
+            inputClass="message-input flex-grow !m-0 px-4 py-2.5 max-h-36 overflow-auto h-full rounded-lg block text-sm text-white placeholder:text-white/50 placeholder:text-sm border border-white/10 !bg-white/5 resize-none outline-none shadow-none focus:ring-0 focus:border-white/20"
+            dataText={placeholder}
+            dataTestid="messageInput"
+        />
         <button
-            data-testid="sendMessageButton"
-            class="disabled:opacity-30 disabled:!cursor-not-allowed disabled:text-white py-0 px-3 m-0 bg-secondary h-full rounded-md"
-            disabled={sendingFiles ||
-                shouldDisableSendButton({
-                    applicationPropertyInProcessing,
-                    isMessageInputDisabled: messageInputDisabled,
-                }) ||
-                fileErrors.length > 0}
-            onclick={() => sendMessage(message).catch((error) => console.error(error))}
+            style:display={editingMessage ? "none" : undefined}
+            data-testid="addApplicationButton"
+            class="p-0 m-0 h-11 w-11 flex items-center justify-center hover:bg-white/10 rounded-md shrink-0"
+            class:bg-secondary-800={applicationComponentOpened}
+            onclick={toggleApplicationComponent}
         >
-            <IconSend />
+            <IconX
+                font-size={18}
+                class={applicationComponentOpened ? "rotate-0" : "rotate-45"}
+                style="transition: all .2s ease-out;"
+            />
         </button>
+        <button
+            class="p-0 m-0 h-11 w-11 flex items-center justify-center hover:bg-white/10 rounded-md shrink-0"
+            onclick={openCloseEmojiPicker}
+        >
+            <IconMoodSmile font-size={18} />
+        </button>
+        {@const nothingToSend =
+            messageIsBlank && files.length === 0 && !(applicationProperty && applicationProperty.link.length !== 0)}
+        <!-- quanta: the button keeps its place, dim while there is nothing to send (quanta-ui.css). -->
+        {#if QUANTA_UI || !nothingToSend}
+            <button
+                data-testid="sendMessageButton"
+                class="disabled:opacity-30 disabled:!cursor-not-allowed disabled:text-white py-0 px-3 m-0 bg-secondary h-full rounded-md"
+                aria-label={editingMessage ? $QL.editMessage() : QUANTA_UI ? $QL.sendMessage() : undefined}
+                disabled={nothingToSend ||
+                    sendingFiles ||
+                    shouldDisableSendButton({
+                        applicationPropertyInProcessing,
+                        isMessageInputDisabled: messageInputDisabled,
+                    }) ||
+                    fileErrors.length > 0}
+                onclick={() => sendMessage().catch((error) => console.error(error))}
+            >
+                {#if editingMessage}
+                    <IconCheck />
+                {:else}
+                    <IconSend />
+                {/if}
+            </button>
+        {/if}
     {/if}
 </div>
 

@@ -119,12 +119,9 @@
 
     function randomizeOutfit() {
         if (!wokaData) return;
-        const randomCollectionIndex = Math.floor(Math.random() * wokaData["woka"].collections.length);
-        const randomTexture =
-            wokaData["woka"].collections[randomCollectionIndex].textures[
-                Math.floor(Math.random() * wokaData["woka"].collections[randomCollectionIndex].textures.length)
-            ];
-        selectedWokaTextureId = { woka: randomTexture.id };
+        const textures = wokaData["woka"].collections.flatMap((c: WokaCollection) => c.textures);
+        if (textures.length === 0) return;
+        selectedWokaTextureId = { woka: textures[Math.floor(Math.random() * textures.length)].id };
     }
 
     function getTextureUrl(relativeUrl: string): string {
@@ -254,10 +251,9 @@
                             class="flex-none lg:flex-1 flex flex-col items-start gap-0 min-h-0 min-w-0 max-h-full overflow-y-scroll overflow-x-auto scroll-mask py-[20px]"
                         >
                             {#each wokaData?.["woka"]?.collections || [] as collection, collectionIndex}
-                                <p class="text-sm text-gray-500 mb-1 mt-4 p-0">{collection.name}</p>
                                 <div
                                     id="woka-line-{collectionIndex}"
-                                    class="w-full flex flex-row flex-wrap items-start justify-start gap-3"
+                                    class="w-full mb-4 flex flex-row flex-wrap items-start justify-start gap-3"
                                 >
                                     {#each collection.textures || [] as texture (texture.id)}
                                         <button

@@ -47,6 +47,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "Không thể tải bản xem trước hình ảnh này.",
         openInNewTab: "Mở trong thẻ mới",
         notAvailable: "Hình ảnh không khả dụng.",
+        cannotDisplay: "Trình duyệt này không hiển thị được ảnh này. Hãy lưu tệp để mở.",
         imageActions: "Thao tác với hình ảnh",
     },
     join: "Tham gia",
@@ -284,6 +285,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "Chấp nhận để tải xuống",
         saveFile: "Lưu tệp",
         unavailable: "Không còn khả dụng",
+        connectionFailed: "Không thể kết nối với người gửi. Hãy thử lại.",
+        interrupted: "Quá trình truyền bị gián đoạn. Hãy thử lại.",
+        retry: "Thử lại",
         recipient: {
             waiting: "Đang chờ",
             summary: "{received}/{total} người đã nhận",

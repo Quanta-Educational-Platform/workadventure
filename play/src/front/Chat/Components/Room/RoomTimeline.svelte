@@ -23,6 +23,10 @@
     import { localUserStore } from "../../../Connection/LocalUserStore";
     import { ProximityChatRoom } from "../../Connection/Proximity/ProximityChatRoom";
     import LL from "../../../../i18n/i18n-svelte";
+    import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
+    import { isClassChat } from "../../../quanta/chatAudience";
+    import PinnedStrip from "../../../quanta/PinnedStrip.svelte";
+    import { QL } from "../../../quanta/i18n";
     import Message from "./Message.svelte";
     import MessageInputBar from "./MessageInputBar.svelte";
     import MessageSystem from "./MessageSystem.svelte";
@@ -127,7 +131,14 @@
 
     type RenderItem =
         | { kind: "separator"; key: string; label: string }
-        | { kind: "item"; key: string; timelineItem: ChatTimelineItem; showHeader: boolean };
+        | {
+              kind: "item";
+              key: string;
+              timelineItem: ChatTimelineItem;
+              showHeader: boolean;
+              /** quanta: the messages one person sent in a row, this one among them. */
+              run?: ChatMessage[];
+          };
 
     function isValidDate(d: Date) {
         return d instanceof Date && !Number.isNaN(d.getTime());
@@ -175,6 +186,15 @@
         const currentTimelineItems = $timelineItems ?? [];
 
         for (const timelineItem of currentTimelineItems) {
+            // quanta: in the side column the line under the switch says who is in the conversation
+            // (quanta/chatAudience.ts); "X joined / left the discussion" lines would only repeat it.
+            if (
+                QUANTA_UI &&
+                (timelineItem.kind === "system" ||
+                    (timelineItem.kind === "message" &&
+                        (timelineItem.message.type === "incoming" || timelineItem.message.type === "outcoming")))
+            )
+                continue;
             const d = getTimelineItemDate(timelineItem);
             let insertedSeparator = false;
 
@@ -208,12 +228,20 @@
                 previousMessageUserId === currentMessageUserId &&
                 timeDiff < TIME_GAP_THRESHOLD;
 
+            const previousItem = out[out.length - 1];
             out.push({
                 kind: "item",
                 key: `${timelineItem.kind}-${timelineItem.id}`,
                 timelineItem,
                 showHeader: !isRepeatedSender,
+                run:
+                    currentMessage === undefined
+                        ? undefined
+                        : isRepeatedSender && previousItem?.kind === "item" && previousItem.run
+                          ? previousItem.run
+                          : [],
             });
+            if (currentMessage) (out[out.length - 1] as { run?: ChatMessage[] }).run?.push(currentMessage);
             previousMessage = currentMessage;
         }
 
@@ -558,10 +586,15 @@
             }
         }
 
+        // quanta: answered once: a request left in the store would run again, and answer again, each time the
+        // timeline mounts (the chat reopened, another chat and back).
+        roomTimelineFocusStore.update((pending) => (pending?.sequence === request.sequence ? undefined : pending));
         if (!target) {
+            request.onResult?.(false);
             return;
         }
 
+        request.onResult?.(true);
         lastTimelineFocusSequence = request.sequence;
         // Focusing an arbitrary event is an explicit un-pin: otherwise a ResizeObserver firing while
         // autoScroll is still true would drag us back to the bottom.
@@ -644,9 +677,12 @@
                 </div>
             {/if}
         </div>
+        {#if QUANTA_UI && isClassChat(room)}
+            <PinnedStrip roomId={room.id} />
+        {/if}
         <div
             bind:this={messageListRef}
-            class="flex overflow-auto h-full justify-center items-end relative"
+            class="quanta-chat-scroll flex overflow-auto h-full justify-center items-end relative"
             onscroll={handleScroll}
             onwheel={cancelProgrammaticScroll}
             ontouchstart={cancelProgrammaticScroll}
@@ -674,7 +710,11 @@
                         </button>
                     </li>
                 {:else if $timelineItems.length === 0}
-                    {#if room instanceof ProximityChatRoom}
+                    {#if QUANTA_UI && isClassChat(room)}
+                        <li class="text-center px-3 max-w-md">
+                            <div class="text-base font-medium text-center">{$QL.noMessagesYet()}</div>
+                        </li>
+                    {:else if room instanceof ProximityChatRoom}
                         <li class="text-center px-3 max-w-md">
                             <img class="mx-auto" draggable="false" src={getCloseImg} alt={$LL.chat.getCloserTitle()} />
                             <div class="text-lg font-bold text-center">{$LL.chat.getCloserTitle()}</div>
@@ -722,6 +762,7 @@
                             <Message
                                 message={item.timelineItem.message}
                                 showHeader={item.showHeader}
+                                run={item.run}
                                 membersForMessageAvatars={room.membersForMessageAvatars}
                                 showThreadSummary={room.conversationKind === "room"}
                             />

@@ -3,6 +3,7 @@ import type { RoomConnection } from "../../../Connection/RoomConnection";
 import type { Player } from "../../Player/Player";
 import { hasMovedEventName } from "../../Player/Player";
 import type { HasPlayerMovedInterface } from "../../../Api/Events/HasPlayerMovedInterface";
+import { reportRoomActivity } from "../../../quanta/roomActivity";
 
 let lastSayPopupCloseDate: number | undefined = undefined;
 
@@ -35,6 +36,7 @@ export class SayManager {
         const player = this.currentPlayer;
         player.say(text, type);
         this.roomConnection.emitPlayerSayMessage({ message: text, type });
+        reportRoomActivity(type === SayMessageType.ThinkingCloud ? "think" : "say", text);
 
         if (type === SayMessageType.ThinkingCloud) {
             const cancelThink = (event: HasPlayerMovedInterface) => {

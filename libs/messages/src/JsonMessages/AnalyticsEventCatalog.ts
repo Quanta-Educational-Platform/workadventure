@@ -1408,6 +1408,132 @@ export const ANALYTICS_EVENTS = {
       "This client lost its LiveKit room for a reason it did not choose: not its own leave, nor the back closing the room. The media stop until a new invitation arrives.",
   }),
 
+  "media.weak_connection.state_changed": event({
+    properties: z.object({
+      ...livekitConnectionProperties,
+      enabled: z
+        .boolean()
+        .describe(
+          "true: LiveKit has rated this client's own link Poor or Lost for a few seconds, so incoming cameras drop to their lowest layer and its own camera sends at most 180p. false: the link has been good again for a while and video is back.",
+        ),
+    }),
+    description:
+      "Quanta: the call stepped video down to keep audio on a weak link of this client's own, or back up once it recovered.",
+  }),
+
+  "media.remote_audio.missing": event({
+    properties: z.object({
+      reason: z
+        .enum([
+          "missed_participant",
+          "missed_publication",
+          "state_lost",
+          "resubscribe",
+          "not_published",
+          "muted_publication",
+        ])
+        .describe(
+          "What this listener found after the space had said the speaker's microphone was on for 8 s with nothing playing: not_published, LiveKit has no microphone of theirs; muted_publication, LiveKit has it muted; missed_publication, this client never took up the publication; state_lost, the track was there but marked silent; resubscribe, the subscription had delivered no track after 20 s; missed_participant, this room had made nothing of a LiveKit participant whose space user is present, or held a replaced one. All but not_published and muted_publication are repaired here; those two are the same for every listener and only the listener with the lowest LiveKit identity reports them. A second event follows when the reason changes.",
+        ),
+      durationMs: z
+        .number()
+        .nonnegative()
+        .describe("How long the voice had been missing."),
+      connectionId: z
+        .string()
+        .nullable()
+        .describe(
+          "This listener's LiveKit room and participant (room sid:participant sid).",
+        ),
+      participantSid: z.string().describe("The speaker's LiveKit participant."),
+      trackSid: z
+        .string()
+        .nullable()
+        .describe(
+          "The speaker's microphone publication, when LiveKit has one.",
+        ),
+    }),
+    description:
+      "Quanta: a speaker the space shows with the microphone on was not heard by this listener (their tile shows a red microphone). Once per episode and reason.",
+  }),
+
+  "media.remote_audio.recovered": event({
+    properties: z.object({
+      reason: z
+        .enum([
+          "missed_participant",
+          "missed_publication",
+          "state_lost",
+          "resubscribe",
+          "not_published",
+          "muted_publication",
+        ])
+        .describe(
+          "The last reason media.remote_audio.missing gave in this episode.",
+        ),
+      durationMs: z
+        .number()
+        .nonnegative()
+        .describe("How long the voice was missing."),
+      connectionId: z
+        .string()
+        .nullable()
+        .describe("This listener's LiveKit room and participant."),
+      participantSid: z.string().describe("The speaker's LiveKit participant."),
+      trackSid: z
+        .string()
+        .nullable()
+        .describe("The speaker's microphone publication."),
+    }),
+    description:
+      "Quanta: the voice media.remote_audio.missing reported plays again here.",
+  }),
+
+  "media.remote_audio.ended": event({
+    properties: z.object({
+      reason: z
+        .enum([
+          "missed_participant",
+          "missed_publication",
+          "state_lost",
+          "resubscribe",
+          "not_published",
+          "muted_publication",
+        ])
+        .describe(
+          "The last reason media.remote_audio.missing gave in this episode.",
+        ),
+      end: z
+        .enum([
+          "microphone_off",
+          "blocked",
+          "audio_muted",
+          "speaker_side",
+          "closed",
+        ])
+        .describe(
+          "Why the episode ended without the voice playing: microphone_off, the space shows the speaker's microphone off; blocked, this listener blocked them; audio_muted, the speaker became an attendee this space doesn't play; speaker_side, the cause turned out to be the speaker's, which another listener reports; closed, the speaker left this listener's room or the room closed.",
+        ),
+      durationMs: z
+        .number()
+        .nonnegative()
+        .describe("How long the voice was missing."),
+      connectionId: z
+        .string()
+        .nullable()
+        .describe("This listener's LiveKit room and participant."),
+      participantSid: z.string().describe("The speaker's LiveKit participant."),
+      trackSid: z
+        .string()
+        .nullable()
+        .describe(
+          "The speaker's microphone publication, when LiveKit has one.",
+        ),
+    }),
+    description:
+      "Quanta: an episode media.remote_audio.missing reported ended without the voice playing here, so it is not counted as lost.",
+  }),
+
   "media.livekit_switch.requested": event({
     properties: z.object({
       streamCategory: z

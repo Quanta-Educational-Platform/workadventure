@@ -10,6 +10,7 @@ import type {
     CompanionTextureMessage,
 } from "@workadventure/messages";
 import type { PusherRoom } from "../PusherRoom";
+import type { WatchedRoomSession } from "../../services/QuantaRoomSessionWatch";
 import type { ViewportInterface } from "./ViewportMessage";
 
 export type BackConnection = ClientDuplexStream<PusherToBackMessage, ServerToClientMessage>;
@@ -28,6 +29,9 @@ export type SpaceName = string;
 export type ConnectingSocketData = {
     rejected: false;
     token: string;
+    // quanta: set for a connection signed in with a Quanta code (QuantaRoomSessionWatch.ts).
+    quantaRoomSession?: WatchedRoomSession;
+    stopRoomSessionWatch?: () => void;
     roomId: string;
     userId?: number; // User Id served by the back
     userUuid: string; // Admin UUID

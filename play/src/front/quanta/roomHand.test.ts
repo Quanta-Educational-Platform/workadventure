@@ -55,6 +55,32 @@ describe("room hand conversation lifecycle", () => {
         }
     });
 
+    it("shows a hand the server gave back after a restart as raised, until the user changes it", () => {
+        const hands = writable<{ spaceUserId: string; name: string; at: number }[]>([]);
+        const raiseHand = vi.fn((raised: boolean) => {
+            hands.set(raised ? [{ spaceUserId: "student", name: "Student", at: 123 }] : []);
+            return Promise.resolve();
+        });
+        const space = {
+            getName: () => ROOM_HAND_SPACE_NAME,
+            mySpaceUserId: "student",
+            state: { raisedHandsStore: hands, raiseHand },
+        } as unknown as SpaceInterface;
+        const stop = startRoomHand(space);
+        try {
+            hands.set([{ spaceUserId: "student", name: "Student", at: 100 }]);
+            expect(get(requestedHandRaiseState).has(ROOM_HAND_SPACE_NAME)).toBe(true);
+            expect(raiseHand).not.toHaveBeenCalled();
+            requestedHandRaiseState.lower(ROOM_HAND_SPACE_NAME);
+            expect(raiseHand.mock.calls).toEqual([[false]]);
+            // Once the user lowered it, a late echo of the old queue doesn't raise it again.
+            hands.set([{ spaceUserId: "student", name: "Student", at: 100 }]);
+            expect(get(requestedHandRaiseState).has(ROOM_HAND_SPACE_NAME)).toBe(false);
+        } finally {
+            stop();
+        }
+    });
+
     it("retains upstream conversation-scoped cleanup outside Quanta UI", () => {
         mode.quanta = false;
         requestedHandRaiseState.raise("bubble");

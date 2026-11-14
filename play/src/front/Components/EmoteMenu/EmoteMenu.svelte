@@ -6,6 +6,8 @@
     import type { EmojiClickEvent } from "emoji-picker-element/shared";
     import { emoteMenuStore } from "../../Stores/EmoteStore";
     import { locale } from "../../../i18n/i18n-svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { emojiPickerUk } from "../../quanta/emojiPickerUk";
 
     interface Props {
         onEmojiClick: (event: EmojiClickEvent) => void;
@@ -20,6 +22,10 @@
     const emojiClickEventHandler = (event: EmojiClickEvent) => onEmojiClick(event);
 
     function loadLanguage(language: string, country: string) {
+        if (language === "uk") {
+            emojiPicker.i18n = emojiPickerUk;
+            return;
+        }
         switch (language) {
             // See list of supported languages here: https://github.com/nolanlawson/emoji-picker-element/tree/master/src/picker/i18n
             case "ar": {
@@ -184,6 +190,12 @@
     });
 
     onMount(() => {
+        // quanta: its search only knows English names, so it goes, with the skin tones that share its row.
+        if (QUANTA_UI && emojiPicker.shadowRoot) {
+            const style = document.createElement("style");
+            style.textContent = ".search-row { display: none; } .tabpanel { scrollbar-width: thin; }";
+            emojiPicker.shadowRoot.appendChild(style);
+        }
         emojiPicker.addEventListener("emoji-click", emojiClickEventHandler);
         emoteMenuStore.openEmoteMenu();
     });

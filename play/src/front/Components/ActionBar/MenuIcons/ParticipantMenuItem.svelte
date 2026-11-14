@@ -21,6 +21,7 @@
     import type { MeetingParticipant } from "../../../Stores/MeetingInvitationStore";
     import WokaFromUserId from "../../Woka/WokaFromUserId.svelte";
     import Spinner from "../../Icons/Spinner.svelte";
+    import { fullNamesStore, shownName } from "../../../quanta/fullNames";
     import HeaderMenuItem from "./HeaderMenuItem.svelte";
     import ParticipantWoka from "./ParticipantWoka.svelte";
     import {
@@ -250,7 +251,7 @@
                                 <div
                                     class="participant-avatar w-9 h-9"
                                     style={`z-index: ${slicedParticipants.length - i};`}
-                                    title={participant.name}
+                                    title={shownName($fullNamesStore, participant.uuid, participant.name)}
                                 >
                                     <ParticipantWoka
                                         pictureStore={participant.pictureStore}
@@ -349,8 +350,11 @@
                                             />
                                         </div>
                                         <div class="min-w-0 flex-1 overflow-hidden">
-                                            <div class="font-medium text-white text-sm truncate" title={item.name}>
-                                                {item.name}
+                                            <div
+                                                class="font-medium text-white text-sm truncate"
+                                                title={shownName($fullNamesStore, item.uuid, item.name)}
+                                            >
+                                                {shownName($fullNamesStore, item.uuid, item.name)}
                                             </div>
                                             {#if item.uuid?.includes("@")}
                                                 <div class="text-xxs text-white/70 truncate" title={item.uuid}>
@@ -439,7 +443,7 @@
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="font-medium text-white text-sm truncate">
-                                    {item.name}
+                                    {shownName($fullNamesStore, item.uuid, item.name)}
                                 </div>
                                 {#if item.uuid?.includes("@")}
                                     <div class="text-xxs text-white/70 truncate" title={item.uuid}>

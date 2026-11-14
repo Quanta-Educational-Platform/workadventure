@@ -24,7 +24,8 @@ import { GameScene } from "../Game/GameScene";
 import type { OutlineableInterface } from "../Game/OutlineableInterface";
 import { SpeechDomElement } from "../Entity/SpeechDomElement";
 import LL from "../../../i18n/i18n-svelte";
-import { DEBUG_MODE } from "../../Enum/EnvironmentVariable";
+import { DEBUG_MODE, QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { isClassBoardArea } from "../../quanta/boardAccess";
 
 import Image = Phaser.GameObjects.Image;
 import Graphics = Phaser.GameObjects.Graphics;
@@ -445,6 +446,8 @@ export class Entity extends Image implements ActivatableInterface, OutlineableIn
                 case "openWebsite": {
                     // TODO add description to the empty interaction
                     if (!property.link) break;
+                    // quanta: a class board opens nothing of its own (boards are Quanta's, presented beside the room).
+                    if (QUANTA_UI && isClassBoardArea(this.entityData.name)) break;
                     const link = property.link;
                     const newTab = property.newTab;
                     actions.push({

@@ -3,7 +3,7 @@ import * as Phaser from "phaser";
 import type { Subscription } from "rxjs";
 import { Queue } from "queue-typescript";
 import type { Readable, Unsubscriber } from "svelte/store";
-import { get } from "svelte/store";
+import { derived, get } from "svelte/store";
 import { throttle } from "throttle-debounce";
 import { ForwardableStore, MapStore } from "@workadventure/store-utils";
 import { MathUtils } from "@workadventure/math-utils";
@@ -33,9 +33,15 @@ import {
 import { wamFileMigration } from "@workadventure/map-editor/src/Migrations/WamFileMigration";
 import Debug from "debug";
 import { asError } from "catch-unknown";
+import { setRoomAdmin } from "../../quanta/studentView";
+import { reportRoomActivity } from "../../quanta/roomActivity";
+import { SEAT_VARIABLE } from "../../quanta/seats";
+import { SeatManager } from "../../quanta/seatManager";
+import { clearRetryAttempts } from "../../quanta/retryBackoff";
 import { textMessageStore } from "../../Stores/TypeMessageStore/TextMessageStore";
 import { soundPlayingStore } from "../../Stores/SoundPlayingStore";
 import { connectionManager } from "../../Connection/ConnectionManager";
+import { WS_CLOSE_CODE_SESSION_DESTROYED } from "../../../common/WebSocketCloseCodes";
 import { urlManager } from "../../Url/UrlManager";
 import { mediaManager } from "../../WebRtc/MediaManager";
 import { iceServersManager } from "../../WebRtc/IceServersManager";
@@ -49,6 +55,7 @@ import { iframeListener } from "../../Api/IframeListener";
 import { coWebsiteManager, coWebsites } from "../../Stores/CoWebsiteStore";
 import {
     ADMIN_URL,
+    CLIENT_DISCONNECTION_RETENTION_MS,
     DEBUG_MODE,
     ENABLE_CHAT_DISCONNECTED_LIST,
     ENABLE_MAP_EDITOR,
@@ -92,10 +99,11 @@ import { playersStore } from "../../Stores/PlayersStore";
 import { emoteStore } from "../../Stores/EmoteStore";
 import { isHandRaisedStore } from "../../Stores/RaiseHandStore";
 import { raisedHandPlayerIdsStore } from "../../Stores/RaisedHandsStore";
-import { isInRemoteConversation } from "../../Stores/StreamableCollectionStore";
+import { isInActiveConversationStore, isInRemoteConversation } from "../../Stores/StreamableCollectionStore";
+import { heldTalking, voiceIndicatorWanted } from "../../quanta/talkingIndicator";
+import { considerMegaphoneHint } from "../../quanta/dockHints";
 import {
     jitsiParticipantsCountStore,
-    userIsAdminStore,
     userIsEditorStore,
     userIsJitsiDominantSpeakerStore,
 } from "../../Stores/GameStore";
@@ -114,6 +122,7 @@ import { errorScreenStore } from "../../Stores/ErrorScreenStore";
 import {
     availabilityStatusStore,
     batchGetUserMediaStore,
+    isSpeakerStore,
     lastNewMediaDeviceDetectedStore,
     localVoiceIndicatorStore,
     requestedCameraDeviceIdStore,
@@ -124,6 +133,7 @@ import {
 } from "../../Stores/MediaStore";
 import { devicesToOffer } from "../../Stores/AudioOutputStore";
 import NoMicrophoneSoundToast from "../../Components/Toasts/NoMicrophoneSoundToast.svelte";
+import NewDeviceToast from "../../quanta/NewDeviceToast.svelte";
 import LoudEnvironmentToast from "../../Components/Toasts/LoudEnvironmentToast.svelte";
 import { LL, locale } from "../../../i18n/i18n-svelte";
 import { toastStore } from "../../Stores/ToastStoreSingleton";
@@ -161,6 +171,8 @@ import { debugAddPlayer, debugRemovePlayer, debugUpdatePlayer, debugZoom } from 
 import { checkCoturnServer } from "../../Components/Video/utils";
 import { BroadcastService } from "../../Streaming/BroadcastService";
 import {
+    currentLiveStreamingSpaceStore,
+    givenFloorSpaceStore,
     megaphoneCanBeUsedStore,
     megaphoneSpaceSettingsStore,
     megaphoneSpaceStore,
@@ -184,6 +196,7 @@ import { ProximitySpaceManager } from "../../WebRtc/ProximitySpaceManager";
 import { audioContextManager } from "../../WebRtc/AudioContextManager";
 import { bindAudioOutput, pendingSinkRequests } from "../../WebRtc/AudioOutputManager";
 import { noMicrophoneSoundWarningVisibleStore } from "../../Stores/NoMicrophoneSoundWarningVisibleStore";
+import { selfOnAirStore } from "../../quanta/speakingToClass";
 import type { SpaceRegistryInterface } from "../../Space/SpaceRegistry/SpaceRegistryInterface";
 import { WorldUserProvider } from "../../Chat/UserProvider/WorldUserProvider";
 import { ChatUserProvider } from "../../Chat/UserProvider/ChatUserProvider";
@@ -221,11 +234,11 @@ import { isInsidePersonalAreaStore } from "../../Stores/PersonalDeskStore";
 import { areaPropertyVariablesManagerStore } from "../../Stores/AreaPropertyVariablesStore";
 import { ApplicationManager } from "../../Chat/Applications/ApplicationManager";
 import { audioPlaybackStore } from "../../Stores/AudioPlaybackStore";
-import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
 import { quantaRoomScript } from "../../quanta/roomScript";
 import { applyQuantaWamDefaults } from "../../quanta/wamDefaults";
 import { onHandConversationChanged, startRoomHand } from "../../quanta/roomHand";
 import { joinRoomChat } from "../../quanta/roomChat";
+import { BrandAreas, setRoomOwner } from "../../quanta/brandAreas";
 import { EnterLeaveScriptingService } from "../Helpers/EnterLeaveScriptingService";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
@@ -368,6 +381,9 @@ export class GameScene extends DirtyScene {
     private unsubscribers: Unsubscriber[] = [];
     private storesSubscribed = false;
     private entityPermissions: EntityPermissions | undefined;
+    private brandAreas: BrandAreas | undefined;
+    /** quanta: new devices whose notice was closed: not offered again until the page reloads. */
+    private readonly dismissedNewDevices = new Set<string>();
     private entityPermissionsDeferred: Deferred<EntityPermissions> = new Deferred();
     private gameMapFrontWrapper!: GameMapFrontWrapper;
     private actionableItems: Map<number, ActionableItem> = new Map<number, ActionableItem>();
@@ -390,6 +406,7 @@ export class GameScene extends DirtyScene {
     private sharedVariablesManager!: SharedVariablesManager;
     private areaPropertyVariablesManager!: AreaPropertyVariablesManager;
     private playerVariablesManager!: PlayerVariablesManager;
+    public readonly seatManager: SeatManager | undefined = QUANTA_UI ? new SeatManager(this) : undefined;
     private scriptingEventsManager!: ScriptingEventsManager;
     private followManager!: FollowManager;
     public inviteManager?: InviteManager;
@@ -441,7 +458,6 @@ export class GameScene extends DirtyScene {
     private spaceScriptingBridgeService: SpaceScriptingBridgeService | undefined;
     private allUserSpace: SpaceInterface | undefined;
     private isLiveStreamingUnsubscriber: Unsubscriber | undefined;
-    private shouldPublishScreenShareUnsubscriber: Unsubscriber | undefined;
     private unregisterAudioContextPlaybackRetry: Unsubscriber | undefined;
     private _proximityChatRoom: ProximityChatRoom | undefined;
     private _proximityChatRoomManager: ProximityChatRoomManager | undefined;
@@ -769,6 +785,8 @@ export class GameScene extends DirtyScene {
             this.Terrains,
         );
         this.gameMapFrontWrapper.initialize().catch((e) => console.error(e));
+        // quanta: an office's owner on its wall where the map has a quanta:owner area (brandAreas.ts).
+        if (QUANTA_UI) setRoomOwner(this._room.metadata);
         for (const layer of this.gameMapFrontWrapper.getFlatLayers()) {
             if (layer.type === "tilelayer") {
                 const exitSceneUrl = this.getExitSceneUrl(layer);
@@ -1022,6 +1040,8 @@ export class GameScene extends DirtyScene {
                                 this.initUserPermissionsOnEntity();
                                 this.hide(false);
                                 gameSceneIsLoadedStore.set(true);
+                                // In the room: a later failure starts its backoff over.
+                                clearRetryAttempts();
                                 this.sceneReadyToStartDeferred.resolve();
                                 this.initializeAreaManager();
                                 // #moveTo walks the player along a path: it needs the player (created when the pusher
@@ -1242,7 +1262,6 @@ export class GameScene extends DirtyScene {
         this.tileAnimationRefreshEvent = undefined;
         this.userInputManager?.destroy();
         this.isLiveStreamingUnsubscriber?.();
-        this.shouldPublishScreenShareUnsubscriber?.();
         this.pinchManager?.destroy();
         this.emoteManager?.destroy();
         this.entityAudioManager?.destroy();
@@ -1264,6 +1283,10 @@ export class GameScene extends DirtyScene {
             Sentry.captureException(e);
         });
         megaphoneSpaceStore.set(undefined);
+        // quanta: the lecture and any floor go with the scene; a reloaded scene starts off air until its zones say so.
+        currentLiveStreamingSpaceStore.set(undefined);
+        givenFloorSpaceStore.set(undefined);
+        isSpeakerStore.set(false);
         this.proximitySpaceManager?.destroy();
         if (this._proximityChatRoomManager) {
             this._proximityChatRoomManager.destroy();
@@ -1394,6 +1417,7 @@ export class GameScene extends DirtyScene {
 
         if (this.hasJoinedRoom) {
             this.CurrentPlayer.moveUser(delta, this.userInputManager.getEventListForGameTick());
+            this.seatManager?.update(time);
         }
         if (this.mapEditorModeManager?.isActive()) {
             this.mapEditorModeManager.update(time, delta);
@@ -1660,6 +1684,9 @@ export class GameScene extends DirtyScene {
         if (update.updated.showVoiceIndicator) {
             character.toggleTalk(update.player.showVoiceIndicator);
         }
+        if (update.updated.seat) {
+            this.seatManager?.showRemote(character, update.player.variables.get(SEAT_VARIABLE));
+        }
         if (update.updated.sayMessage) {
             character.say(update.player.sayMessage?.message ?? "", update.player.sayMessage?.type ?? 0);
         }
@@ -1684,6 +1711,7 @@ export class GameScene extends DirtyScene {
 
     public onResize(): void {
         super.onResize();
+        if (this.cameraManager != undefined) this.cameraManager.onScreenResized();
         this.reposition(true);
 
         this.throttledSendViewportToServer_();
@@ -2027,7 +2055,7 @@ export class GameScene extends DirtyScene {
      * Like AreaPermissions, users allowed to edit the map may go anywhere. Unlike the areas manager, this works as soon
      * as the pusher answered, which is when the start position is chosen.
      */
-    private isPositionAllowedForCurrentUser(position: PositionInterface): boolean {
+    public isPositionAllowedForCurrentUser(position: PositionInterface): boolean {
         const gameMapAreas = this.getGameMap().getWamFile()?.getGameMapAreas();
         if (!this.connection || this.connection.userCanEdit || !gameMapAreas) {
             return true;
@@ -2042,6 +2070,17 @@ export class GameScene extends DirtyScene {
         const userCanEdit = this.connection.userCanEdit;
         const userConnectedTags = this.connection.getAllTags() ?? [];
         this.gameMapFrontWrapper.initializeAreaManager(userConnectedTags, userCanEdit);
+        // quanta: the workspace's logo and names on the map's quanta:logo / quanta:name / quanta:fullname areas.
+        if (QUANTA_UI && !this.brandAreas) {
+            this.brandAreas = new BrandAreas(
+                this,
+                () => this.getGameMap().getWamFile()?.getGameMapAreas()?.getAreas().values() ?? [],
+            );
+            this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+                this.brandAreas?.destroy();
+                this.brandAreas = undefined;
+            });
+        }
     }
 
     private hide(hide = true): void {
@@ -2072,12 +2111,31 @@ export class GameScene extends DirtyScene {
                 this.connection.banUserMessageStream.subscribe((message) => this.ejectedUser(message));
 
                 // The serverDisconnected stream is completed in the RoomConnection. No need to unsubscribe.
+                const connection = this.connection;
                 //eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
                 this.connection.serverDisconnected.subscribe(() => {
                     showConnectionIssueMessage();
                     console.info("Player disconnected from server. Waiting for pusher ping.");
+                    // quanta: the server refused to resume a session well before it would have let it expire (it lost
+                    // it: a restart or crash), or was not answering pings: the whole room lost it together, so the
+                    // rejoins are spread over 15 s and don't all reach the server, and the platform behind it, in the
+                    // same second. A student whose own link dropped, even past the time the server keeps a session,
+                    // rejoins within a second once its link is back.
+                    const outageMs =
+                        connection.reconnectingSince === undefined ? 0 : Date.now() - connection.reconnectingSince;
+                    const refused =
+                        (connection.closeCode === 1008 || connection.closeCode === WS_CLOSE_CODE_SESSION_DESTROYED) &&
+                        outageMs < CLIENT_DISCONNECTION_RETENTION_MS * 0.75;
                     connectionManager
                         .waitForPusherPing()
+                        .then(
+                            ({ serverWasAway, spreadMs }) =>
+                                new Promise<void>((resolve) => {
+                                    // The pusher may ask for a spread itself (just restarted, or taking many joins).
+                                    const spread = Math.max(refused || serverWasAway ? 15_000 : 1_000, spreadMs);
+                                    setTimeout(resolve, Math.random() * spread);
+                                }),
+                        )
                         .then(() => {
                             console.info("Pusher reachable again. Reloading scene.");
                             this.cleanupClosingScene();
@@ -2123,6 +2181,9 @@ export class GameScene extends DirtyScene {
 
                 this.activatablesManager = new ActivatablesManager(this.CurrentPlayer);
                 this.cameraManager.startFollowPlayer(this.CurrentPlayer, 0);
+                if (QUANTA_UI && PropertyUtils.findProperty("quantaFitCamera", this.mapFile.properties) === true) {
+                    this.cameraManager.fitRoom(this.Map.tileWidth);
+                }
 
                 this.mapEditorModeManager?.subscribeToRoomConnection(this.connection);
 
@@ -2141,7 +2202,7 @@ export class GameScene extends DirtyScene {
                 this.tryOpenMapEditorWithToolEditorParameter();
 
                 playersStore.connectToRoomConnection(this.connection);
-                userIsAdminStore.set(this.connection.hasTag("admin"));
+                setRoomAdmin(this.connection.hasTag("admin"));
                 userIsEditorStore.set(this.connection.hasTag("editor"));
 
                 // The userJoinedMessageStream stream is completed in the RoomConnection. No need to unsubscribe.
@@ -2289,6 +2350,12 @@ export class GameScene extends DirtyScene {
 
                 this.CurrentPlayer.on(hasMovedEventName, (event: HasPlayerMovedInterface) => {
                     this.handleCurrentPlayerHasMovedEvent(event);
+                    // quanta: a student who stops beside a table's megaphone spot is told what it is for.
+                    if (QUANTA_UI && !event.moving)
+                        considerMegaphoneHint(
+                            event,
+                            this.getGameMap().getWamFile()?.getGameMapAreas().getAreas().values() ?? [],
+                        );
                 });
 
                 // Set up events manager
@@ -2393,9 +2460,10 @@ export class GameScene extends DirtyScene {
             throw new Error("No connection found when joining room");
         }
 
-        // quanta: around the map, the room's own black ground (quanta-ui.css), not the sign-in screens' colour.
+        // quanta: a soft grey around the map inside its window, as on ZEP, so the room reads as a lit floor rather
+        // than a hole in the dark backdrop (quanta-ui.css keeps the backdrop itself).
         if (QUANTA_UI) {
-            this.cameras.main.setBackgroundColor("#101217");
+            this.cameras.main.setBackgroundColor("#303032");
         } else if (gameManager.currentStartedRoom.backgroundColor != undefined) {
             this.cameras.main.setBackgroundColor(gameManager.currentStartedRoom.backgroundColor);
         }
@@ -2742,6 +2810,7 @@ export class GameScene extends DirtyScene {
                 if (emote && get(enableUserInputsStore)) {
                     this.CurrentPlayer?.playEmote(emote.emoji);
                     this.connection?.emitEmoteEvent(emote.emoji);
+                    reportRoomActivity("emote", emote.emoji);
                     emoteStore.set(null);
                 }
             }),
@@ -2839,7 +2908,10 @@ export class GameScene extends DirtyScene {
                 const ignoredNewMediaDeviceIds = localUserStore.getIgnoredNewMediaDeviceIds();
                 // filter device by name tu avoid multiple notification for the same device
                 const devicesToNotify = devices.reduce((devices: MediaDeviceInfo[], currentDevice: MediaDeviceInfo) => {
-                    if (ignoredNewMediaDeviceIds.has(currentDevice.deviceId)) {
+                    if (
+                        ignoredNewMediaDeviceIds.has(currentDevice.deviceId) ||
+                        this.dismissedNewDevices.has(currentDevice.deviceId)
+                    ) {
                         return devices;
                     }
                     if (
@@ -2856,6 +2928,48 @@ export class GameScene extends DirtyScene {
 
                 for (const device of devicesToNotify) {
                     const id = `${PLAYTEXT_NEW_MEDIA_DEVICE_PREFIX}${device.deviceId}`;
+                    const useDevice = () => {
+                        // get all devices with the same label
+                        const devicesToUse = devices.filter((device_) => device_.label === device.label);
+
+                        for (const deviceToUse of devicesToUse) {
+                            switch (deviceToUse.kind) {
+                                case "videoinput":
+                                    requestedCameraDeviceIdStore.set(deviceToUse.deviceId);
+                                    localUserStore.setPreferredVideoInputDevice(deviceToUse.deviceId);
+                                    break;
+                                // use the new device
+                                case "audioinput":
+                                    requestedMicrophoneDeviceIdStore.set(deviceToUse.deviceId);
+                                    localUserStore.setPreferredAudioInputDevice(deviceToUse.deviceId);
+                                    break;
+
+                                case "audiooutput":
+                                    localUserStore.setSpeakerDeviceId(deviceToUse.deviceId);
+                                    speakerSelectedStore.set(deviceToUse.deviceId);
+                                    break;
+                                default:
+                                    console.warn("Unknown device kind: ", deviceToUse.kind);
+                            }
+                        }
+                    };
+                    const ignoreDevice = () => localUserStore.addIgnoredNewMediaDeviceId(device.deviceId);
+                    // quanta: a toast with plain buttons rather than a speech bubble over the avatar
+                    if (QUANTA_UI) {
+                        toastStore.removeToast(id);
+                        // Its cross puts it away for this visit only, never for good.
+                        toastStore.addToast(
+                            NewDeviceToast,
+                            {
+                                device: device.label,
+                                onUse: useDevice,
+                                onDismiss: () => this.dismissedNewDevices.add(device.deviceId),
+                            },
+                            id,
+                        );
+                        setTimeout(() => toastStore.removeToast(id), 15000);
+                        continue;
+                    }
                     this.CurrentPlayer.destroyText(id);
                     this.CurrentPlayer.playText(
                         id,
@@ -2863,35 +2977,12 @@ export class GameScene extends DirtyScene {
                         5000,
                         () => {
                             this.CurrentPlayer.destroyText(id);
-
-                            // get all devices with the same label
-                            const devicesToUse = devices.filter((device_) => device_.label === device.label);
-
-                            for (const deviceToUse of devicesToUse) {
-                                switch (deviceToUse.kind) {
-                                    case "videoinput":
-                                        requestedCameraDeviceIdStore.set(deviceToUse.deviceId);
-                                        localUserStore.setPreferredVideoInputDevice(deviceToUse.deviceId);
-                                        break;
-                                    // use the new device
-                                    case "audioinput":
-                                        requestedMicrophoneDeviceIdStore.set(deviceToUse.deviceId);
-                                        localUserStore.setPreferredAudioInputDevice(deviceToUse.deviceId);
-                                        break;
-
-                                    case "audiooutput":
-                                        localUserStore.setSpeakerDeviceId(deviceToUse.deviceId);
-                                        speakerSelectedStore.set(deviceToUse.deviceId);
-                                        break;
-                                    default:
-                                        console.warn("Unknown device kind: ", deviceToUse.kind);
-                                }
-                            }
+                            useDevice();
                         },
                         true,
                         "message",
                         () => {
-                            localUserStore.addIgnoredNewMediaDeviceId(device.deviceId);
+                            ignoreDevice();
                             this.CurrentPlayer.destroyText(id);
                         },
                     );
@@ -2901,7 +2992,11 @@ export class GameScene extends DirtyScene {
 
         const NO_MICROPHONE_SOUND_TOAST_ID = "no-microphone-sound-toast";
         this.unsubscribers.push(
-            noMicrophoneSoundWarningVisibleStore.subscribe((show) => {
+            derived(
+                [noMicrophoneSoundWarningVisibleStore, selfOnAirStore, givenFloorSpaceStore],
+                // On air, the strip above the dock says this already.
+                ([show, onAir, floor]) => show && !onAir && floor === undefined,
+            ).subscribe((show) => {
                 if (show) {
                     toastStore.addToast(NoMicrophoneSoundToast, {}, NO_MICROPHONE_SOUND_TOAST_ID);
                 } else {
@@ -2921,21 +3016,17 @@ export class GameScene extends DirtyScene {
             }),
         );
 
-        this.isLiveStreamingUnsubscriber = this.spaceRegistry.isLiveStreamingAudioStore.subscribe((isStreaming) => {
-            if (isStreaming) {
+        // quanta: a class also shows who talks in a bubble (quanta/talkingIndicator.ts).
+        this.isLiveStreamingUnsubscriber = derived(
+            [this.spaceRegistry.isLiveStreamingAudioStore, isInActiveConversationStore],
+            ([isStreaming, inConversation]) => voiceIndicatorWanted(QUANTA_UI, isStreaming, inConversation),
+        ).subscribe((wanted) => {
+            if (wanted) {
                 this.enableVoiceIndicator();
             } else {
                 this.disableVoiceIndicator();
             }
         });
-
-        this.shouldPublishScreenShareUnsubscriber = this.spaceRegistry.shouldPublishScreenShareStore.subscribe(
-            (shouldPublish) => {
-                if (!shouldPublish && get(requestedScreenSharingState)) {
-                    requestedScreenSharingState.disableScreenSharing();
-                }
-            },
-        );
 
         // Subscribe to bubble sound changes
         this.unsubscribers.push(
@@ -3252,7 +3343,10 @@ ${escapedMessage}
         this.iframeSubscriptionList.push(
             iframeListener.cameraFollowPlayerStream.subscribe((cameraFollowPlayerEvent) => {
                 const duration = cameraFollowPlayerEvent.smooth ? (cameraFollowPlayerEvent.duration ?? 1000) : 0;
-                this.cameraManager.leaveFocusMode(this.CurrentPlayer, duration);
+                // quanta: a script that set its own zoom (a room fitted to the screen) follows the player at it.
+                if (cameraFollowPlayerEvent.keepZoom)
+                    this.cameraManager.followPlayerKeepingZoom(this.CurrentPlayer, duration);
+                else this.cameraManager.leaveFocusMode(this.CurrentPlayer, duration);
             }),
         );
 
@@ -4346,6 +4440,7 @@ ${escapedMessage}
             });
             this.CurrentPlayer.on(requestEmoteEventName, (emoteKey: string) => {
                 this.connection?.emitEmoteEvent(emoteKey);
+                reportRoomActivity("emote", emoteKey);
             });
         } catch (error) {
             if (error instanceof CharacterTextureError) {
@@ -4499,6 +4594,7 @@ ${escapedMessage}
         }
         this.MapPlayersByKey.set(player.userId, player);
         player.updatePosition(addPlayerData.position);
+        this.seatManager?.showRemote(player, addPlayerData.variables?.get(SEAT_VARIABLE));
         this.remotePlayersSpatialIndex.set(player.userId, player);
 
         player.on(Phaser.Input.Events.POINTER_OVER, () => {
@@ -4839,7 +4935,8 @@ ${escapedMessage}
 
     private enableVoiceIndicator(): void {
         if (!this.localVolumeStoreUnsubscriber) {
-            this.localVolumeStoreUnsubscriber = localVoiceIndicatorStore.subscribe((isTalking) => {
+            const talking = QUANTA_UI ? heldTalking(localVoiceIndicatorStore) : localVoiceIndicatorStore;
+            this.localVolumeStoreUnsubscriber = talking.subscribe((isTalking) => {
                 this.tryChangeShowVoiceIndicatorState(isTalking);
 
                 return () => {

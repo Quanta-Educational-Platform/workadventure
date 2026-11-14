@@ -2,7 +2,7 @@
     import LL, { locale } from "../../../../i18n/i18n-svelte";
     import type { ChatQuestionItem } from "../../Connection/ChatConnection";
     import { roomSidePanelStore } from "../../Stores/RoomSidePanelStore";
-    import Button from "../../../Components/UI/Button.svelte";
+    import { QL } from "../../../quanta/i18n";
     import { IconCheck, IconHelpCircle, IconList, IconLoader, IconThumbUp, IconTrash } from "@wa-icons";
 
     type PendingAction = "upvote" | "answer" | "delete";
@@ -30,111 +30,92 @@
     }
 </script>
 
-<div class="px-3">
-    <div
-        data-testid="questionCard"
-        class="question-card rounded-2xl bg-contrast/90 border border-solid p-4 max-w-2xl transition-colors {$questionState.isAnswered
-            ? 'border-success/30'
-            : 'border-white/10'}"
-    >
-        <div class="flex flex-wrap items-center gap-2">
+<div class="quanta-card-row">
+    <div data-testid="questionCard" class="question-card quanta-card">
+        <div class="quanta-card-meta quanta-card-meta-top">
+            <span class="quanta-card-kind"><IconHelpCircle font-size={12} />{$LL.chat.question.badge()}</span>
+            <span>{$questionState.senderName ?? $LL.chat.question.unknownAuthor()}</span>
             <span
-                class="inline-flex h-6 items-center gap-1 rounded-md bg-warning/15 px-2 text-xs font-medium text-warning"
+                >{new Date($questionState.createdAt).toLocaleTimeString($locale, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                })}</span
             >
-                <IconHelpCircle font-size={12} />
-                {$LL.chat.question.badge()}
-            </span>
-            {#if $questionState.isAnswered}
-                <span
-                    data-testid="questionAnsweredBadge"
-                    class="ms-auto inline-flex h-6 items-center gap-1 rounded-md bg-success/15 px-2 text-xs font-medium text-success"
-                >
-                    <IconCheck font-size={12} />
-                    {$LL.chat.question.answered()}
-                </span>
-            {/if}
         </div>
 
-        <div class="mt-2 whitespace-pre-wrap wrap-anywhere text-sm font-semibold text-white">
-            {$questionState.body}
-        </div>
+        <div class="quanta-card-body">{$questionState.body}</div>
 
-        <div class="mt-2 text-xs text-white/55">
-            {$questionState.senderName ?? $LL.chat.question.unknownAuthor()} · {new Date(
-                $questionState.createdAt,
-            ).toLocaleTimeString($locale, { hour: "2-digit", minute: "2-digit" })}
-        </div>
-
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-            <Button
-                variant={$questionState.hasUpvoted ? "primary" : "light"}
-                appearance={$questionState.hasUpvoted ? "filled" : "border"}
-                size="xs"
+        <div class="quanta-card-foot">
+            <button
+                type="button"
+                class="quanta-card-action"
+                class:quanta-card-action-on={$questionState.hasUpvoted}
                 disabled={!$questionState.canUpvote || pending === "upvote"}
+                title={$LL.chat.question.upvote()}
                 aria-label={$LL.chat.question.upvote()}
                 aria-pressed={$questionState.hasUpvoted}
-                dataTestId="questionUpvoteButton"
+                data-testid="questionUpvoteButton"
                 onclick={() => run("upvote", () => question.toggleUpvote())}
             >
-                {#snippet icon()}
-                    <IconThumbUp font-size={14} />
-                {/snippet}
+                <IconThumbUp font-size={14} />
                 <span data-testid="questionUpvoteCount">{$questionState.upvoteCount}</span>
-            </Button>
+            </button>
 
-            {#if $questionState.canMarkAnswered}
-                <Button
-                    variant="success"
-                    appearance="border"
-                    size="xs"
+            {#if $questionState.isAnswered}
+                <span class="quanta-card-done" data-testid="questionAnsweredBadge">
+                    <IconCheck font-size={14} />
+                    <span class="quanta-card-label">{$LL.chat.question.answered()}</span>
+                </span>
+            {:else if $questionState.canMarkAnswered}
+                <button
+                    type="button"
+                    class="quanta-card-action"
                     disabled={pending === "answer"}
-                    dataTestId="questionMarkAnsweredButton"
+                    title={$LL.chat.question.markAnswered()}
+                    aria-label={$LL.chat.question.markAnswered()}
+                    data-testid="questionMarkAnsweredButton"
                     onclick={() => run("answer", () => question.markAnswered())}
                 >
-                    {#snippet icon()}
-                        {#if pending === "answer"}
-                            <IconLoader class="animate-[spin_2s_linear_infinite]" font-size={14} />
-                        {:else}
-                            <IconCheck font-size={14} />
-                        {/if}
-                    {/snippet}
-                    {$LL.chat.question.markAnswered()}
-                </Button>
+                    {#if pending === "answer"}
+                        <IconLoader class="animate-[spin_2s_linear_infinite]" font-size={14} />
+                    {:else}
+                        <IconCheck font-size={14} />
+                    {/if}
+                    <span class="quanta-card-label">{$QL.questionMarkAnswered()}</span>
+                </button>
             {/if}
 
-            {#if $questionState.canDelete}
-                <Button
-                    variant="danger"
-                    appearance="border"
-                    size="xs"
-                    disabled={pending === "delete"}
-                    dataTestId="questionDeleteButton"
-                    onclick={() => run("delete", () => question.remove())}
-                >
-                    {#snippet icon()}
-                        {#if pending === "delete"}
-                            <IconLoader class="animate-[spin_2s_linear_infinite]" font-size={14} />
-                        {:else}
-                            <IconTrash font-size={14} />
-                        {/if}
-                    {/snippet}
-                    {$LL.chat.delete()}
-                </Button>
-            {/if}
+            <span class="quanta-card-gap"></span>
 
-            <Button
-                variant="light"
-                appearance="ghost"
-                size="xs"
-                class="ms-auto"
-                dataTestId="questionViewAllButton"
+            <button
+                type="button"
+                class="quanta-card-action"
+                title={$LL.chat.question.viewAll()}
+                aria-label={$LL.chat.question.viewAll()}
+                data-testid="questionViewAllButton"
                 onclick={() => roomSidePanelStore.setActiveSection("questions")}
             >
-                {#snippet icon()}
-                    <IconList font-size={14} />
-                {/snippet}
-                {$LL.chat.question.viewAll()}
-            </Button>
+                <IconList font-size={14} />
+                <span class="quanta-card-label">{$LL.chat.question.viewAll()}</span>
+            </button>
+
+            {#if $questionState.canDelete}
+                <button
+                    type="button"
+                    class="quanta-card-action"
+                    disabled={pending === "delete"}
+                    title={$LL.chat.delete()}
+                    aria-label={$LL.chat.delete()}
+                    data-testid="questionDeleteButton"
+                    onclick={() => run("delete", () => question.remove())}
+                >
+                    {#if pending === "delete"}
+                        <IconLoader class="animate-[spin_2s_linear_infinite]" font-size={14} />
+                    {:else}
+                        <IconTrash font-size={14} />
+                    {/if}
+                </button>
+            {/if}
         </div>
     </div>
 </div>

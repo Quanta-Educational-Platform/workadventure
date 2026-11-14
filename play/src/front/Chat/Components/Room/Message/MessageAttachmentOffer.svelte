@@ -34,6 +34,10 @@
                   ? "loading"
                   : "missing", // ready, yet the message has no URL to show
     );
+    // A failed download can be tried again as long as the sender still offers the file.
+    let canRetry = $derived(
+        phase === "error" && consent !== undefined && $status.state === "error" && $status.error !== "unavailable",
+    );
     let percent = $derived(
         phase === "loading" && $status.state === "loading" && $status.progress !== undefined
             ? Math.floor($status.progress * 100)
@@ -63,13 +67,19 @@
                 if (currentStatus.state === "error" && currentStatus.error === "unavailable") {
                     return $LL.chat.file.unavailable();
                 }
+                if (currentStatus.state === "error" && currentStatus.error === "connection") {
+                    return $LL.chat.file.connectionFailed();
+                }
+                if (currentStatus.state === "error" && currentStatus.error === "interrupted") {
+                    return $LL.chat.file.interrupted();
+                }
                 return errorLabel ?? $LL.chat.file.attachmentDownloadError();
         }
     }
 </script>
 
 <div
-    class="min-w-[200px] max-w-full overflow-hidden rounded-t-[inherit] bg-white/5 last:rounded-b-[inherit] text-white"
+    class="quanta-attachment-file min-w-[200px] max-w-full overflow-hidden rounded-t-[inherit] bg-white/5 last:rounded-b-[inherit] text-white"
 >
     <div class="flex items-center justify-between gap-2 px-2.5 py-2">
         <div class="min-w-0">
@@ -77,7 +87,7 @@
                 <IconPaperclip font-size={14} class="shrink-0" />
                 <span class="truncate">{$content.body}</span>
             </div>
-            <div class="text-xs text-white/70">{captionFor(phase, $status)}</div>
+            <div class="quanta-attachment-caption text-xs text-white/70">{captionFor(phase, $status)}</div>
         </div>
         {#if percent !== undefined}
             <span class="shrink-0 text-sm font-bold">{percent}%</span>
@@ -109,6 +119,16 @@
                 onclick={() => consent?.accept()}
             >
                 {$LL.chat.accept()}
+            </button>
+        </div>
+    {:else if canRetry}
+        <div class="flex border-0 border-t border-solid border-white/10 text-xs font-bold">
+            <button
+                class="m-0 flex-1 rounded-none border-0 bg-transparent py-2 text-white hover:bg-white/10"
+                data-testid="retryAttachmentButton"
+                onclick={() => consent?.accept()}
+            >
+                {$LL.chat.file.retry()}
             </button>
         </div>
     {/if}

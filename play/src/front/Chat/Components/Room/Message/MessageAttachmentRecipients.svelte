@@ -1,9 +1,10 @@
 <script lang="ts">
     import type { Readable } from "svelte/store";
     import type { ChatAttachmentRecipient } from "../../../Connection/ChatConnection";
+    import { fullNamesStore, shownName } from "../../../../quanta/fullNames";
     import Avatar from "../../Avatar.svelte";
     import LL from "../../../../../i18n/i18n-svelte";
-    import { IconCheck, IconClock, IconX } from "@wa-icons";
+    import { IconCheck, IconChevronDown } from "@wa-icons";
 
     interface Props {
         recipients: Readable<ChatAttachmentRecipient[]>;
@@ -13,6 +14,13 @@
 
     let received = $derived($recipients.filter((recipient) => recipient.state === "received").length);
     let pending = $derived($recipients.filter((recipient) => recipient.state === "waiting").length);
+    let failed = $derived($recipients.filter((recipient) => recipient.state === "failed"));
+    let allReceived = $derived(received === $recipients.length);
+
+    // quanta: one line that says whether it arrived; names only when asked for, or for those it did not reach.
+    const STACK_MAX = 5;
+    let expanded = $state(false);
+    let shown = $derived(expanded ? $recipients : failed);
 
     function label(recipient: ChatAttachmentRecipient): string {
         return recipient.state === "sending"
@@ -20,93 +28,83 @@
             : $LL.chat.file.recipient[recipient.state]();
     }
 
-    // While sending, the ring fills up clockwise; the mask hollows it into a 2px ring around the avatar.
-    function sendingRingStyle(progress: number): string {
-        const hollow = "radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))";
-        return `background: conic-gradient(#fff ${progress * 100}%, rgb(255 255 255 / 0.22) 0); mask: ${hollow}; -webkit-mask: ${hollow}`;
-    }
-
-    // The ring around a recipient's avatar carries their state; the colored badge repeats it for color-blind users.
-    const ringClass: Record<ChatAttachmentRecipient["state"], string> = {
-        waiting: "border-2 border-dashed border-warning animate-[spin_6s_linear_infinite] motion-reduce:animate-none",
-        sending: "",
-        received: "border-2 border-success",
-        declined: "border-2 border-white/30",
-        failed: "border-2 border-danger",
-    };
     const labelClass: Record<ChatAttachmentRecipient["state"], string> = {
-        waiting: "text-warning-400",
+        waiting: "recipient-waiting text-warning-400",
         sending: "font-bold",
-        received: "text-success-300",
-        declined: "",
-        failed: "text-danger-100",
+        received: "recipient-received text-success-300",
+        declined: "opacity-70",
+        failed: "recipient-failed text-danger-100",
     };
 </script>
 
-<div class="px-2 pb-2 text-white">
-    <div class="flex flex-wrap items-baseline justify-between gap-x-2 px-0.5 pt-0.5 text-xs">
-        <span class="font-bold">{$LL.chat.file.recipient.summary({ received, total: $recipients.length })}</span>
-        {#if pending > 0}
-            <span class="text-warning-400">{$LL.chat.file.recipient.pending({ pending })}</span>
-        {/if}
-    </div>
-    <ul class="list-none m-0 p-0 pt-2.5 flex flex-wrap gap-x-1.5 gap-y-2">
-        {#each $recipients as recipient (recipient.spaceUserId)}
-            <li
-                class="w-[46px] flex flex-col items-center gap-[3px] text-center"
-                title={`${recipient.name} · ${label(recipient)}`}
-                data-testid="attachmentRecipient"
+{#if $recipients.length > 0}
+    <div class="quanta-attachment-recipients px-2 pb-2 text-white text-xs">
+        <button
+            type="button"
+            class="w-full flex items-center gap-2 m-0 p-0.5 bg-transparent border-0 text-inherit text-left cursor-pointer"
+            aria-expanded={expanded}
+            onclick={() => (expanded = !expanded)}
+        >
+            {#if allReceived}
+                <span class="recipient-received text-success-300 flex shrink-0"><IconCheck font-size="14" /></span>
+            {/if}
+            <span class="font-bold min-w-0"
+                >{$LL.chat.file.recipient.summary({ received, total: $recipients.length })}</span
             >
-                <span class="relative block w-9 h-9">
-                    {#if recipient.state === "sending"}
-                        <span
-                            role="progressbar"
-                            aria-label={$LL.chat.file.recipient.sending()}
-                            aria-valuemin="0"
-                            aria-valuemax="100"
-                            aria-valuenow={Math.floor(recipient.progress * 100)}
-                            class="absolute inset-0 rounded-full"
-                            style={sendingRingStyle(recipient.progress)}
-                        ></span>
-                    {:else}
-                        <span class="absolute inset-0 rounded-full box-border {ringClass[recipient.state]}"></span>
-                    {/if}
-                    <span
-                        class="absolute inset-1 rounded-full overflow-hidden {recipient.state === 'declined'
-                            ? 'opacity-45'
-                            : ''}"
-                    >
+            {#if pending > 0}
+                <span class="recipient-waiting text-warning-400 min-w-0"
+                    >{$LL.chat.file.recipient.pending({ pending })}</span
+                >
+            {/if}
+            <span class="ml-auto flex items-center shrink-0" aria-hidden="true">
+                {#each $recipients.slice(0, STACK_MAX) as recipient, index (recipient.spaceUserId)}
+                    <span class="block w-5 h-5 rounded-full overflow-hidden {index > 0 ? '-ml-1.5' : ''}">
                         <Avatar
                             pictureStore={recipient.pictureStore}
-                            fallbackName={recipient.name}
+                            fallbackName={shownName($fullNamesStore, recipient.uuid, recipient.name)}
                             color={recipient.color}
                             compact
                         />
                     </span>
-                    {#if recipient.state !== "sending"}
-                        <span
-                            class="absolute -right-[3px] -bottom-[3px] w-[15px] h-[15px] rounded-full border-2 border-solid border-secondary flex items-center justify-center text-[10px] font-bold
-                                {recipient.state === 'waiting' ? 'bg-warning text-contrast-900' : ''}
-                                {recipient.state === 'received' ? 'bg-success text-contrast-900' : ''}
-                                {recipient.state === 'declined' ? 'bg-contrast-900 text-white' : ''}
-                                {recipient.state === 'failed' ? 'bg-danger text-contrast-900' : ''}"
-                            aria-hidden="true"
-                        >
-                            {#if recipient.state === "waiting"}
-                                <IconClock font-size="9" />
-                            {:else if recipient.state === "received"}
-                                <IconCheck font-size="9" />
-                            {:else if recipient.state === "declined"}
-                                <IconX font-size="8" />
-                            {:else}
-                                !
-                            {/if}
+                {/each}
+                {#if $recipients.length > STACK_MAX}
+                    <span class="ml-1 opacity-80">+{$recipients.length - STACK_MAX}</span>
+                {/if}
+                <span class="ml-1 flex transition-transform {expanded ? 'rotate-180' : ''}"
+                    ><IconChevronDown font-size="14" /></span
+                >
+            </span>
+        </button>
+        {#if shown.length > 0}
+            <ul class="list-none m-0 p-0 pt-2 flex flex-col gap-1.5">
+                {#each shown as recipient (recipient.spaceUserId)}
+                    <li class="flex items-center gap-2" data-testid="attachmentRecipient">
+                        <span class="block w-6 h-6 shrink-0 rounded-full overflow-hidden">
+                            <Avatar
+                                pictureStore={recipient.pictureStore}
+                                fallbackName={shownName($fullNamesStore, recipient.uuid, recipient.name)}
+                                color={recipient.color}
+                                compact
+                            />
                         </span>
-                    {/if}
-                </span>
-                <span class="text-[11px] max-w-full truncate">{recipient.name}</span>
-                <span class="text-[10px] leading-tight {labelClass[recipient.state]}">{label(recipient)}</span>
-            </li>
-        {/each}
-    </ul>
-</div>
+                        <span class="min-w-0 flex-1">{shownName($fullNamesStore, recipient.uuid, recipient.name)}</span>
+                        {#if recipient.state === "sending"}
+                            <span
+                                role="progressbar"
+                                aria-label={$LL.chat.file.recipient.sending()}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow={Math.floor(recipient.progress * 100)}
+                                class="shrink-0 {labelClass.sending}">{label(recipient)}</span
+                            >
+                        {:else}
+                            <span class="shrink-0 whitespace-nowrap {labelClass[recipient.state]}"
+                                >{label(recipient)}</span
+                            >
+                        {/if}
+                    </li>
+                {/each}
+            </ul>
+        {/if}
+    </div>
+{/if}

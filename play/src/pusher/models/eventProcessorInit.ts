@@ -32,6 +32,9 @@ eventProcessor.registerPrivateEventProcessor("muteAudio", (event, sender) => {
     } else if (MODERATION_ADMINS_ONLY) {
         // quanta: not even a request to mute, from anyone but an admin.
         throw new Error("Only admins can mute others");
+    } else {
+        // quanta: a request, whatever the client claimed.
+        event.muteAudio.force = false;
     }
 
     return event;
@@ -52,6 +55,9 @@ eventProcessor.registerPrivateEventProcessor("muteVideo", (event, sender) => {
     } else if (MODERATION_ADMINS_ONLY) {
         // quanta: not even a request to mute, from anyone but an admin.
         throw new Error("Only admins can mute others");
+    } else {
+        // quanta: a request, whatever the client claimed.
+        event.muteVideo.force = false;
     }
 
     return event;

@@ -6,7 +6,7 @@ import type { GameScene } from "../Game/GameScene";
 import type { ActiveEventList } from "../UserInput/UserInputManager";
 import { UserInputEvent } from "../UserInput/UserInputManager";
 import { Character } from "../Entity/Character";
-import type { PathFollowResult } from "../Entity/Character";
+import type { PathEase, PathFollowResult } from "../Entity/Character";
 import { PathTileType } from "../../Utils/PathfindingManager";
 import { isWaypointBlocked } from "../../Utils/PathValidation";
 
@@ -16,6 +16,8 @@ import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
 import { visibilityStore } from "../../Stores/VisibilityStore";
 import { passStatusToOnline } from "../../Rules/StatusRules/statusChangerFunctions";
 import { localUserStore } from "../../Connection/LocalUserStore";
+import type { SeatPose } from "../../quanta/seats";
+import { KEYS_SMOOTHING_MS } from "../../quanta/wokaFacing";
 
 export const hasMovedEventName = "hasMoved";
 export const startMovingEventName = "startMoving";
@@ -24,6 +26,8 @@ export const requestEmoteEventName = "requestEmote";
 export class Player extends Character {
     private readonly unsubscribeVisibilityStore: Unsubscriber;
     private isMoving = false;
+    // quanta: where it was on the last step of walking, to see how far it really got.
+    private lastStepAt: { x: number; y: number } | undefined;
 
     constructor(
         Scene: GameScene,
@@ -67,7 +71,20 @@ export class Player extends Character {
         }
     }
 
+    /** quanta: whether it is walking, by keys or along a path. */
+    public get walking(): boolean {
+        return this.isMoving;
+    }
+
+    /** quanta: sits and tells the room where, facing the seat's way. */
+    public sitOnSeat(id: string, x: number, y: number, direction: PositionMessage_Direction, pose: SeatPose): void {
+        this.sitOn(id, x, y, direction, pose);
+        this.companion?.setTarget(x, y, direction);
+        this.emit(hasMovedEventName, { moving: false, direction, x, y });
+    }
+
     public rotate(): void {
+        if (this.seatId) return;
         const direction = (this._lastDirection + 1) % (PositionMessage_Direction.LEFT + 1);
         this.emit(hasMovedEventName, {
             moving: false,
@@ -91,14 +108,18 @@ export class Player extends Character {
         this.scene.connection?.emitFollowConfirmation(get(followUsersStore)[0]);
     }
 
-    public setPathToFollow(path: { x: number; y: number }[], speed?: number): Promise<PathFollowResult> {
+    public setPathToFollow(
+        path: { x: number; y: number }[],
+        speed?: number,
+        ease?: PathEase,
+    ): Promise<PathFollowResult> {
         if (!this.isMoving) {
             this.isMoving = true;
             this.emit(startMovingEventName, { direction: this._lastDirection, x: this.x, y: this.y });
         }
 
         this.getBody().setDirectControl(true);
-        return super.setPathToFollow(path, speed).finally(() => {
+        return super.setPathToFollow(path, speed, ease).finally(() => {
             this.isMoving = false;
         });
     }
@@ -126,6 +147,13 @@ export class Player extends Character {
             x = x - 1;
         } else if (activeEvents.get(UserInputEvent.MoveRight)) {
             x = x + 1;
+        }
+
+        // quanta: two keys at once (or the joystick's diagonal) walk at the same speed as one.
+        const length = Math.hypot(x, y);
+        if (length > 1) {
+            x /= length;
+            y /= length;
         }
 
         // Compute movement deltas
@@ -162,6 +190,7 @@ export class Player extends Character {
             if (this.isMoving) {
                 this.isMoving = false;
             }
+            this.lastStepAt = undefined;
             this.stop();
             emit();
         }
@@ -200,6 +229,9 @@ export class Player extends Character {
         const body = this.getBody();
 
         body.setVelocity(x, y);
+        const from = this.lastStepAt ?? { x: this.x, y: this.y };
+        const moved = { x: this.x - from.x, y: this.y - from.y };
+        this.lastStepAt = { x: this.x, y: this.y };
 
         if (Math.abs(body.velocity.x) > Math.abs(body.velocity.y)) {
             if (body.velocity.x < 0) {
@@ -215,6 +247,9 @@ export class Player extends Character {
             }
         }
         passStatusToOnline();
+        // quanta: the facing follows where it really goes, along a wall too; into one, the way it is trying.
+        if (moved.x !== 0 || moved.y !== 0) this.observeMovement(moved.x, moved.y, KEYS_SMOOTHING_MS);
+        else this.facing.blocked(this._lastDirection, this.scene.time.now);
         this.playAnimation(this._lastDirection, true);
 
         if (this.companion) {

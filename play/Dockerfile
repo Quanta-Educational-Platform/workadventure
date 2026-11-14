@@ -9,6 +9,9 @@ COPY messages/package-lock.json messages/package.json ./
 RUN npm ci
 COPY messages .
 COPY libs ./../libs
+# The version the front and the pusher compare on every connection (apiVersionHash): unique per image, e.g. its tag
+# and commit, so a deploy sends every open page a "new version" and it reloads. Unset, it hashes the protocol files.
+ARG WA_BUILD_ID=""
 RUN npm run tag-version && npm run ts-proto
 
 # typescript build

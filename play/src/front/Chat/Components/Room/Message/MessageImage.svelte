@@ -4,6 +4,7 @@
     import type { ChatMessage, ChatMessageContent } from "../../../Connection/ChatConnection";
     import ChatImagePreviewModal from "../../ChatImagePreviewModal.svelte";
     import MessageAttachmentOffer from "./MessageAttachmentOffer.svelte";
+    import MessageFile from "./MessageFile.svelte";
     import { modals } from "@wa-modals";
 
     interface Props {
@@ -15,7 +16,10 @@
 
     let previewUrl = $derived($content.url ?? $content.thumbnailUrl);
     let displayUrl = $derived($content.thumbnailUrl ?? $content.url);
-    let canDisplayImage = $derived(displayUrl !== undefined);
+    // The browser could not draw what arrived (a format it does not decode, a damaged file): offer the file instead.
+    let undrawableUrl: string | undefined = $state(undefined);
+    let undrawable = $derived(displayUrl !== undefined && displayUrl === undrawableUrl);
+    let canDisplayImage = $derived(displayUrl !== undefined && !undrawable);
 
     function openImagePreview(url: string, alt: string | undefined) {
         modals.open(ChatImagePreviewModal, { url, alt });
@@ -74,9 +78,20 @@
                 }
             }}
         >
-            <img class="w-full object-cover max-h-52 rounded" src={displayUrl} alt={$content.body} draggable="false" />
+            <img
+                class="w-full object-cover max-h-52 rounded"
+                src={displayUrl}
+                alt={$content.body}
+                draggable="false"
+                onerror={() => (undrawableUrl = displayUrl)}
+            />
         </div>
     </div>
+{:else if undrawable}
+    <div class="px-2.5 pt-2 text-xs text-white/70" data-testid="undrawableImage">
+        {$LL.chat.imagePreview.cannotDisplay()}
+    </div>
+    <MessageFile {content} {message} />
 {:else}
     <MessageAttachmentOffer
         {content}

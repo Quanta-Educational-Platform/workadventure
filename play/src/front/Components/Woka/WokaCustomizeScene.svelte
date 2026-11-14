@@ -17,6 +17,8 @@
     import type { WokaBodyPart, WokaData, WokaTexture } from "./WokaTypes";
     import { getItemsPerRow } from "./ItemsPerRow";
     import WokaImage from "./WokaImage.svelte";
+    import QuantaWokaBuilder from "./QuantaWokaBuilder.svelte";
+    import { idsToLook, lookToIds, presetLook, randomLook, type WokaV3Look } from "../../quanta/wokaV3";
 
     interface Props {
         back: () => void;
@@ -38,6 +40,10 @@
     let isLoading = $state(true);
     let error = $state("");
     let assetsDirection: number = $state(0);
+    // quanta: with Quanta's own parts in the catalogue, the builder offers only those (no hats, props or
+    // underwear); WA's stock parts stay for picks made before.
+    let quantaLook: WokaV3Look | null = $state(null);
+    const quanta = $derived(!!(wokaData as WokaData | null)?.["quantaSkin"]);
 
     const bodyPartOrder: WokaBodyPart[] = ["body", "eyes", "hair", "clothes", "hat", "accessory"];
 
@@ -61,6 +67,13 @@
             // Check that textures exist in the Woka data
             if (!wokaData) {
                 throw new Error("Woka data is not loaded");
+            }
+
+            if (wokaData.quantaSkin) {
+                const saved = savedTextureIds ?? [];
+                quantaLook =
+                    idsToLook(saved) ?? (saved.length === 1 ? presetLook(saved[0]) : null) ?? randomLook();
+                return;
             }
 
             // Check if current textures is in the collections list
@@ -102,6 +115,10 @@
     }
 
     function randomizeOutfit() {
+        if (quanta) {
+            quantaLook = randomLook();
+            return;
+        }
         bodyPartOrder.forEach((bodyPart) => {
             if (wokaData?.[bodyPart]?.collections?.[0]?.textures) {
                 const textures = wokaData[bodyPart].collections[0].textures;
@@ -114,7 +131,10 @@
 
     function handlerSaveAndContinue() {
         try {
-            const textureIds = bodyPartOrder.map((bodyPart) => selectedTextures[bodyPart]).filter(Boolean);
+            const textureIds =
+                quanta && quantaLook
+                    ? lookToIds(quantaLook)
+                    : bodyPartOrder.map((bodyPart) => selectedTextures[bodyPart]).filter(Boolean);
             if (!areCharacterTexturesValid(textureIds)) {
                 error = "Invalid character textures";
                 return;
@@ -194,7 +214,7 @@
 
     // Function to handle keyboard navigation
     function useKeyBoardNavigation(event: KeyboardEvent) {
-        if (!wokaData) return;
+        if (!wokaData || quanta) return;
         if (
             event.key === "ArrowLeft" ||
             event.key === "ArrowRight" ||
@@ -233,7 +253,7 @@
     }
 
     function useKeyBoardNavigationUp(event: KeyboardEvent) {
-        if (!wokaData) return;
+        if (!wokaData || quanta) return;
         if (event.key === "Enter" && enterPressed) {
             enterPressed = false;
             if (selectedBodyPart === "accessory") {
@@ -279,6 +299,29 @@
                 <p>{error}</p>
                 <button class="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onclick={loadWokaData}>
                     Retry
+                </button>
+            </div>
+        {:else if quanta && quantaLook && wokaData}
+            <QuantaWokaBuilder
+                look={quantaLook}
+                {wokaData}
+                {getTextureUrl}
+                onchange={(next) => {
+                    quantaLook = next;
+                }}
+            />
+            <div
+                class="w-full p-3 flex flex-row items-center gap-2 border-t-2 border-t-white/10"
+                style="border-top-style: solid;"
+            >
+                <button class="w-full px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded" onclick={back}>
+                    {$LL.woka.customWoka.navigation.backToDefaultWoka()}
+                </button>
+                <button
+                    class="selectCharacterSceneFormSubmit w-full px-4 py-3 bg-secondary text-white rounded hover:bg-secondary-600"
+                    onclick={handlerSaveAndContinue}
+                >
+                    {$LL.woka.customWoka.navigation.finish()}
                 </button>
             </div>
         {:else}

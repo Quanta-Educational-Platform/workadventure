@@ -109,6 +109,10 @@ function createWarningMessageStore() {
                 return messages;
             });
         },
+        /** quanta: the room's notices close one with their dismiss button. */
+        removeWarningMessage: (id: string): void => {
+            update((messages: WarningMessage[]) => messages.filter((message) => message.id !== id));
+        },
     };
 }
 export const warningMessageStore = createWarningMessageStore();

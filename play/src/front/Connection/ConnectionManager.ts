@@ -27,6 +27,14 @@ import waLogo from "../Components/images/logo.svg";
 import WebsocketReconnectingToast from "../Components/Toasts/WebsocketReconnectingToast.svelte";
 import { errorScreenStore } from "../Stores/ErrorScreenStore";
 import { toastStore } from "../Stores/ToastStoreSingleton";
+import {
+    askPageForSignIn,
+    confirmStoredTokenWithPage,
+    exchangeSignInCode,
+    inCodeSignedFrame,
+    takeSignInCode,
+    type SignInNeeded,
+} from "../quanta/signInCode";
 import { axiosToPusher, axiosWithRetry } from "./AxiosUtils";
 import { Room } from "./Room";
 import { LocalUser } from "./LocalUser";
@@ -112,6 +120,12 @@ class ConnectionManager {
      * Logout
      */
     public logout() {
+        // quanta: nothing to sign out of here, and no redirect chain: the frame asks the page for a new code.
+        if (inCodeSignedFrame()) {
+            localUserStore.setAuthToken(null);
+            this.askPageForSignIn("expired");
+            return;
+        }
         // save the current token to use it in the redirect logout url
         const tokenTmp = localUserStore.getAuthToken();
         //remove token in localstorage
@@ -166,6 +180,31 @@ class ConnectionManager {
         if (token == undefined) {
             const input = HtmlUtils.getElementByIdOrFail<HTMLInputElement>("authToken");
             if (input.value != undefined && input.value != "") token = input.value;
+        }
+        // quanta: framed in Quanta, the page hands over a single-use code instead of the OpenID round trip. From here on
+        // this is the only way in: whoever this browser's room was before is forgotten, so no failure below can
+        // continue as them.
+        const quantaCode = takeSignInCode();
+        if (quantaCode !== null) {
+            localUserStore.forgetUser();
+            this.anonymousMatrixLogin();
+            const exchange = await exchangeSignInCode(quantaCode, (body) =>
+                axiosToPusher.post<unknown>("quanta-sign-in", body, { timeout: 15_000 }).then((res) => res.data),
+            );
+            if ("failed" in exchange) return this.signInNeededInFrame(exchange.failed);
+            token = exchange.authToken;
+        } else if (inCodeSignedFrame() && localUserStore.getAuthToken()) {
+            // quanta: a token kept from an earlier load is this frame's only while the page still agrees. Frames that
+            // never held a code don't come here, and wait for nothing.
+            const verdict = await confirmStoredTokenWithPage(localUserStore.getQuantaUserId());
+            if (verdict === "leave") {
+                localUserStore.forgetUser();
+                this.anonymousMatrixLogin();
+            } else if (verdict === "renew") {
+                localUserStore.forgetUser();
+                this.anonymousMatrixLogin();
+                return this.signInNeededInFrame("expired");
+            }
         }
 
         if (token != undefined) {
@@ -239,6 +278,9 @@ class ConnectionManager {
             //use href to keep # value
             await localUserStore.setLastRoomUrl(roomPathUrl.href);
 
+            // quanta: a frame signed in with a code never starts the redirect chain; the page gives it a new code.
+            if (!this.authToken && inCodeSignedFrame()) return this.signInNeededInFrame("expired");
+
             //todo: add here some kind of warning if authToken has expired.
             if (!this.authToken) {
                 const defaultWokaName = this._currentRoom.defaultWokaName;
@@ -274,6 +316,9 @@ class ConnectionManager {
                         if (response.type === "redirect") {
                             return new URL(response.urlToRedirect, window.location.href);
                         }
+                        if (response.type === "unauthorized" && inCodeSignedFrame()) {
+                            return this.signInNeededInFrame("expired");
+                        }
 
                         return {
                             nextScene: "errorScene",
@@ -298,6 +343,7 @@ class ConnectionManager {
                     }
                 } catch (err) {
                     if (isAxiosError(err) && err.response?.status === 401) {
+                        if (inCodeSignedFrame()) return this.signInNeededInFrame("expired");
                         console.warn("Token expired, trying to login anonymously");
                         // if the user must be connected to the current room or if the pusher error is not openid provider access error
                         if (this._currentRoom.authenticationMandatory) {
@@ -353,6 +399,34 @@ class ConnectionManager {
             room: this._currentRoom,
             nextScene,
         });
+    }
+
+    /** quanta: a page that no longer uses codes sends the frame back to the old flow, as nobody in particular. */
+    private askPageForSignIn(reason: SignInNeeded): void {
+        askPageForSignIn(reason, () => {
+            localUserStore.forgetUser();
+            window.location.reload();
+        });
+    }
+
+    /** quanta: stays out of the room and asks the page for a new code. WA's screen waits behind the page's own. */
+    private signInNeededInFrame(reason: SignInNeeded) {
+        this.askPageForSignIn(reason);
+        return {
+            nextScene: "errorScene" as const,
+            error: {
+                status: "error" as const,
+                type: "retry" as const,
+                code: "QUANTA_SIGN_IN",
+                title: get(LL).messageScreen.connecting(),
+                subtitle: get(LL).messageScreen.pleaseWait(),
+                image: "",
+                details: "",
+                canRetryManual: true,
+                buttonTitle: "Retry",
+                timeToRetry: 30_000,
+            },
+        };
     }
 
     public async anonymousLogin(isBenchmark = false): Promise<void> {
@@ -535,8 +609,10 @@ class ConnectionManager {
     private getConnectionRetryDelay(retryAttempt: number): number {
         const exponentialDelay = connectionRetryBaseDelayMs * 2 ** retryAttempt;
         const jitter = Math.floor(Math.random() * connectionRetryJitterMs);
-
-        return Math.max(0, Math.min(connectionRetryMaxDelayMs, exponentialDelay + jitter));
+        // quanta: spread after the cap too (half to one and a half times it), so a crowd the pusher turned away
+        // (quanta/rejoinPressure.ts) does not come back in step every 10 s.
+        const capped = Math.min(connectionRetryMaxDelayMs, exponentialDelay + jitter);
+        return Math.max(0, capped < connectionRetryMaxDelayMs ? capped : capped * (0.5 + Math.random()));
     }
 
     get getConnexionType() {
@@ -713,11 +789,15 @@ class ConnectionManager {
         return this._tabId;
     }
 
-    // Used when a disconnect happens to wait until the pusher server is reachable again
-    public waitForPusherPing(): Promise<void> {
+    // Used when a disconnect happens to wait until the pusher server is reachable again. Resolves with whether the
+    // server itself was in trouble (a ping that got an HTTP error back, or that timed out: a server too busy to answer),
+    // and how long the pusher asks rejoins to be spread over (quanta/rejoinPressure.ts). Only a ping that failed at once
+    // with no answer (the browser has no network) is taken as this browser's own link.
+    public waitForPusherPing(): Promise<{ serverWasAway: boolean; spreadMs: number }> {
         if (this._unloading) {
-            return Promise.resolve();
+            return Promise.resolve({ serverWasAway: false, spreadMs: 0 });
         }
+        let serverWasAway = false;
 
         const pingAxios = axios.create({
             baseURL: ABSOLUTE_PUSHER_URL,
@@ -730,12 +810,13 @@ class ConnectionManager {
         axiosRetry(pingAxios, {
             retries: Number.MAX_SAFE_INTEGER,
             shouldResetTimeout: true,
-            retryDelay: (retryCount: number) => {
-                const time = exponentialDelay(retryCount);
-                if (time >= 60_000) {
-                    return 60_000;
-                }
-                return time;
+            retryDelay: (retryCount: number, error: AxiosError) => {
+                if (error.response || error.code === "ETIMEDOUT") serverWasAway = true;
+                // quanta: about 5 s between pings at most (was 60 s), so a student whose link is back is not left
+                // waiting up to a minute. Half to one and a half times the step, so a room that lost the server
+                // together does not ping in step, and never sooner than a Retry-After the server sent.
+                const step = Math.min(exponentialDelay(retryCount), 5_000) * (0.5 + Math.random());
+                return Math.max(step, exponentialDelay(0, error));
             },
             retryCondition: (error: AxiosError) => {
                 if (this._unloading) {
@@ -753,7 +834,9 @@ class ConnectionManager {
 
         return pingAxios.get("ping", { responseType: "text", timeout: 5_000 }).then((response) => {
             if (typeof response.data === "string" && response.data === "pong") {
-                return;
+                const asked = Number(response.headers["x-quanta-rejoin-spread-ms"]);
+                const spreadMs = Number.isFinite(asked) ? Math.min(Math.max(asked, 0), 60_000) : 0;
+                return { serverWasAway, spreadMs };
             }
             throw new AxiosError(
                 `Ping did not return pong. Got: ${String(response.data).substring(0, 1024)}`,

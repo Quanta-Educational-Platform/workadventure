@@ -5,11 +5,15 @@
     import Badge from "../UI/Badge.svelte";
     import RaiseHandIcon from "../Icons/RaiseHandIcon.svelte";
     import ChevronDownIcon from "../Icons/ChevronDownIcon.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { handsDockOpen, mapAreaWidthStore } from "../../quanta/handsDock";
     import RaisedHandsPanel from "./RaisedHandsPanel.svelte";
 
     // Collapse state is component-local and defaults to expanded: the dock only mounts its content when there
     // is something to show (see visibleRaisedHandSectionsStore), so showing it open makes the host notice it.
-    let open = $state(true);
+    // quanta: on a narrow map it starts as its header only (quanta/handsDock.ts).
+    let chosen: boolean | undefined = $state(undefined);
+    let open = $derived(handsDockOpen(chosen, $mapAreaWidthStore, QUANTA_UI));
     let handCount = $derived(
         $visibleRaisedHandSectionsStore.reduce((count, section) => count + section.hands.length, 0),
     );
@@ -32,7 +36,7 @@
                 aria-controls="raised-hands-dock-body"
                 aria-label={$LL.actionbar.raisedHands.title()}
                 data-testid="raised-hands-dock-toggle"
-                onclick={() => (open = !open)}
+                onclick={() => (chosen = !open)}
             >
                 <RaiseHandIcon height="h-5" width="w-5" hover="" />
                 <span class="grow truncate text-start text-sm font-bold">{$LL.actionbar.raisedHands.title()}</span>

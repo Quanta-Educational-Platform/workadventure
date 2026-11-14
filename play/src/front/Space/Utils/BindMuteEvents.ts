@@ -2,6 +2,9 @@ import type { Unsubscriber } from "svelte/store";
 import { get } from "svelte/store";
 import * as Sentry from "@sentry/svelte";
 import type { Subscription } from "rxjs";
+import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+import { canViewAsStudentStore } from "../../quanta/studentView";
+import { QL } from "../../quanta/i18n";
 import type { PrivateEvents, SpaceInterface } from "../SpaceInterface";
 import { notificationPlayingStore } from "../../Stores/NotificationStore";
 import { isSpeakerStore, requestedCameraState, requestedMicrophoneState } from "../../Stores/MediaStore";
@@ -13,6 +16,7 @@ import { chatZoneLiveStore } from "../../Stores/ChatStore";
 import { gameManager } from "../../Phaser/Game/GameManager";
 import { popupStore } from "../../Stores/PopupStore";
 import MuteDialogPopup from "../../Components/PopUp/MuteDialogPopup.svelte";
+import { silenceSpotSpeaker } from "../../quanta/megaphoneSpots";
 
 function displayMuteDialog(event: PrivateEvents["muteAudio"] | PrivateEvents["muteVideo"], space: SpaceInterface) {
     const message =
@@ -49,6 +53,7 @@ function displayMuteDialog(event: PrivateEvents["muteAudio"] | PrivateEvents["mu
         MuteDialogPopup,
         {
             message,
+            kind: event.$case === "muteAudio" ? "microphone" : "camera",
             sender: senderUser,
             acceptRequest: () => {
                 if (event.$case === "muteAudio") {
@@ -75,9 +80,16 @@ export function bindMuteEventsToSpace(space: SpaceInterface): void {
     space.observePrivateEvent("muteAudio").subscribe((event) => {
         if (event.muteAudio.force) {
             notificationPlayingStore.playNotification(get(LL).notification.microphoneMuted(), "microphone-off.png");
+            // First: with the microphone off a spot's speaker is already off air and would not count as stopped.
+            silenceSpotSpeaker();
             requestedMicrophoneState.disableMicrophone();
         } else {
-            notificationPlayingStore.playNotification(get(LL).notification.askToMuteMicrophone(), "microphone-off.png");
+            // quanta: the dialog asks; a notice saying the same beside it is said twice.
+            if (!QUANTA_UI)
+                notificationPlayingStore.playNotification(
+                    get(LL).notification.askToMuteMicrophone(),
+                    "microphone-off.png",
+                );
             displayMuteDialog({ ...event, sender: event.sender.spaceUserId }, space);
         }
     });
@@ -89,7 +101,8 @@ export function bindMuteEventsToSpace(space: SpaceInterface): void {
             notificationPlayingStore.playNotification(get(LL).notification.cameraMuted(), "camera-off.png");
             requestedCameraState.disableWebcam();
         } else {
-            notificationPlayingStore.playNotification(get(LL).notification.askToMuteCamera(), "camera-off.png");
+            if (!QUANTA_UI)
+                notificationPlayingStore.playNotification(get(LL).notification.askToMuteCamera(), "camera-off.png");
             displayMuteDialog({ ...event, sender: event.sender.spaceUserId }, space);
         }
     });
@@ -114,7 +127,7 @@ export function bindMuteEventsToSpace(space: SpaceInterface): void {
             Sentry.captureException(e);
         });
         chatZoneLiveStore.set(false);
-        notificationPlayingStore.playNotification(get(LL).notification.removedFromConversation());
+        notificationPlayingStore.playNotification(get(LL).notification.removedFromConversation(), "quanta-removed");
     });
 
     // If the local user leaves the space while holding a floor granted through a raised hand, drop the
@@ -131,14 +144,33 @@ export function bindMuteEventsToSpace(space: SpaceInterface): void {
     // We can safely ignore the subscription because it will be automatically completed when the space is destroyed.
     // eslint-disable-next-line rxjs/no-ignored-subscription,svelte/no-ignored-unsubscribe
     space.observePublicEvent("muteAudioForEverybody").subscribe((event) => {
-        notificationPlayingStore.playNotification(get(LL).notification.askToMuteMicrophone(), "microphone-off.png");
+        // quanta: it is off already, not asked about. Told to whoever had it on, never to the one who did it; staff are
+        // told it was everyone's.
+        const wasOn = get(requestedMicrophoneState);
+        if (!QUANTA_UI) {
+            notificationPlayingStore.playNotification(get(LL).notification.askToMuteMicrophone(), "microphone-off.png");
+        } else if (wasOn && event.sender !== space.mySpaceUserId) {
+            notificationPlayingStore.playNotification(
+                get(canViewAsStudentStore) ? get(QL).everyoneMicrophonesOff() : get(LL).notification.microphoneMuted(),
+                "microphone-off.png",
+            );
+        }
+        silenceSpotSpeaker();
         requestedMicrophoneState.disableMicrophone();
     });
 
     // We can safely ignore the subscription because it will be automatically completed when the space is destroyed.
     // eslint-disable-next-line rxjs/no-ignored-subscription,svelte/no-ignored-unsubscribe
     space.observePublicEvent("muteVideoForEverybody").subscribe((event) => {
-        notificationPlayingStore.playNotification(get(LL).notification.askToMuteCamera(), "camera-off.png");
+        const wasOn = get(requestedCameraState);
+        if (!QUANTA_UI) {
+            notificationPlayingStore.playNotification(get(LL).notification.askToMuteCamera(), "camera-off.png");
+        } else if (wasOn && event.sender !== space.mySpaceUserId) {
+            notificationPlayingStore.playNotification(
+                get(canViewAsStudentStore) ? get(QL).everyoneCamerasOff() : get(LL).notification.cameraMuted(),
+                "camera-off.png",
+            );
+        }
         requestedCameraState.disableWebcam();
     });
 }
@@ -173,9 +205,12 @@ export function watchRaiseHandState(space: SpaceInterface): Unsubscriber {
             requestedHandRaiseState.lower(space.getName());
             // We never force the microphone on; if it is muted we invite the user to enable it.
             if (get(requestedMicrophoneState)) {
-                notificationPlayingStore.playNotification(get(LL).notification.givenTheFloor());
+                notificationPlayingStore.playNotification(get(LL).notification.givenTheFloor(), "megaphone");
             } else {
-                notificationPlayingStore.playNotification(get(LL).notification.givenTheFloorEnableMicrophone());
+                notificationPlayingStore.playNotification(
+                    get(LL).notification.givenTheFloorEnableMicrophone(),
+                    "quanta-mic",
+                );
             }
         }
 
@@ -189,7 +224,10 @@ export function watchRaiseHandState(space: SpaceInterface): Unsubscriber {
 
         if (handLoweredByOthers) {
             requestedHandRaiseState.lower(space.getName());
-            notificationPlayingStore.playNotification(get(LL).notification.handLowered());
+            // quanta: a hand from the room's queue comes down once its owner got the floor in the lecture: no
+            // "hand lowered" right after "you may speak".
+            if (get(givenFloorSpaceStore) === undefined)
+                notificationPlayingStore.playNotification(get(LL).notification.handLowered());
         }
     });
 }

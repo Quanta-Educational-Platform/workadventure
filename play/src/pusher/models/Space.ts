@@ -327,7 +327,9 @@ export class Space implements SpaceForSpaceConnectionInterface {
             playerDetails.showVoiceIndicator !== undefined &&
             spaceUser.showVoiceIndicator !== playerDetails.showVoiceIndicator
         ) {
-            fieldMask.push("showVoiceIndicator");
+            // Flips up to ten times a second per open mic; only spaces that asked for it get it (tiles and avatars
+            // read speaking from LiveKit and the zone, not from here).
+            if (this.propertiesToSync.includes("showVoiceIndicator")) fieldMask.push("showVoiceIndicator");
             spaceUser.showVoiceIndicator = playerDetails.showVoiceIndicator;
         }
         if (fieldMask.length > 0) {

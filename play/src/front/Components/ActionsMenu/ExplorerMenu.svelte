@@ -4,6 +4,7 @@
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { mapEditorModeStore, mapExplorationModeStore } from "../../Stores/MapEditorStore";
     import { canvasSize, coWebsites, coWebsitesSize, windowSize } from "../../Stores/CoWebsiteStore";
+    import { mapExplorerVisibleStore } from "../../Stores/MenuStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { EditorToolName } from "../../Phaser/Game/MapEditor/MapEditorModeManager";
     import { BUTTON_ZOOM_FACTOR_PER_SECOND, BUTTON_ZOOM_STEP_FACTOR } from "../../Phaser/Game/CameraZoomUtils";
@@ -16,15 +17,20 @@
 
     let { mapEditorRightOffset = 0 }: Props = $props();
 
-    // quanta: a website open beside the map (landscape) takes the right of the screen; stay in the map's corner.
+    // quanta: a website open beside the map (landscape) takes the right of the screen, and the side column (People
+    // or Chat, --quanta-chat-map from sidePanel.ts) the map's right: stay in the map's corner, left of both.
     let besideWebsite = $derived(
         QUANTA_UI && $coWebsites.length > 0 && $windowSize.width > $windowSize.height ? $coWebsitesSize.width : 0,
     );
     // quanta: a map squeezed by a website too far to hold the controls in its window shows none, rather than spill.
     // quanta: and while editing the map, whose own tool column stands where these would (exploring keeps them)
+    // quanta: and in class, where zooming is in ⋮ (ProfileMenuContent) beside pinch and scroll: only exploring shows it.
     let mapTooSmall = $derived(
         QUANTA_UI &&
-            ($canvasSize.height < 360 || $canvasSize.width < 120 || ($mapEditorModeStore && !$mapExplorationModeStore)),
+            ($canvasSize.height < 360 ||
+                $canvasSize.width < 120 ||
+                !$mapEditorModeStore ||
+                ($mapEditorModeStore && !$mapExplorationModeStore)),
     );
 
     // Keep click and long-press as the same gesture: a press always starts with one smooth zoom step,
@@ -129,7 +135,7 @@
 
 <div
     class="fixed bottom-2 mobile:bottom-24 bg-contrast/80 rounded pointer-events-auto p-1 backdrop-blur hover:bg-contrast/100"
-    style:right={`calc(${mapEditorRightOffset + besideWebsite}px + ${QUANTA_UI ? "24px" : "0.5rem"})`}
+    style:right={`calc(${mapEditorRightOffset + besideWebsite}px + ${QUANTA_UI ? "24px + var(--quanta-chat-map, 0px)" : "0.5rem"})`}
     style:display={mapTooSmall ? "none" : undefined}
     style:bottom={QUANTA_UI ? "108px" /* quanta: inside the map's corner, above the docked controls */ : undefined}
     data-testid="actions-explorer"
@@ -169,7 +175,7 @@
                 </div>
             </div>
         </div>
-        {#if $mapExplorationModeStore === false}
+        {#if $mapExplorationModeStore === false && $mapExplorerVisibleStore}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
@@ -183,7 +189,7 @@
                     {$LL.mapEditor.explorer.title()}
                 </div>
             </div>
-        {:else}
+        {:else if $mapExplorationModeStore}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div

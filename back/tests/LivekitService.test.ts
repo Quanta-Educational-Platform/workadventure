@@ -5,7 +5,7 @@ import { EgressStatus } from "livekit-server-sdk";
 import type { LivekitWebhookError } from "../src/Model/Services/LivekitService";
 import { LiveKitService } from "../src/Model/Services/LivekitService";
 
-function createService(stopEgress = vi.fn(), startRoomCompositeEgress = vi.fn(), receive = vi.fn()) {
+function createService(stopEgress = vi.fn(), startRoomCompositeEgress = vi.fn(), receive = vi.fn(), deleteRoom = vi.fn()) {
     return new LiveKitService(
         "http://livekit.local",
         "api-key",
@@ -16,7 +16,7 @@ function createService(stopEgress = vi.fn(), startRoomCompositeEgress = vi.fn(),
             ({
                 listRooms: vi.fn(),
                 createRoom: vi.fn(),
-                deleteRoom: vi.fn(),
+                deleteRoom,
             } as never),
         () =>
             ({
@@ -43,6 +43,19 @@ function getTrackedRecordings(service: LiveKitService): Map<string, EgressInfo> 
 }
 
 describe("LiveKitService", () => {
+    it("deletes a room LiveKit already closed without logging an error, and logs any other failure", async () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const gone = Object.assign(new Error("could not find object"), { status: 404, code: "not_found" });
+        const deleteRoom = vi.fn().mockRejectedValueOnce(gone).mockRejectedValueOnce(new Error("connection refused"));
+        const service = createService(vi.fn(), vi.fn(), vi.fn(), deleteRoom);
+
+        await expect(service.deleteRoom("space-1")).resolves.toBeUndefined();
+        expect(error).not.toHaveBeenCalled();
+        await expect(service.deleteRoom("space-1")).resolves.toBeUndefined();
+        expect(error).toHaveBeenCalledTimes(1);
+        error.mockRestore();
+    });
+
     it("ignores stop when the targeted egress is already complete locally", async () => {
         const stopEgress = vi.fn();
         const service = createService(stopEgress);
@@ -229,5 +242,38 @@ describe("LiveKitService", () => {
         ).rejects.toMatchObject({
             kind: "unauthorized",
         } satisfies Partial<LivekitWebhookError>);
+    });
+});
+
+describe("LiveKitService.deleteRoom", () => {
+    function serviceDeletingWith(deleteRoom: ReturnType<typeof vi.fn>) {
+        return new LiveKitService(
+            "http://livekit.local",
+            "api-key",
+            "api-secret",
+            "ws://livekit.local",
+            "https://play.local",
+            () => ({ listRooms: vi.fn(), createRoom: vi.fn(), deleteRoom }) as never,
+            () => ({}) as never,
+            () => ({}) as never,
+        );
+    }
+
+    it("treats a room LiveKit already closed as deleted", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const service = serviceDeletingWith(vi.fn().mockRejectedValue(new Error("could not find object")));
+
+        await expect(service.deleteRoom("space")).resolves.toBeUndefined();
+        expect(consoleError).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it("still reports other deletion failures", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const service = serviceDeletingWith(vi.fn().mockRejectedValue(new Error("connection refused")));
+
+        await service.deleteRoom("space");
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
     });
 });

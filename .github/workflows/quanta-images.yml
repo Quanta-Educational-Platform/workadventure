@@ -51,6 +51,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.REGISTRY }}/wa-${{ matrix.service }}:${{ github.ref_name }}
+          # play's front and pusher compare it on every connection: a new candidate reloads the pages of the last one.
+          build-args: |
+            WA_BUILD_ID=${{ github.ref_name }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

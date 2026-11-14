@@ -58,6 +58,7 @@ import { emitError, emitErrorOnRoomSocket, endUserConnectionWithReason } from ".
 import { ModeratorTagFinder } from "../Services/ModeratorTagFinder";
 import { VariableError } from "../Services/VariableError";
 import { VariablesManager } from "../Services/VariablesManager";
+import { EMPTY_ROOM_VARIABLE_TTL_MS, expireSessionVariables } from "../Services/QuantaSessionVariables";
 import type { AreaPropertyVariable } from "../Services/AreaPropertyVariablesManager";
 import { AreaPropertyVariablesManager } from "../Services/AreaPropertyVariablesManager";
 import { AreaZoneTracker } from "./AreaZoneTracker";
@@ -77,6 +78,8 @@ export type DisconnectCallback = (user: User, group: Group) => void;
 const MEETING_INVITATION_MAX_REQUESTS = 50;
 const MEETING_INVITATION_MAX_REQUESTS_PER_USER = 3;
 const MEETING_INVITATION_REQUEST_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+export const VARIABLE_MANAGER_RETRY_MIN_MS = 1000;
+export const VARIABLE_MANAGER_RETRY_MAX_MS = 30_000;
 
 export class GameRoom implements BrothersFinder {
     public readonly id: string;
@@ -671,7 +674,17 @@ export class GameRoom implements BrothersFinder {
 
     public async setVariable(name: string, value: string, user: User | "RoomApi"): Promise<void> {
         // First, let's check if "user" is allowed to modify the variable.
-        const variableManager = await this.getVariableManager();
+        let variableManager: VariablesManager;
+        try {
+            variableManager = await this.getVariableManager();
+        } catch (e) {
+            // Nobody's write can be checked without the map. A user's is dropped rather than ending their connection.
+            if (e instanceof MapLoadingError && user !== "RoomApi") {
+                console.warn(`Dropped the "${name}" variable change: ${e.message}`);
+                return;
+            }
+            throw e;
+        }
 
         try {
             const readableBy = variableManager.setVariable(name, value, user);
@@ -1146,58 +1159,100 @@ export class GameRoom implements BrothersFinder {
 
     private variableManagerPromise: Promise<VariablesManager> | undefined;
     private variableManagerLastLoad: Date | undefined;
+    private variableManagerFailures = 0;
+    private variableManagerRetryAt = 0;
+    // Someone joined while the variables couldn't be loaded, and got none.
+    private variablesMissedByJoins = false;
 
+    /**
+     * @throws MapLoadingError while the map or the stored variables can't be loaded; the next call after a
+     * bounded backoff tries again.
+     */
     private getVariableManager(): Promise<VariablesManager> {
         if (!this.variableManagerPromise) {
+            if (Date.now() < this.variableManagerRetryAt) {
+                return Promise.reject(new MapLoadingError("The map is unavailable, variables are not loaded yet."));
+            }
             this.variableManagerLastLoad = new Date();
-            this.variableManagerPromise = this.getMap()
-                .then(async (map) => {
-                    const variablesManager = await VariablesManager.create(this._roomUrl, map);
-                    return variablesManager.init();
-                })
-                .catch(async (e) => {
-                    if (e instanceof LocalUrlError) {
-                        // If we are trying to load a local URL, we are probably in test mode.
-                        // In this case, let's bypass the server-side checks completely.
-
-                        // Note: we run this message inside a setTimeout so that the room listeners can have time to connect.
-                        setTimeout(() => {
-                            for (const roomListener of this.roomListeners) {
-                                emitErrorOnRoomSocket(
-                                    roomListener,
-                                    "You are loading a local map. If you use the scripting API in this map, please be aware that server-side checks and variable persistence is disabled.",
-                                );
-                            }
-                        }, 1000);
-
-                        const variablesManager = await VariablesManager.create(this._roomUrl, null);
-                        return variablesManager.init();
-                    } else {
-                        // An error occurred while loading the map
-                        // Right now, let's bypass the error. In the future, we should make sure the user is aware of that
-                        // and that he/she will act on it to fix the problem.
-
-                        // Note: we run this message inside a setTimeout so that the room listeners can have time to connect.
-                        setTimeout(() => {
-                            for (const roomListener of this.roomListeners) {
-                                emitErrorOnRoomSocket(
-                                    roomListener,
-                                    "Your map does not seem accessible from the WorkAdventure servers. Is it behind a firewall or a proxy? Your map should be accessible from the WorkAdventure servers. If you use the scripting API in this map, please be aware that server-side checks and variable persistence is disabled.",
-                                );
-                            }
-                        }, 1000);
-
-                        const variablesManager = await VariablesManager.create(this._roomUrl, null);
-                        return variablesManager.init();
+            const mapPromise = this.getMap();
+            const loading: Promise<VariablesManager> = this.loadVariableManager(mapPromise).then(
+                (variablesManager) => {
+                    this.variableManagerFailures = 0;
+                    if (this.variablesMissedByJoins) {
+                        this.variablesMissedByJoins = false;
+                        this.sendVariablesToUsers(variablesManager);
                     }
-                });
+                    return variablesManager;
+                },
+                (e: unknown) => {
+                    // A manager without the map would skip writableBy checks and stored variables for the room's
+                    // whole life, so a failed load is forgotten and retried instead.
+                    this.variableManagerFailures++;
+                    const delay = Math.min(
+                        VARIABLE_MANAGER_RETRY_MAX_MS,
+                        VARIABLE_MANAGER_RETRY_MIN_MS * 2 ** (this.variableManagerFailures - 1),
+                    );
+                    this.variableManagerRetryAt = Date.now() + delay;
+                    if (this.variableManagerPromise === loading) this.variableManagerPromise = undefined;
+                    if (this.mapPromise === mapPromise) this.mapPromise = undefined;
+                    console.error(`Could not load the variables of ${this._roomUrl}, retrying in ${delay} ms`, e);
+                    Sentry.captureException(e);
+                    throw new MapLoadingError(asError(e).message);
+                },
+            );
+            this.variableManagerPromise = loading;
         }
         return this.variableManagerPromise;
     }
 
+    private async loadVariableManager(mapPromise: Promise<ITiledMap>): Promise<VariablesManager> {
+        let map: ITiledMap;
+        try {
+            map = await mapPromise;
+        } catch (e) {
+            if (!(e instanceof LocalUrlError)) throw e;
+            // If we are trying to load a local URL, we are probably in test mode.
+            // In this case, let's bypass the server-side checks completely.
+
+            // Note: we run this message inside a setTimeout so that the room listeners can have time to connect.
+            setTimeout(() => {
+                for (const roomListener of this.roomListeners) {
+                    emitErrorOnRoomSocket(
+                        roomListener,
+                        "You are loading a local map. If you use the scripting API in this map, please be aware that server-side checks and variable persistence is disabled.",
+                    );
+                }
+            }, 1000);
+
+            const variablesManager = await VariablesManager.create(this._roomUrl, null);
+            return variablesManager.init();
+        }
+        const variablesManager = await VariablesManager.create(this._roomUrl, map);
+        return variablesManager.init();
+    }
+
     public async getVariablesForTags(tags: string[] | undefined): Promise<Map<string, string>> {
-        const variablesManager = await this.getVariableManager();
+        let variablesManager: VariablesManager;
+        try {
+            variablesManager = await this.getVariableManager();
+        } catch (e) {
+            // A join goes ahead without variables rather than failing; it is sent them once the map loads.
+            if (e instanceof MapLoadingError) {
+                this.variablesMissedByJoins = true;
+                return new Map();
+            }
+            throw e;
+        }
         return variablesManager.getVariablesForTags(tags);
+    }
+
+    /** Sends everyone in the room the variables they may read, as their join would have. */
+    private sendVariablesToUsers(variablesManager: VariablesManager): void {
+        for (const user of this.users.values()) {
+            for (const [name, value] of variablesManager.getVariablesForTags(user.tags)) {
+                user.emitInBatch({ message: { $case: "variableMessage", variableMessage: { name, value } } });
+            }
+        }
     }
 
     public getGroupById(id: number): Group | undefined {
@@ -1636,6 +1691,12 @@ export class GameRoom implements BrothersFinder {
     }
 
     public destroy(): void {
+        // quanta: the class's variables outlive an empty room only as long as a restart takes.
+        this.variableManagerPromise
+            ?.then((variablesManager) =>
+                expireSessionVariables(this._roomUrl, variablesManager.sessionVariables(), EMPTY_ROOM_VARIABLE_TTL_MS),
+            )
+            .catch(() => {});
         this._destroyRoomStream.next();
         this.wamManager?.destroy();
         this._userMoveStream.complete();

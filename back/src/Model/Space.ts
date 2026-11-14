@@ -37,6 +37,7 @@ import type { ManagedRecordingState } from "./RecordingManager";
 import { RaiseHandManager } from "./RaiseHandManager";
 import { ProximityPollManager } from "./ProximityPollManager";
 import { ProximityQAManager } from "./ProximityQAManager";
+import { isAdmin } from "./SpaceStateHost";
 
 const debug = Debug("space");
 
@@ -49,6 +50,7 @@ export class Space implements CustomJsonReplacerInterface, ICommunicationSpace {
     // Server-owned, typed state. Only changed through updateState(), which broadcasts the change as a JSON Patch.
     private state: SpaceState = emptySpaceState();
     // Emitted whatever the filter says, so managers also see users the filter hides (a megaphone audience).
+    public readonly userAdded$ = new Subject<SpaceUser>();
     public readonly userRemoved$ = new Subject<SpaceUser>();
     // `previous` is a shallow copy of the user before the update, to tell what changed.
     public readonly userUpdated$ = new Subject<{ user: SpaceUser; previous: SpaceUser }>();
@@ -96,6 +98,7 @@ export class Space implements CustomJsonReplacerInterface, ICommunicationSpace {
                 this._nbWatchers = this._nbUsers;
             }
             this._spaceUpdatedSubject.next(this);
+            this.userAdded$.next(spaceUser);
 
             if (!this.filterOneUser(spaceUser)) {
                 return;
@@ -527,6 +530,35 @@ export class Space implements CustomJsonReplacerInterface, ICommunicationSpace {
             throw new Error(`Sender ${privateEvent.senderUserId} not found in space ${this.name}`);
         }
 
+        // quanta: a teacher's mute (forced by the pusher, from staff alone) is enforced where the media flows. One the
+        // room's server sends on its own (to and from the person) only does that: the person was told already. A force
+        // counts only from an admin to someone who isn't one (staff don't moderate staff); otherwise it is a request.
+        const muteEvent = privateEvent.spaceEvent?.event;
+        const mute =
+            muteEvent?.$case === "muteAudio"
+                ? muteEvent.muteAudio
+                : muteEvent?.$case === "muteVideo"
+                  ? muteEvent.muteVideo
+                  : undefined;
+        if (mute?.force && privateEvent.senderUserId !== privateEvent.receiverUserId) {
+            const receiver = this.getAllUsers().find((user) => user.spaceUserId === privateEvent.receiverUserId);
+            if (!isAdmin(sender) || !receiver || isAdmin(receiver)) mute.force = false;
+        }
+        if (muteEvent && mute?.force) {
+            this.communicationManager
+                .forceMute?.(privateEvent.receiverUserId, muteEvent.$case === "muteAudio" ? "microphone" : "camera")
+                ?.catch((error) => console.warn(`Could not mute ${privateEvent.receiverUserId} in ${this.name}`, error));
+            if (privateEvent.senderUserId === privateEvent.receiverUserId) return;
+        }
+
+        // quanta: private chat messages only between staff and someone else; never student to student.
+        if (privateEvent.spaceEvent?.event?.$case === "quantaDirectMessage") {
+            const receiver = this.getAllUsers().find((user) => user.spaceUserId === privateEvent.receiverUserId);
+            if (!receiver || (!isAdmin(sender) && !isAdmin(receiver))) {
+                return;
+            }
+        }
+
         // Let's notify the watcher that contains the user
         if (!privateEvent.spaceEvent?.event) {
             // If there is no event, just forward the private event as-is
@@ -875,6 +907,7 @@ export class Space implements CustomJsonReplacerInterface, ICommunicationSpace {
         // The manager closes the session it owns.
         this.communicationManager.destroy();
         this.raiseHandManager.destroy();
+        this.userAdded$.complete();
         this.userRemoved$.complete();
         this.userUpdated$.complete();
         debug(`${this.name} => destroyed`);

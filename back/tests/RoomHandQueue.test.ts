@@ -4,16 +4,21 @@ import { FilterType, SpaceUser } from "@workadventure/messages";
 import type { SpaceState } from "@workadventure/shared-utils";
 import { emptySpaceState } from "@workadventure/shared-utils";
 import type { SpaceStateHost } from "../src/Model/SpaceStateHost";
-import { RaiseHandManager } from "../src/Model/RaiseHandManager";
+import { RaiseHandManager, type RaiseHandHost } from "../src/Model/RaiseHandManager";
 vi.mock("../src/Enum/EnvironmentVariable", () => ({ MODERATION_ADMINS_ONLY: true }));
+// No Redis: RaiseHandManager keeps hands in memory unless a test gives it a store.
+vi.mock("../src/Services/RedisClient", () => ({ getRedisClient: () => Promise.resolve(null) }));
 
 function fakeSpace(filterType: SpaceStateHost["filterType"], ...partialUsers: Partial<SpaceUser>[]) {
     const users = partialUsers.map((user) => SpaceUser.fromPartial(user));
     const userRemoved$ = new Subject<SpaceUser>();
     const userUpdated$ = new Subject<{ user: SpaceUser; previous: SpaceUser }>();
     let state: SpaceState = emptySpaceState();
-    const host: SpaceStateHost = {
+    const host: RaiseHandHost = {
+        name: "world.space",
         filterType,
+        userAdded$: new Subject<SpaceUser>(),
+        getAllUsers: () => users,
         userRemoved$,
         userUpdated$,
         getUser: (spaceUserId) => users.find((user) => user.spaceUserId === spaceUserId),

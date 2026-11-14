@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { inCodeSignedFrame } from "../quanta/signInCode";
 import type { Emoji } from "../Stores/Utils/emojiSchema";
 import { arrayEmoji } from "../Stores/Utils/emojiSchema";
 import type { RequestedStatus } from "../Rules/StatusRules/statusRules";
@@ -83,6 +84,8 @@ export type NoiseSuppressionEngine = "deepfilternet" | "dtln";
 const JwtAuthToken = z
     .object({
         accessToken: z.string().optional().nullable(),
+        quantaSession: z.boolean().optional(),
+        quantaUserId: z.string().optional(),
     })
     .partial();
 
@@ -377,15 +380,58 @@ class LocalUserStore {
 
     setAuthToken(value: string | null) {
         if (value !== null) {
-            localStorage.setItem(authToken, value);
             this.jwt = JwtAuthToken.parse(LocalUserStore.parseJwt(value));
+            // quanta: a room signed in with a code keeps its identity to its own tab. Across tabs, two accounts on two
+            // of the platform's hosts would otherwise take over each other's room on a reload.
+            if (this.jwt.quantaSession === true) {
+                sessionStorage.setItem(authToken, value);
+                localStorage.removeItem(authToken);
+            } else {
+                localStorage.setItem(authToken, value);
+                this.forgetTabToken();
+            }
         } else {
             localStorage.removeItem(authToken);
+            this.forgetTabToken();
+        }
+    }
+
+    private forgetTabToken(): void {
+        try {
+            sessionStorage.removeItem(authToken);
+        } catch {
+            // Nothing kept there, then.
         }
     }
 
     getAuthToken(): string | null {
-        return localStorage.getItem(authToken);
+        let own: string | null = null;
+        try {
+            own = sessionStorage.getItem(authToken);
+        } catch {
+            // Blocked: it holds nothing.
+        }
+        // quanta: a frame that held a code answers only to its tab's token. What's in local storage is another tab's,
+        // perhaps another account's, and asking the page is how this frame gets back in.
+        return own ?? (inCodeSignedFrame() ? null : localStorage.getItem(authToken));
+    }
+
+    /** quanta: the Quanta user the stored token was made for, or null when it names none. */
+    getQuantaUserId(): string | null {
+        const token = this.getAuthToken();
+        if (!token) return null;
+        try {
+            return JwtAuthToken.parse(LocalUserStore.parseJwt(token)).quantaUserId ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** quanta: forgets who this browser's room last was. */
+    forgetUser(): void {
+        this.setAuthToken(null);
+        this.jwt = undefined;
+        localStorage.removeItem("localUser");
     }
 
     isLogged(): boolean {

@@ -50,7 +50,9 @@ export class PathfindingManager {
         tryFindingNearestAvailable = false,
     ): Promise<{ x: number; y: number }[]> {
         const startTile = this.mapPixelsToTileUnits(this.clampToMap(start));
-        const endTile = this.mapPixelsToTileUnits(this.clampToMap(end));
+        // A click beside the map (its margin around the room) aims at the nearest point of the map, never past it.
+        const target = this.clampToMap(end);
+        const endTile = this.mapPixelsToTileUnits(target);
         const result = await this.findPath(startTile, endTile, tryFindingNearestAvailable);
         const path = result.path;
         if (path.length > 1) {
@@ -63,8 +65,8 @@ export class PathfindingManager {
                 // Otherwise, the hitbox of the sprite could overflow a collide tile, so the player could use
                 // his keyboard to move the sprite inside the wall.
                 path[path.length - 1] = this.fitBodyWithinTile(
-                    end.x,
-                    end.y,
+                    target.x,
+                    target.y,
                     this.tileDimensions.width,
                     this.tileDimensions.height,
                 );
@@ -192,10 +194,10 @@ export class PathfindingManager {
         if (y < 0) {
             y = 0;
         }
-        if (x > mapWidth * this.tileDimensions.width) {
+        if (x >= mapWidth * this.tileDimensions.width) {
             x = mapWidth * this.tileDimensions.width - 1;
         }
-        if (y > mapHeight * this.tileDimensions.height) {
+        if (y >= mapHeight * this.tileDimensions.height) {
             y = mapHeight * this.tileDimensions.height - 1;
         }
 

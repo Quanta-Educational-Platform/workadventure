@@ -7,6 +7,7 @@ import { FilterType } from "@workadventure/messages";
 import type { ProximityChatRoomManager } from "../Chat/Connection/Proximity/ProximityChatRoomManager";
 import type { ProximityChatRoom } from "../Chat/Connection/Proximity/ProximityChatRoom";
 import { selectedRoomStore } from "../Chat/Stores/SelectRoomStore";
+import { chatVisibilityStore } from "../Stores/ChatStore";
 import { QL } from "./i18n";
 import { QUANTA_ROOM_CHAT_SPACE } from "./roomChatSpace";
 
@@ -26,7 +27,9 @@ export function joinRoomChat(manager: ProximityChatRoomManager, signal: AbortSig
         .joinSpace(QUANTA_ROOM_CHAT_SPACE, name, [], true, FilterType.ALL_USERS, false, signal, "area")
         .then((joined) => {
             if (signal.aborted) return;
-            if (selectedWhenLeft && get(selectedRoomStore) === undefined) selectedRoomStore.set(joined);
+            // Opened before the join completed, the chat shows whatever else was selected: this one takes its place.
+            if ((selectedWhenLeft && get(selectedRoomStore) === undefined) || get(chatVisibilityStore))
+                selectedRoomStore.set(joined);
             selectedWhenLeft = false;
         })
         .catch((error) => {

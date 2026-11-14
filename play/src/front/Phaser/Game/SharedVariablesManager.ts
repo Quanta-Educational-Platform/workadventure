@@ -3,6 +3,7 @@ import { GameMapProperties } from "@workadventure/map-editor";
 import type { RoomConnection } from "../../Connection/RoomConnection";
 import { iframeListener } from "../../Api/IframeListener";
 import type { SetVariableEvent } from "../../Api/Events/SetVariableEvent";
+import { BOARD_VARIABLE, noteSharedVariable } from "../../quanta/boardAccess";
 import type { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 
 interface Variable {
@@ -41,6 +42,8 @@ export class SharedVariablesManager {
         for (const [name, value] of serverVariables) {
             this._variables.set(name, value);
         }
+        // quanta: who may draw on the teacher's board (quanta/boardAccess.ts); a new room starts from its own value.
+        noteSharedVariable(BOARD_VARIABLE, this._variables.get(BOARD_VARIABLE));
 
         // The variableMessageStream stream is completed in the RoomConnection. No need to unsubscribe.
         //eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
@@ -50,6 +53,7 @@ export class SharedVariablesManager {
             }
 
             this._variables.set(name, value);
+            noteSharedVariable(name, value);
 
             // On server change, let's notify the iframes
             iframeListener.setVariable({
@@ -93,6 +97,7 @@ export class SharedVariablesManager {
         }
 
         this._variables.set(key, event.value);
+        noteSharedVariable(key, event.value);
 
         // Dispatch to the room connection.
         this.roomConnection.emitSetVariableEvent(key, event.value);

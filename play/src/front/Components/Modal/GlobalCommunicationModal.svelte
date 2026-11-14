@@ -266,14 +266,7 @@
                             </span>
                             <IconChevronRight font-size="20" />
                         </button>
-                        <button type="button" class="qgm-option" onclick={activateUploadAudio}>
-                            <span class="qgm-icon"><IconMusicShare font-size="22" /></span>
-                            <span class="qgm-text">
-                                <span class="qgm-title">{$LL.megaphone.modal.audioMessage.title()}</span>
-                                <span class="qgm-hint">{$QL.globalAudioHint()}</span>
-                            </span>
-                            <IconChevronRight font-size="20" />
-                        </button>
+                        <!-- quanta: no audio-file broadcast: it needs WA's uploader service, which we do not run. -->
                     {/if}
                 </div>
             {:else if !$displayedMegaphoneScreenStore && !inputSendTextActive && !uploadAudioActive}

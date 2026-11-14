@@ -60,6 +60,10 @@ export class LivekitState
         }
     }
 
+    forceMute(spaceUserId: string, source: "microphone" | "camera"): Promise<void> {
+        return this._currentStrategy.forceMute(spaceUserId, source);
+    }
+
     async handleStartRecording(user: SpaceUser, recordingSessionId: string): Promise<RecordingStartInfo> {
         return await this._currentStrategy.startRecording(user, recordingSessionId).catch((error) => {
             console.error("Error starting recording:", error);

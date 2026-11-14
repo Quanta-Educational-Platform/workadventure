@@ -15,6 +15,7 @@
     import { localUserStore } from "../../../Connection/LocalUserStore";
     import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
     import LL from "../../../../i18n/i18n-svelte";
+    import { followEntryVisible, lockEntryVisible, profileMenuEntryVisible } from "../../../quanta/classroomUi";
 
     import AppsMenuItem from "./AppsMenuItem.svelte";
     import FollowMenuItem from "./FollowMenuItem.svelte";
@@ -37,15 +38,44 @@
         roomButtonState: recording?.buttonState,
     });
 
+    let showMusic = $derived($audioManagerVisibilityStore !== "hidden");
+    let showFollow = $derived(
+        followEntryVisible(
+            QUANTA_UI,
+            ($bottomActionBarVisibilityStore && !$inLivekitStore) || $followStateStore !== "off",
+            $followStateStore !== "off",
+        ),
+    );
+    let showLock = $derived(
+        lockEntryVisible(
+            QUANTA_UI,
+            $currentPlayerLockableAreasStore.length > 0 ||
+                ($bottomActionBarVisibilityStore &&
+                    !$inLivekitStore &&
+                    $currentPlayerGroupLockStateStore !== undefined) ||
+                $onboardingStore === "lockBubble",
+            $currentPlayerGroupLockStateStore === true ||
+                $currentPlayerLockableAreasStore.some((area) => area.lockState),
+        ),
+    );
+    let showRecording = $derived(
+        profileMenuEntryVisible(QUANTA_UI, "recording", $recordingMenuState.shouldDisplayButton),
+    );
+    let showApps = $derived(profileMenuEntryVisible(QUANTA_UI, "apps"));
+    let showMegaphone = $derived(!!$requestedMegaphoneStore);
+    let showRaiseHand = $derived(!$inExternalServiceStore && $raiseHandAvailableStore && !(QUANTA_UI && inProfileMenu));
+
     // These menu items are displayed to the left of the camera/microphone icons.
     // They switch automatically to the profile menu when the screen is small.
 </script>
 
-{#if inProfileMenu && ($audioManagerVisibilityStore !== "hidden" || $bottomActionBarVisibilityStore)}
+<!-- quanta: the heading only over items it heads; raise hand is the dock's, so in a conversation the group can be empty
+     and left two dividers with nothing between them. -->
+{#if QUANTA_UI ? inProfileMenu && (showMusic || showFollow || showLock || showRecording || showMegaphone || showRaiseHand) : inProfileMenu && ($audioManagerVisibilityStore !== "hidden" || $bottomActionBarVisibilityStore)}
     <HeaderMenuItem label={$LL.menu.sub.contextualActions()} />
 {/if}
 
-{#if $audioManagerVisibilityStore !== "hidden"}
+{#if showMusic}
     <MusicMenuItem />
 {/if}
 
@@ -54,21 +84,21 @@
     <AppsMenuItem />
 {/if}
 
-{#if ($bottomActionBarVisibilityStore && !$inLivekitStore) || $followStateStore !== "off"}
+{#if showFollow}
     <!-- <ChangeLayoutMenuItem /> -->
 
     <FollowMenuItem />
 {/if}
 
-{#if $currentPlayerLockableAreasStore.length > 0 || ($bottomActionBarVisibilityStore && !$inLivekitStore && $currentPlayerGroupLockStateStore !== undefined) || $onboardingStore === "lockBubble"}
+{#if showLock}
     <LockDiscussionMenuItem />
 {/if}
 
-{#if $recordingMenuState.shouldDisplayButton}
+{#if showRecording}
     <RecordingMenuItem {recordingMenuState} />
 {/if}
 
-{#if $requestedMegaphoneStore}
+{#if showMegaphone}
     <MegaphoneMenuItem />
 {/if}
 
@@ -76,11 +106,11 @@
      (meeting room, megaphone audience, proximity bubble — a zone can turn it off), and kept on stage (green "live"
      state) once the floor is granted so the user can hand it back. See raiseHandAvailableStore. -->
 <!-- quanta: the docked controls have their own raise-hand button -->
-{#if !$inExternalServiceStore && $raiseHandAvailableStore && !(QUANTA_UI && inProfileMenu)}
+{#if showRaiseHand}
     <RaiseHandMenuItem />
 {/if}
 
-{#if inProfileMenu}
+{#if inProfileMenu && showApps}
     <!-- In the profile menu, the apps submenu is displayed at the end (because it contains a heading) -->
     <AppsMenuItem />
 {/if}

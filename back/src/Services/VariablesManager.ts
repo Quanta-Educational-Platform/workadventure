@@ -7,6 +7,7 @@ import type { User } from "../Model/User";
 import { getVariablesRepository } from "./Repository/VariablesRepository";
 import { VariableError } from "./VariableError";
 import type { VariablesRepositoryInterface } from "./Repository/VariablesRepositoryInterface";
+import { loadSessionVariables, saveSessionVariable, SESSION_VARIABLES } from "./QuantaSessionVariables";
 
 interface Variable {
     defaultValue?: string;
@@ -78,7 +79,20 @@ export class VariablesManager {
 
             this._variables.set(key, variables[key]);
         }
+        // quanta: the class's own variables, kept across restarts without the map persisting them.
+        const values = await loadSessionVariables(this.roomUrl, this.sessionVariables());
+        for (const [name, value] of values) this._variables.set(name, value);
         return this;
+    }
+
+    /** quanta: the SESSION_VARIABLES this map has and doesn't persist itself. */
+    public sessionVariables(): string[] {
+        const objects = this.variableObjects;
+        if (!objects) return [];
+        return [...SESSION_VARIABLES].filter((name) => {
+            const object = objects.get(name);
+            return object !== undefined && !object.persist;
+        });
     }
 
     /**
@@ -217,6 +231,8 @@ export class VariablesManager {
                 console.error("Error while saving variable in Redis:", e);
                 Sentry.captureException(`Error while saving variable in Redis: ${JSON.stringify(e)}`);
             });
+        } else if (variableObject !== undefined && SESSION_VARIABLES.has(name)) {
+            saveSessionVariable(this.roomUrl, name, value);
         }
 
         return readableBy;

@@ -1362,3 +1362,45 @@ describe("Space state", () => {
         expect(space.getState().raisedHands.map((entry) => entry.spaceUserId)).toEqual(["foo_2"]);
     });
 });
+
+describe("quanta direct messages", () => {
+    function setup() {
+        const eventProcessor = mock<EventProcessor>();
+        eventProcessor.processPrivateEvent.mockImplementation((event) => event);
+        const space = new Space("room-chat", FilterType.ALL_USERS, eventProcessor, [], "world");
+        const write = vi.fn();
+        const watcher = mock<SpacesWatcher>({ id: "watcher", write });
+        (space as unknown as { users: Map<SpacesWatcher, Map<string, SpaceUser>> }).users.set(watcher, new Map());
+        const user = (spaceUserId: string, tags: string[] = []) =>
+            SpaceUser.fromPartial({ spaceUserId, uuid: `uuid-${spaceUserId}`, name: spaceUserId, tags });
+        space.addUser(watcher, user("teacher", ["admin"]));
+        space.addUser(watcher, user("anna"));
+        space.addUser(watcher, user("max"));
+        write.mockClear();
+        const send = (from: string, to: string) =>
+            space.dispatchPrivateEvent(
+                PrivateEvent.fromPartial({
+                    spaceName: "room-chat",
+                    senderUserId: from,
+                    receiverUserId: to,
+                    spaceEvent: { event: { $case: "quantaDirectMessage", quantaDirectMessage: { id: "m", text: "hi" } } },
+                }),
+            );
+        const delivered = () =>
+            write.mock.calls.filter(([message]) => message.message?.$case === "privateEvent").length;
+        return { send, delivered };
+    }
+
+    it("delivers between staff and a student, both ways", () => {
+        const { send, delivered } = setup();
+        send("teacher", "anna");
+        send("anna", "teacher");
+        expect(delivered()).toBe(2);
+    });
+
+    it("never delivers from one student to another", () => {
+        const { send, delivered } = setup();
+        send("anna", "max");
+        expect(delivered()).toBe(0);
+    });
+});

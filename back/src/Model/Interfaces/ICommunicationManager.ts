@@ -8,6 +8,7 @@ export interface ICommunicationManager {
     handleUserDeleted(user: SpaceUser): Promise<void>;
     handleUserUpdated(user: SpaceUser, updateMask?: string[]): Promise<void>;
     handleStartRecording(user: SpaceUser): Promise<void>;
+    forceMute?(spaceUserId: string, source: "microphone" | "camera"): Promise<void>;
     handleStopRecording(user: SpaceUser): Promise<void>;
     handleRecorderLeftSpace(spaceUserId: string): Promise<boolean>;
     handleServerStopRecording(): Promise<boolean>;

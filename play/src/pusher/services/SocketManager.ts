@@ -61,10 +61,13 @@ import type { WebSocket } from "uWebSockets.js";
 import { AbortError } from "@workadventure/shared-utils/src/Abort/AbortError";
 import {
     joinModeratedRoom,
+    replaceOlderSessions,
     leaveModeratedRoom,
     handleRoomChat,
-    publishRoomModeration,
+    publishRoomArrival,
+    restoreModeratedRoom,
     publicRoomName,
+    setRoomSpaceLookup,
 } from "../quanta/roomModeration";
 import { FRONT_ENVIRONMENT_VARIABLES } from "../enums/EnvironmentVariable";
 import { PusherRoom } from "../models/PusherRoom";
@@ -104,6 +107,7 @@ export class SocketManager implements ZoneEventListener {
     private spaces: Map<string, SpaceInterface> = new Map<string, SpaceInterface>();
 
     constructor(private _spaceConnection = new SpaceConnection()) {
+        setRoomSpaceLookup((name) => this.spaces.get(name));
         clientEventsEmitter.registerToClientJoin((clientUUid: string, roomId: string) => {
             gaugeManager.incNbClientPerRoomGauge(roomId);
         });
@@ -405,11 +409,17 @@ export class SocketManager implements ZoneEventListener {
 
         socketData.viewport = message.viewportMessage;
         socketData.name = FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI ? publicRoomName(socketData) : message.name;
-        if (
-            FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI &&
-            !joinModeratedRoom(client, (socket, code, reason) => this.closeWebsocketConnection(socket, code, reason))
-        )
-            return;
+        if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) {
+            await restoreModeratedRoom(client);
+            if (client.isDisconnecting() || client.isPermanentlyDisconnected()) return;
+            if (
+                !joinModeratedRoom(client, (socket, code, reason) =>
+                    this.closeWebsocketConnection(socket, code, reason),
+                )
+            )
+                return;
+            replaceOlderSessions(client);
+        }
         socketData.availabilityStatus = message.availabilityStatus;
 
         const streamToBack = socketData.backConnection;
@@ -455,7 +465,7 @@ export class SocketManager implements ZoneEventListener {
 
             const pusherRoom = await this.getOrCreateRoom(socketData.roomId);
             pusherRoom.join(client);
-            if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) publishRoomModeration(client);
+            if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) publishRoomArrival(client);
         } catch (e) {
             Sentry.captureException(e);
             console.error(`An error occurred on "join_room" event`, e);
@@ -607,6 +617,16 @@ export class SocketManager implements ZoneEventListener {
     private closeAdminWebsocketConnection(client: AdminSocket, code: number, reason: string): void {
         client.getUserData().disconnecting = true;
         client.end(code, reason);
+    }
+
+    /**
+     * quanta: a watched room session no longer stands. For good: this code leaves nothing to resume, and a new connection
+     * goes through admission. The message sends the framed room to its page for a new code.
+     */
+    public endRoomSession(client: PusherWebSocket): void {
+        if (client.isDisconnecting()) return;
+        client.send(this.getTokenExpiredMessage());
+        this.closeWebsocketConnection(client, WS_CLOSE_CODE_SESSION_DESTROYED, "Room session ended");
     }
 
     private closeWebsocketConnection(client: PusherWebSocket, code: number, reason: string): void {
@@ -836,7 +856,13 @@ export class SocketManager implements ZoneEventListener {
     }
 
     leaveRoom(socket: PusherWebSocket): void {
-        if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) leaveModeratedRoom(socket);
+        if (FRONT_ENVIRONMENT_VARIABLES.QUANTA_UI) {
+            try {
+                leaveModeratedRoom(socket);
+            } catch (e) {
+                console.error("Error while leaving the moderated room", e);
+            }
+        }
         // leave previous room and world
         const socketData = socket.getUserData();
         try {

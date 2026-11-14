@@ -13,6 +13,7 @@
     import { wokaMenuStore } from "../../../Stores/WokaMenuStore";
     import { LL } from "../../../../i18n/i18n-svelte";
     import { openModerationModal } from "../../../Components/Moderation/openModerationModal";
+    import { mayBlockOrReport } from "../../../quanta/staffTargets";
     import { analyticsClient } from "../../../Administration/AnalyticsClient";
     import type { UserProviderMerger } from "../../UserProviderMerger/UserProviderMerger";
     import { IconForbid, IconDots, IconCamera, IconMapPin, IconUserPlus } from "@wa-icons";
@@ -315,7 +316,7 @@
                 >
             {/if}
 
-            {#if user.username && user.uuid}
+            {#if user.username && user.uuid && mayBlockOrReport(user)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <span

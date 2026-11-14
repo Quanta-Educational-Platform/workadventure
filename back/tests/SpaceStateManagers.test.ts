@@ -4,7 +4,7 @@ import { FilterType, SpaceUser } from "@workadventure/messages";
 import type { SpaceState } from "@workadventure/shared-utils";
 import { emptySpaceState } from "@workadventure/shared-utils";
 import type { SpaceStateHost } from "../src/Model/SpaceStateHost";
-import { RaiseHandManager } from "../src/Model/RaiseHandManager";
+import { RaiseHandManager, type RaiseHandHost } from "../src/Model/RaiseHandManager";
 import { ProximityPollManager } from "../src/Model/ProximityPollManager";
 import { ProximityQAManager } from "../src/Model/ProximityQAManager";
 
@@ -13,8 +13,11 @@ function fakeSpace(filterType: SpaceStateHost["filterType"], ...partialUsers: Pa
     const userRemoved$ = new Subject<SpaceUser>();
     const userUpdated$ = new Subject<{ user: SpaceUser; previous: SpaceUser }>();
     let state: SpaceState = emptySpaceState();
-    const host: SpaceStateHost = {
+    const host: RaiseHandHost = {
+        name: "world.space",
         filterType,
+        userAdded$: new Subject<SpaceUser>(),
+        getAllUsers: () => users,
         userRemoved$,
         userUpdated$,
         getUser: (spaceUserId) => users.find((user) => user.spaceUserId === spaceUserId),

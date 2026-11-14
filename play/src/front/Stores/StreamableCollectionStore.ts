@@ -36,6 +36,7 @@ import { isLiveStreamingStore } from "./IsStreamingStore";
 import { createDelayedUnsubscribeStore } from "./Utils/createDelayedUnsubscribeStore";
 import { currentPlayerGroupIdStore } from "./CurrentPlayerGroupStore";
 import { shouldDisplayLocalCameraPeer } from "./StreamableCollectionRules";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
 
 export const LISTENER_BOX_UNIQUE_ID = "listener-box";
 export const LISTENER_BOX_PRIORITY = -4;
@@ -167,6 +168,12 @@ export const isInActiveConversationStore = derived(
         $isInRemoteConversation || $currentPlayerGroupIdStore !== undefined || $inLivekitStore,
 );
 
+// quanta: listening to someone on the megaphone sends nothing, so the listener's own tile would only suggest it does.
+const localTileConversationStore = derived(
+    [isInActiveConversationStore, currentPlayerGroupIdStore, inLivekitStore, isLiveStreamingStore],
+    ([$active, $group, $livekit, $sending]) => (QUANTA_UI ? $group !== undefined || $livekit || $sending : $active),
+);
+
 /**
  * A store that contains everything that can produce a stream (so the peers + the local screen sharing stream)
  */
@@ -183,7 +190,7 @@ function createStreamableCollectionStore(): Readable<Map<string, VideoBox>> {
             silentStore,
             requestedCameraState,
             windowSize,
-            isInActiveConversationStore,
+            localTileConversationStore,
             isListenerStore,
             listenerSharingCameraStore,
             isSpeakerStore,
@@ -201,7 +208,7 @@ function createStreamableCollectionStore(): Readable<Map<string, VideoBox>> {
                 $silentStore,
                 $requestedCameraState,
                 $windowSize,
-                $isInActiveConversationStore,
+                $localTileConversation,
                 $isListenerStore,
                 $listenerSharingCameraStore,
                 $isSpeakerStore,
@@ -227,7 +234,7 @@ function createStreamableCollectionStore(): Readable<Map<string, VideoBox>> {
                     requestedCameraState: $requestedCameraState,
                     windowWidth: $windowSize.width,
                     isMobile: touchScreenManager.primaryTouchDevice,
-                    isInActiveConversation: $isInActiveConversationStore,
+                    isInActiveConversation: $localTileConversation,
                     isListener: $isListenerStore,
                     listenerSharingCamera: $listenerSharingCameraStore,
                     isSpeaker: $isSpeakerStore,

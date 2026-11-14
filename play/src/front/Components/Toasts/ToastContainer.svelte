@@ -50,7 +50,7 @@
         class:bg-secondary={theme === "secondary"}
     ></div>
     <div
-        class="bg-contrast/50 flex flex-col backdrop-blur-md text-white min-w-60 min-h-12 rounded-lg overflow-hidden transition-all responsive z-20 {extraClasses}"
+        class="bg-contrast/50 flex flex-col backdrop-blur-md text-white min-w-60 min-h-12 relative rounded-lg overflow-hidden transition-all responsive z-20 {extraClasses}"
         transition:fly={{ x: 900, duration: 500 }}
     >
         <!-- Progress bar -->

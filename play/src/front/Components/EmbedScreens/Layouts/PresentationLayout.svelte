@@ -11,6 +11,9 @@
     import PictureInPictureActionBar from "../../ActionBar/PictureInPictureActionBar.svelte";
     import { activePictureInPictureStore } from "../../../Stores/PeerStore";
     import type { CamerasContainerMode } from "../../Video/VideoBoxLayout";
+    import { PHONE_TILE_HEIGHT, phoneLayoutStore } from "../../../quanta/roomWindow";
+    import { stageStore, stageTileStore, stripStore } from "../../../quanta/stage";
+    import { roomLayoutStore } from "../../../quanta/layout";
 
     interface Props {
         inPictureInPicture: boolean;
@@ -80,7 +83,15 @@
         }*/
     }
 
-    let oneLineMaxHeight = $derived(containerHeight * 0.2);
+    // quanta: on a phone the call is one row of small tiles over the top of the map, which stays in view below it.
+    // On the class's stage (stage.ts) they are the strip beside the room's tile, as tall as it.
+    let oneLineMaxHeight = $derived(
+        $stripStore
+            ? $stageTileStore.height
+            : $phoneLayoutStore
+              ? Math.min(containerHeight * 0.2, PHONE_TILE_HEIGHT)
+              : containerHeight * 0.2,
+    );
     let pipHighlightLayoutEnabled = $derived(
         inPictureInPicture && $activePictureInPictureStore && $highlightedEmbedScreen != undefined,
     );
@@ -104,7 +115,7 @@
     let camerasContainerMode: CamerasContainerMode = $derived(
         (pipHighlightLayoutEnabled ? pipHighlightLandscape : inPictureInPicture)
             ? "pipGrid"
-            : $isOnOneLine
+            : $isOnOneLine || $phoneLayoutStore || $stripStore || $roomLayoutStore !== "b"
               ? "row"
               : "grid",
     );
@@ -122,8 +133,9 @@
         {#if $streamableCollectionStore.size > 0}
             <div
                 class="justify-end md:justify-center w-full relative"
-                class:max-height-quarter={$isOnOneLine && !inPictureInPicture}
-                class:h-full={!$isOnOneLine || (inPictureInPicture && !pipHighlightLayoutEnabled)}
+                class:max-height-quarter={($isOnOneLine || $phoneLayoutStore) && !inPictureInPicture}
+                class:h-full={(!$isOnOneLine && !$phoneLayoutStore) ||
+                    (inPictureInPicture && !pipHighlightLayoutEnabled)}
                 class:overflow-y-auto={inPictureInPicture}
                 class:flex-1={inPictureInPicture && $highlightedEmbedScreen != undefined && !pipHighlightLayoutEnabled}
                 style={pipCameraContainerStyle}
@@ -133,7 +145,8 @@
             </div>
         {/if}
 
-        {#if $streamableCollectionStore.size > 0 && $highlightedEmbedScreen && !$playerMovedInTheLast10Seconds}
+        <!-- quanta: on the class's stage (quanta/stage.ts) the share stays put while the person moves -->
+        {#if $streamableCollectionStore.size > 0 && $highlightedEmbedScreen && (!$playerMovedInTheLast10Seconds || $stageStore)}
             <div
                 id="highlighted-media"
                 class="md:mb-0"

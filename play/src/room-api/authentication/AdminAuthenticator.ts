@@ -6,7 +6,9 @@ import { ADMIN_API_URL } from "../../pusher/enums/EnvironmentVariable";
 import { GuardError } from "../types/GuardError";
 import type { AuthenticatorInterface } from "./AuthenticatorInterface";
 
-const client = setupCache(axios);
+// quanta: its own instance. Installed on the shared one, the cache took in every Admin API call too, and a failed
+// one (its bookkeeping stripped by AdminApi's error sanitizer) left that URL waiting forever: one room's page hung.
+const client = setupCache(axios.create());
 
 const authorizationSuccessResponse = z.object({
     success: z.literal(true),

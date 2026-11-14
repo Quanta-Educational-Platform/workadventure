@@ -47,6 +47,7 @@ const chat: DeepPartial<Translation["chat"]> = {
         loadError: "No es pot carregar aquesta vista prèvia de la imatge.",
         openInNewTab: "Obrir en una nova pestanya",
         notAvailable: "La imatge no està disponible.",
+        cannotDisplay: "Aquest navegador no pot mostrar aquesta imatge. Desa el fitxer per obrir-lo.",
         imageActions: "Accions de la imatge",
     },
     join: "Unir-se",
@@ -284,6 +285,9 @@ const chat: DeepPartial<Translation["chat"]> = {
         acceptToDownload: "Accepta per descarregar",
         saveFile: "Desa el fitxer",
         unavailable: "Ja no està disponible",
+        connectionFailed: "No s'ha pogut connectar amb el remitent. Torna-ho a provar.",
+        interrupted: "La transferència s'ha interromput. Torna-ho a provar.",
+        retry: "Torna-ho a provar",
         recipient: {
             waiting: "En espera",
             summary: "Rebut per {received} de {total}",

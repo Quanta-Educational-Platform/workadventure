@@ -424,6 +424,10 @@ export class CommunicationManager implements ICommunicationManager {
             .getCurrentState()
             .handleMeetingConnectionRestartMessage(meetingConnectionRestartMessage, senderUserId);
     }
+    public async forceMute(spaceUserId: string, source: "microphone" | "camera"): Promise<void> {
+        await this.lifecycleManager.getCurrentState().forceMute?.(spaceUserId, source);
+    }
+
     public async handleStartRecording(user: SpaceUser): Promise<void> {
         this.cancelPendingTransitionIfNeeded();
         await this._recordingManager.startRecording(user);

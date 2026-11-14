@@ -11,6 +11,7 @@
     import { meetingOf } from "../../Administration/CurrentMeeting";
     import type { SpaceUserExtended } from "../../Space/SpaceInterface";
     import { openModerationModal } from "../Moderation/openModerationModal";
+    import { mayBlockOrReport } from "../../quanta/staffTargets";
     import RangeSlider from "../Input/RangeSlider.svelte";
     import type { StreamCategory } from "../../Space/Streamable";
     import { IconAlertTriangle, IconUser, IconMute, IconUnMute, IconMicrophone, IconMicrophoneOff } from "@wa-icons";
@@ -316,15 +317,17 @@
         </button>
     {/if}
     <!-- Block or report user -->
-    <button
-        class="action-button flex gap-2 items-center hover:bg-white/10 m-0 p-2 w-full text-sm rounded leading-4 text-left text-white"
-        onclick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openBlockOrReportPopup(spaceUser);
-        }}
-    >
-        <IconAlertTriangle />
-        {$LL.camera.menu.blockOrReportUser()}
-    </button>
+    {#if mayBlockOrReport(spaceUser)}
+        <button
+            class="action-button flex gap-2 items-center hover:bg-white/10 m-0 p-2 w-full text-sm rounded leading-4 text-left text-white"
+            onclick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openBlockOrReportPopup(spaceUser);
+            }}
+        >
+            <IconAlertTriangle />
+            {$LL.camera.menu.blockOrReportUser()}
+        </button>
+    {/if}
 </div>

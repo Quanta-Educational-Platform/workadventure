@@ -13,14 +13,26 @@ export const roomHandSpaceStore: Readable<SpaceInterface | undefined> = roomSpac
 
 export function startRoomHand(space: SpaceInterface): () => void {
     roomSpace.set(space);
+    // Until the user raises or lowers it here, a hand the server put up is theirs: after a restart or a reload the
+    // back gives a returning user their place in the queue back, and the button shows it.
+    let touched = false;
+    let first = true;
     const unsubscribe = requestedHandRaiseState.subscribe((raisedIn) => {
+        if (!first) touched = true;
+        first = false;
         const wantsRaised = raisedIn.has(space.getName());
         const isRaised = get(space.state.raisedHandsStore).some((entry) => entry.spaceUserId === space.mySpaceUserId);
         if (wantsRaised !== isRaised) {
             space.state.raiseHand(wantsRaised).catch((error) => console.error(error));
         }
     });
+    const unsubscribeQueue = space.state.raisedHandsStore.subscribe((hands) => {
+        if (touched || !hands.some((entry) => entry.spaceUserId === space.mySpaceUserId)) return;
+        touched = true;
+        requestedHandRaiseState.raise(space.getName());
+    });
     return () => {
+        unsubscribeQueue();
         unsubscribe();
         requestedHandRaiseState.lower(space.getName());
         roomSpace.update((current) => (current === space ? undefined : current));

@@ -1,5 +1,5 @@
 import type { AxiosResponse } from "axios";
-import axios, { isAxiosError } from "axios";
+import axios, { AxiosError, isAxiosError } from "axios";
 import type { MapDetailsData, OauthRefreshToken, RoomRedirect, Capabilities, IceServer } from "@workadventure/messages";
 import {
     isOauthRefreshToken,
@@ -32,6 +32,69 @@ import { jwtTokenManager } from "./JWTTokenManager";
 import { ShortMapDescriptionList } from "./ShortMapDescription";
 import { WorldChatMembersData } from "./WorldChatMembersData";
 import { iceServersService } from "./IceServersService";
+
+// Joins wait on these; a stalled Quanta must fail the join with a retry instead of holding it open. The signal bounds
+// the whole call, including a wait for a connection, which the socket timeout does not.
+const JOIN_CALL_TIMEOUT_MS = 8000;
+
+// At most this many join calls to Quanta at once: a class rejoining together (after a restart, a network blip) waits
+// here instead of landing on Quanta's database all at once. Waiting too long counts as a failed call, so the joiner
+// gets the self-reloading retry screen, spread out, rather than piling on.
+const JOIN_CALLS_AT_ONCE = 8;
+const JOIN_QUEUE_WAIT_MS = 15_000;
+let joinCallsRunning = 0;
+const joinCallQueue: Array<() => void> = [];
+export async function inJoinCallSlot<T>(call: () => Promise<T>): Promise<T> {
+    if (joinCallsRunning < JOIN_CALLS_AT_ONCE) joinCallsRunning++;
+    else {
+        let wake: (() => void) | undefined;
+        const admitted = await new Promise<boolean>((resolve) => {
+            wake = () => resolve(true);
+            joinCallQueue.push(wake);
+            setTimeout(() => resolve(false), JOIN_QUEUE_WAIT_MS);
+        });
+        if (!admitted) {
+            const at = joinCallQueue.indexOf(wake!);
+            if (at >= 0) joinCallQueue.splice(at, 1);
+            else releaseJoinCallSlot(); // woken in the same instant it gave up: hand the slot on
+            throw new AxiosError("Too many joins at once; waited for a slot", AxiosError.ECONNABORTED);
+        }
+    }
+    try {
+        return await call();
+    } finally {
+        releaseJoinCallSlot();
+    }
+}
+function releaseJoinCallSlot(): void {
+    const next = joinCallQueue.shift();
+    if (next) next();
+    else joinCallsRunning--;
+}
+export function joinCallsForTests(): { running: number; queued: number } {
+    return { running: joinCallsRunning, queued: joinCallQueue.length };
+}
+
+/**
+ * A join that failed because Quanta was slow or briefly down (timeout, no answer, 5xx, 429) gets WA's retry screen,
+ * which reloads by itself, instead of a dead-end error. Spread out so a class doesn't come back all at once.
+ */
+export function transientRetry(err: unknown, subtitle: string): ErrorApiData | undefined {
+    if (!isAxiosError(err)) return undefined;
+    const status = err.response?.status;
+    if (status !== undefined && status < 500 && status !== 429) return undefined;
+    return {
+        status: "error",
+        type: "retry",
+        code: "ROOM_ACCESS_RETRY",
+        title: "Connection error",
+        subtitle,
+        details: "Trying again in {time} seconds",
+        buttonTitle: "Try again",
+        canRetryManual: true,
+        timeToRetry: (10 + Math.floor(Math.random() * 15)) * 1000,
+    };
+}
 
 export const isFetchMemberDataByUuidSuccessResponse = z.object({
     status: extendApi(z.literal("ok"), {
@@ -307,10 +370,14 @@ class AdminApi implements AdminInterface {
              *             $ref: '#/definitions/ErrorApiErrorData'
              *
              */
-            const res = await axios.get<unknown, AxiosResponse<unknown>>(ADMIN_API_URL + "/api/map", {
-                headers: { Authorization: `${ADMIN_API_TOKEN}`, "Accept-Language": locale ?? "en" },
-                params,
-            });
+            const res = await inJoinCallSlot(() =>
+                axios.get<unknown, AxiosResponse<unknown>>(ADMIN_API_URL + "/api/map", {
+                    headers: { Authorization: `${ADMIN_API_TOKEN}`, "Accept-Language": locale ?? "en" },
+                    params,
+                    timeout: JOIN_CALL_TIMEOUT_MS,
+                    signal: AbortSignal.timeout(JOIN_CALL_TIMEOUT_MS + 1000),
+                }),
+            );
 
             const mapDetailData = isMapDetailsData.safeParse(res.data);
 
@@ -361,6 +428,8 @@ class AdminApi implements AdminInterface {
             if (err instanceof Error) {
                 message = err.message;
             }
+            const retry = transientRetry(err, "The class is busy loading. Hang on.");
+            if (retry) return retry;
             return {
                 status: "error",
                 type: "error",
@@ -370,6 +439,47 @@ class AdminApi implements AdminInterface {
                 details: message,
             };
         }
+    }
+
+    /**
+     * quanta: swaps the single-use code Quanta gives a framed room for its room session, in place of the OpenID round
+     * trip (Quanta: src/lib/workadventure/wa-sign-in-code.ts). In the body, so it is in no request log. Null is a
+     * refusal; anything else that goes wrong throws, because it says nothing about the user.
+     */
+    async exchangeQuantaSignInCode(code: string, playUri: string): Promise<{ email: string; userId: string; roomSession: string } | null> {
+        if (!ADMIN_API_URL) throw new Error("No admin API");
+        const res = await axios
+            .post<unknown>(
+                ADMIN_API_URL + "/api/sign-in-exchange",
+                { code, playUri },
+                { headers: { Authorization: `${ADMIN_API_TOKEN}` }, timeout: 10_000 },
+            )
+            .catch((err: unknown) => {
+                if (isAxiosError(err) && err.response?.status === 401) return null;
+                throw err;
+            });
+        if (!res) return null;
+        return z.object({ email: z.string().min(1), userId: z.string().min(1), roomSession: z.string().min(1) }).parse(res.data);
+    }
+
+    /**
+     * quanta: whether a connected room's session still stands, in the room it is connected to (an office's access can
+     * narrow past someone already inside). True or false only for Quanta's clear answer: anything else (network,
+     * timeout, an error page from something in between) is undefined, and ends nobody's class.
+     */
+    async quantaRoomSessionIsLive(roomSession: string, roomUrl: string): Promise<boolean | undefined> {
+        if (!ADMIN_API_URL) return undefined;
+        return axios
+            .post<unknown>(
+                ADMIN_API_URL + "/api/room-session-check",
+                { roomSession, roomUrl },
+                { headers: { Authorization: `${ADMIN_API_TOKEN}` }, timeout: 10_000 },
+            )
+            .then((res) => {
+                const answer = z.object({ live: z.boolean() }).safeParse(res.data);
+                return res.status === 200 && answer.success ? answer.data.live : undefined;
+            })
+            .catch(() => undefined);
     }
 
     async fetchMemberDataByUuid(
@@ -438,19 +548,23 @@ class AdminApi implements AdminInterface {
              *         schema:
              *             $ref: "#/definitions/FetchMemberDataByUuidResponse"
              */
-            const res = await axios.get<unknown, AxiosResponse<unknown>>(ADMIN_API_URL + "/api/room/access", {
-                params: {
-                    userIdentifier,
-                    playUri,
-                    ipAddress,
-                    characterTextureIds,
-                    companionTextureId,
-                    accessToken,
-                    isLogged: accessToken ? "1" : "0", // deprecated, use accessToken instead,
-                    chatID,
-                },
-                headers: { Authorization: `${ADMIN_API_TOKEN}`, "Accept-Language": locale ?? "en" },
-            });
+            const res = await inJoinCallSlot(() =>
+                axios.get<unknown, AxiosResponse<unknown>>(ADMIN_API_URL + "/api/room/access", {
+                    params: {
+                        userIdentifier,
+                        playUri,
+                        ipAddress,
+                        characterTextureIds,
+                        companionTextureId,
+                        accessToken,
+                        isLogged: accessToken ? "1" : "0", // deprecated, use accessToken instead,
+                        chatID,
+                    },
+                    headers: { Authorization: `${ADMIN_API_TOKEN}`, "Accept-Language": locale ?? "en" },
+                    timeout: JOIN_CALL_TIMEOUT_MS,
+                    signal: AbortSignal.timeout(JOIN_CALL_TIMEOUT_MS + 1000),
+                }),
+            );
 
             const fetchMemberDataByUuidResponse = isFetchMemberDataByUuidResponse.safeParse(res.data);
 
@@ -485,6 +599,8 @@ class AdminApi implements AdminInterface {
             if (err instanceof Error) {
                 message = err.message;
             }
+            const retry = transientRetry(err, "The class is busy letting people in. Hang on.");
+            if (retry) return retry;
             return {
                 status: "error",
                 type: "error",
@@ -1065,9 +1181,13 @@ class AdminApi implements AdminInterface {
      *        description: No member found.
      */
     async getMember(memberUUID: string): Promise<MemberData> {
-        const response = await axios.get<MemberData>(`${ADMIN_API_URL}/api/members/${memberUUID}`, {
-            headers: { Authorization: `${ADMIN_API_TOKEN}` },
-        });
+        const response = await inJoinCallSlot(() =>
+            axios.get<MemberData>(`${ADMIN_API_URL}/api/members/${memberUUID}`, {
+                headers: { Authorization: `${ADMIN_API_TOKEN}` },
+                timeout: JOIN_CALL_TIMEOUT_MS,
+                signal: AbortSignal.timeout(JOIN_CALL_TIMEOUT_MS + 1000),
+            }),
+        );
         return response.data;
     }
 

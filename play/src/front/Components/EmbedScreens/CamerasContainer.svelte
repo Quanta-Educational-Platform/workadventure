@@ -35,13 +35,15 @@
     import { highlightFullScreen } from "../../Stores/ActionsCamStore";
     import { localUserStore } from "../../Connection/LocalUserStore";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
-    import { MAX_DISPLAYED_VIDEOS } from "../../Enum/EnvironmentVariable";
+    import { MAX_DISPLAYED_VIDEOS, QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import { keepNoticesBelow } from "../../quanta/noticeOffsets";
     import {
         orderedStreamableCollectionStore,
         maxVisibleVideosStore,
     } from "../../Stores/OrderedStreamableCollectionStore";
     import { activePictureInPictureStore } from "../../Stores/PeerStore";
     import { oneLineStreamableCollectionStore } from "../../Stores/OneLineStreamableCollectionStore";
+    import { PHONE_TILE_MIN_WIDTH, phoneLayoutStore } from "../../quanta/roomWindow";
     import type { ObservableElement } from "../../Interfaces/ObservableElement";
     import ChevronLeftIcon from "../Icons/ChevronLeftIcon.svelte";
     import ChevronRightIcon from "../Icons/ChevronRightIcon.svelte";
@@ -75,12 +77,18 @@
     let maxContainerHeight: number = $state(0);
     let containerHeight: number = $state(0);
     let camerasContainerHeight: number = $state(0);
+    // quanta: the room's notices start below the tiles (noticeOffsets.ts).
+    $effect(() => {
+        if (!QUANTA_UI || !camerasContainer || mode === "pipGrid") return;
+        return keepNoticesBelow(camerasContainer);
+    });
     let videoWidth: number = $state(0);
     let videoHeight: number | undefined = $state();
     let camerasContainer: HTMLDivElement | undefined = $state();
 
     // The minimum width of a media box in pixels
-    const minMediaBoxWidth = 160;
+    // quanta: smaller on a phone, where a row of 160px tiles left room for barely two.
+    let minMediaBoxWidth = $derived($phoneLayoutStore ? PHONE_TILE_MIN_WIDTH : 160);
 
     /** uniqueId of the local webcam in `streamableCollectionStore` (`myCameraPeerStore`). */
     const LOCAL_CAMERA_VIDEO_BOX_UNIQUE_ID = "-1";

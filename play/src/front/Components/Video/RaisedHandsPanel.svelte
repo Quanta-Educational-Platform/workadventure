@@ -6,6 +6,7 @@
     import type { SpaceInterface } from "../../Space/SpaceInterface";
     import { spaceLabel } from "../../Space/spaceLabel";
     import type { PictureStore } from "../../Stores/PictureStore";
+    import { fullNamesStore, shownName } from "../../quanta/fullNames";
     import Button from "../UI/Button.svelte";
     import Alert from "../UI/Alert.svelte";
     import RaisedHandAvatar from "./RaisedHandAvatar.svelte";
@@ -26,6 +27,15 @@
     function lowerHand(space: SpaceInterface, spaceUserId: string) {
         analyticsClient.trackAdminEvent("meeting.hand.lowered_for_participant");
         space.state.lowerHand(spaceUserId).catch((error) => console.error(error));
+    }
+
+    // quanta: a hand under the real name Quanta sent this viewer, as on the map tags.
+    function handName(
+        space: SpaceInterface,
+        entry: { spaceUserId: string; name: string },
+        names: ReadonlyMap<string, string>,
+    ): string {
+        return shownName(names, space.getSpaceUserBySpaceUserId(entry.spaceUserId)?.uuid, entry.name);
     }
 
     // Resolve a user's Woka picture, from the section's space first, then from the other spaces the host is in.
@@ -75,9 +85,11 @@
                     <div class="flex items-center gap-2 p-1 rounded hover:bg-white/10">
                         <RaisedHandAvatar
                             pictureStore={getPictureStore(section.space, entry.spaceUserId)}
-                            name={entry.name}
+                            name={handName(section.space, entry, $fullNamesStore)}
                         />
-                        <span class="text-white text-sm grow truncate">{entry.name}</span>
+                        <span class="text-white text-sm grow truncate"
+                            >{handName(section.space, entry, $fullNamesStore)}</span
+                        >
                         {#if section.floorControls}
                             <Button
                                 variant="secondary"
@@ -115,9 +127,11 @@
                     <div class="flex items-center gap-2 p-1 rounded hover:bg-white/10">
                         <RaisedHandAvatar
                             pictureStore={getPictureStore(section.space, entry.spaceUserId)}
-                            name={entry.name}
+                            name={handName(section.space, entry, $fullNamesStore)}
                         />
-                        <span class="text-white text-sm grow truncate">{entry.name}</span>
+                        <span class="text-white text-sm grow truncate"
+                            >{handName(section.space, entry, $fullNamesStore)}</span
+                        >
                         {#if section.floorControls}
                             <Button
                                 variant="danger"

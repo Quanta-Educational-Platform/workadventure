@@ -8,9 +8,19 @@ import type { ICommunicationSpace } from "../Interfaces/ICommunicationSpace";
 import type { IRecordableStrategy } from "../Interfaces/ICommunicationStrategy";
 import type { LiveKitService, RecordingStartInfo } from "../Services/LivekitService";
 
+/**
+ * How long the room outlives its last speaker while people still listen. A speaker stepping off and back on
+ * (crossing the podium, a reconnect, the floor passing to a student) would otherwise disconnect every listener
+ * and make them all join a new room seconds later.
+ */
+export const LIVEKIT_ROOM_GRACE_PERIOD_MS = 120_000;
+
 export class LivekitCommunicationStrategy implements IRecordableStrategy {
     private usersReady: Set<string> = new Set();
     private createRoomPromise: Promise<void> | null = null;
+    private teardownTimer: ReturnType<typeof setTimeout> | undefined;
+    private teardownInFlight: Promise<void> | undefined;
+    private disposed = false;
 
     private streamingUsers: Map<string, SpaceUser> = new Map<string, SpaceUser>();
     private receivingUsers: Map<string, SpaceUser> = new Map<string, SpaceUser>();
@@ -24,6 +34,7 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
     constructor(
         private space: ICommunicationSpace,
         private livekitService: LiveKitService,
+        private readonly gracePeriodMs: number = LIVEKIT_ROOM_GRACE_PERIOD_MS,
     ) {}
 
     /**
@@ -66,15 +77,24 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
                 return;
             }
 
+            // A room kept through its grace period still has its listeners connected: they need no new invitation.
+            const resumed = this.cancelScheduledTeardown();
+            // A teardown already under way would delete the room this speaker is about to be invited to.
+            await this.teardownInFlight?.catch(() => undefined);
+
             // Ensure the Livekit room is created (only once)
             if (!this.createRoomPromise) {
-                this.createRoomPromise = this.livekitService.createRoom(this.space.getSpaceName());
+                // A failed creation is retried by the next arrival instead of failing every later one.
+                this.createRoomPromise = this.livekitService.createRoom(this.space.getSpaceName()).catch((e) => {
+                    this.createRoomPromise = null;
+                    throw e;
+                });
             }
 
             await this.createRoomPromise;
 
             // Send invitation to all receiving users if this is the first room creation
-            if (this.receivingUsers.size > 0 && this.streamingUsers.size === 0) {
+            if (!resumed && this.receivingUsers.size > 0 && this.streamingUsers.size === 0) {
                 for (const receivingUser of this.receivingUsers.values()) {
                     this.sendLivekitInvitationMessage(receivingUser).catch((error) => {
                         console.error(
@@ -131,19 +151,11 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
             }
 
             if (this.streamingUsers.size === 0) {
-                try {
-                    await this.space.stopRecordingByServer();
-                } catch (error) {
-                    console.error(`Error stopping recording for space ${this.space.getSpaceName()}:`, error);
-                    Sentry.captureException(error);
+                if (this.receivingUsers.size === 0 || this.gracePeriodMs <= 0 || this.disposed) {
+                    await this.teardownRoom();
+                } else {
+                    this.scheduleTeardown();
                 }
-
-                this.createRoomPromise = null;
-                for (const receivingUser of this.receivingUsers.values()) {
-                    this.sendLivekitDisconnectMessage(receivingUser);
-                }
-
-                await this.livekitService.deleteRoom(this.space.getSpaceName());
             }
         }).catch((error) => {
             console.error(`Error in deleteUser for ${user.spaceUserId}:`, error);
@@ -151,7 +163,63 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
         });
     }
 
+    private scheduleTeardown(): void {
+        this.cancelScheduledTeardown();
+        this.teardownTimer = setTimeout(() => {
+            this.teardownTimer = undefined;
+            this.teardownRoom().catch((error) => {
+                console.error(`Error tearing down Livekit room ${this.space.getSpaceName()}:`, error);
+                Sentry.captureException(error);
+            });
+        }, this.gracePeriodMs);
+        this.teardownTimer.unref?.();
+    }
+
+    /** Says whether a teardown was pending. */
+    private cancelScheduledTeardown(): boolean {
+        if (this.teardownTimer === undefined) {
+            return false;
+        }
+        clearTimeout(this.teardownTimer);
+        this.teardownTimer = undefined;
+        return true;
+    }
+
+    private teardownRoom(): Promise<void> {
+        if (this.streamingUsers.size > 0) {
+            return Promise.resolve();
+        }
+        // Cleared first: a listener arriving meanwhile must wait for the next room, not be invited to this one.
+        this.createRoomPromise = null;
+        const teardown = (async () => {
+            try {
+                await this.space.stopRecordingByServer();
+            } catch (error) {
+                console.error(`Error stopping recording for space ${this.space.getSpaceName()}:`, error);
+                Sentry.captureException(error);
+            }
+
+            for (const receivingUser of this.receivingUsers.values()) {
+                this.sendLivekitDisconnectMessage(receivingUser);
+            }
+
+            await this.livekitService.deleteRoom(this.space.getSpaceName());
+        })();
+        const inFlight = teardown.finally(() => {
+            if (this.teardownInFlight === inFlight) {
+                this.teardownInFlight = undefined;
+            }
+        });
+        this.teardownInFlight = inFlight;
+        return inFlight;
+    }
+
     updateUser(user: SpaceUser): void {}
+
+    /** quanta: a teacher turned someone's microphone or camera off (Space.dispatchPrivateEvent). */
+    forceMute(spaceUserId: string, source: "microphone" | "camera"): Promise<void> {
+        return this.livekitService.muteParticipantSource(this.space.getSpaceName(), spaceUserId, source);
+    }
 
     async initialize(
         users: ReadonlyMap<string, SpaceUser>,
@@ -221,6 +289,11 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
             if (!this.streamingUsers.has(user.spaceUserId)) {
                 this.sendLivekitDisconnectMessage(user);
             }
+
+            // Nobody left to keep a speakerless room for.
+            if (this.receivingUsers.size === 0 && this.streamingUsers.size === 0 && this.cancelScheduledTeardown()) {
+                return this.teardownRoom();
+            }
             return Promise.resolve();
         }).catch((error) => {
             console.error(`Error in deleteUserFromNotify for ${user.spaceUserId}:`, error);
@@ -263,6 +336,8 @@ export class LivekitCommunicationStrategy implements IRecordableStrategy {
     }
 
     cleanup(): void {
+        this.disposed = true;
+        this.cancelScheduledTeardown();
         for (const user of this.streamingUsers.values()) {
             this.deleteUser(user);
         }

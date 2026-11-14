@@ -22,6 +22,12 @@
     import { blocker } from "../../Utils/screenBlocker";
     import { findHandPosition, raisedHandsOrderStore } from "../../Stores/RaisedHandsStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
+    import PersonMenu from "../../quanta/PersonMenu.svelte";
+    import { roomWindowRect } from "../../quanta/roomWindow";
+    import { fullNamesStore, shownName } from "../../quanta/fullNames";
+    import { tileName, tileNamesStore } from "../../quanta/layout";
+    import { QL } from "../../quanta/i18n";
     import ActionMediaBox from "./ActionMediaBox.svelte";
     import RaisedHandBadge from "./RaisedHandBadge.svelte";
     import UserName from "./UserName.svelte";
@@ -29,7 +35,7 @@
     import CenteredVideo from "./CenteredVideo.svelte";
     import WebRtcStats from "./WebRtcStatsBox.svelte";
     import EncoderStatsBox from "./EncoderStatsBox.svelte";
-    import { IconArrowsMinimize, IconArrowsMaximize, IconMicrophoneOff } from "@wa-icons";
+    import { IconAntennaBarsLow, IconArrowsMinimize, IconArrowsMaximize, IconMicrophoneOff } from "@wa-icons";
 
     interface Props {
         fullScreen?: boolean;
@@ -66,6 +72,8 @@
     let hasAudioStore = $derived(streamable?.hasAudio);
     let volumeMeterStore = $derived(streamable?.volumeStore);
     let showVoiceIndicatorStore = $derived(streamable?.showVoiceIndicator);
+    let weakConnectionStore = $derived(streamable?.weakConnection);
+    let weakConnection = $derived(weakConnectionStore ? $weakConnectionStore : false);
     let isBlockedStore = $derived(streamable?.media?.isBlocked);
     let mediaStreamStore = $derived(
         streamable?.media.type === "webrtc" || streamable?.media.type === "livekit"
@@ -266,7 +274,7 @@
             closeFloatingUi = showFloatingUi(
                 userMenuButton,
                 // @ts-ignore See https://github.com/storybookjs/storybook/issues/21884
-                ActionMediaBox,
+                QUANTA_UI ? PersonMenu : ActionMediaBox,
                 {
                     spaceUser,
                     videoEnabled: videoEnabled ?? false,
@@ -282,6 +290,12 @@
                 },
                 8,
                 false,
+                false,
+                undefined,
+                3000,
+                // quanta: inside the room's window by the margin its cards keep, its submenus too.
+                QUANTA_UI ? 12 : 5,
+                QUANTA_UI ? roomWindowRect : undefined,
             );
             // onclose={() => (showUserSubMenu = false)}
         } else {
@@ -443,7 +457,10 @@
                     >
                         {#if !streamableEntry.isPending && activeUserName}
                             <UserName
-                                name={name ?? "unknown"}
+                                name={tileName(
+                                    shownName($fullNamesStore, extendedSpaceUser?.uuid, name ?? "unknown"),
+                                    $tileNamesStore,
+                                )}
                                 picture={pictureStore}
                                 isPlayingAudio={showVoiceIndicator ?? false}
                                 {isHandRaised}
@@ -456,6 +473,17 @@
                                 grayscale={effectiveStatus === "connecting" || effectiveStatus === "reconnecting"}
                             >
                                 <RaisedHandBadge spaceUserId={raisedHandSpaceUserId} spaceName={raisedHandSpaceName} />
+                                {#if weakConnection}
+                                    <span
+                                        class="flex shrink-0 text-amber-300"
+                                        role="img"
+                                        title={$QL.weakConnectionTile()}
+                                        aria-label={$QL.weakConnectionTile()}
+                                        data-testid="weakConnectionBadge"
+                                    >
+                                        <IconAntennaBarsLow font-size={16} />
+                                    </span>
+                                {/if}
                                 {#if extendedSpaceUser && extendedSpaceUser.spaceUserId !== "local"}
                                     <div
                                         class="flex items-center justify-center picture-in-picture:hidden"

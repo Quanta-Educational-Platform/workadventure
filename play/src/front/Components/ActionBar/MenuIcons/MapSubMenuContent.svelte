@@ -3,7 +3,7 @@
     import { isInsidePersonalAreaStore, personalAreaDataStore } from "../../../Stores/PersonalDeskStore";
     import {
         globalMessageVisibleStore,
-        mapManagerActivated,
+        mapExplorerVisibleStore,
         mapEditorMenuVisibleStore,
         openedMenuStore,
     } from "../../../Stores/MenuStore";
@@ -134,7 +134,7 @@
         <IconMapEditor font-size="20" />
     </ActionBarButton>
 {/if}
-{#if $mapManagerActivated}
+{#if $mapExplorerVisibleStore}
     <ActionBarButton
         onclick={toggleMapExplorerMode}
         label={$LL.mapEditor.sideBar.exploreTheRoom()}

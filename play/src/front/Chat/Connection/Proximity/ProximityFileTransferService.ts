@@ -27,6 +27,21 @@ export const PROXIMITY_FILE_TRANSFER_MAX_INCOMING_OFFERS_PER_PEER = 20;
 const PROXIMITY_FILE_TRANSFER_CHUNK_SIZE = 64 * 1024;
 const PROXIMITY_FILE_TRANSFER_BUFFERED_AMOUNT_LOW_THRESHOLD = 256 * 1024;
 const PROXIMITY_FILE_TRANSFER_NEGOTIATION_TIMEOUT = 15_000;
+// Images up to this size are fetched without asking: in a class a photo of a solution is the common case,
+// and one behind an "Accept" button reads as a file that never shows.
+export const PROXIMITY_FILE_AUTO_ACCEPT_MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+
+/**
+ * Why an incoming file could not be had. "connection": no connection to the sender could be made (a firewall,
+ * the relay); "interrupted": the connection dropped mid-way; "unavailable": the sender no longer offers it.
+ */
+export type ProximityFileTransferFailure =
+    | "connection"
+    | "interrupted"
+    | "unavailable"
+    | "incomplete"
+    | "write-failed"
+    | "file-too-large";
 
 export type ProximityFileValidationResult = { tooManyFiles: boolean; tooLargeFiles: File[] };
 
@@ -40,6 +55,14 @@ export function validateProximityFiles(files: File[]): ProximityFileValidationRe
 export type IncomingProximityFileTransferOffer = ProximityFileTransferOfferMessage & {
     senderSpaceUserId: string;
 };
+
+/** Whether an offer is fetched as soon as it arrives: small images that the chat can show inline. */
+export function shouldAutoAcceptProximityFile(offer: Pick<IncomingProximityFileTransferOffer, "mimeType" | "size">) {
+    return (
+        getMessageTypeFromMimeType(offer.mimeType) === "image" &&
+        offer.size <= PROXIMITY_FILE_AUTO_ACCEPT_MAX_IMAGE_SIZE
+    );
+}
 
 export type ProximityFileTransferUpdate =
     | {
@@ -61,7 +84,7 @@ export type ProximityFileTransferUpdate =
           transferId: string;
           state: "error";
           progress: number;
-          error: string;
+          error: ProximityFileTransferFailure | string;
       };
 
 export type ProximityFileTransferOffer = {
@@ -79,6 +102,7 @@ export type OutgoingProximityFileTransferUpdate = {
 };
 
 type ProximityFileTransferSignalPayload =
+    | { type: "delete" }
     | {
           type: "description";
           description: RTCSessionDescriptionInit;
@@ -102,6 +126,8 @@ export type ProximityFileTransferServiceOptions = {
 type PeerSession = {
     remoteSpaceUserId: string;
     connectionId: string;
+    /** Whether we made the offer, rather than answering the peer's. */
+    initiator: boolean;
     peerConnection: RTCPeerConnection;
     dataChannel: RTCDataChannel | undefined;
     openPromise: Promise<RTCDataChannel>;
@@ -127,10 +153,22 @@ type ReceivingTransfer = {
 };
 
 export class ProximityFileTransferService {
+    private readonly incomingOwners = new Map<string, string>();
+    private readonly deletedTransfers = new Set<string>();
+    private readonly outgoingAbort = new Map<string, AbortController>();
+    private readonly deletionSubject = new Subject<string>();
+    public readonly deletions: Observable<string> = this.deletionSubject;
     private readonly outgoingTransfers = new Map<string, ProximityFileTransferOffer>();
     private readonly incomingTransfers = new Map<string, IncomingProximityFileTransferOffer>();
+    private readonly completedSinks = new Map<string, ProximityFileSink>();
     private readonly receivingTransfers = new Map<string, ReceivingTransfer>();
     private readonly peerSessions = new Map<string, PeerSession>();
+    // Connections being set up, so that several downloads from one sender share one.
+    private readonly initiatingSessions = new Map<string, Promise<PeerSession>>();
+    // Requested from the sender, not started yet: by transferId, the sender's spaceUserId.
+    private readonly requestedTransfers = new Map<string, string>();
+    // Downloads still connecting: a second Accept must not ask the sender twice.
+    private readonly connectingTransfers = new Set<string>();
     private readonly storage = new ProximityFileStorage();
     private readonly subscriptions = new Subscription();
     private readonly incomingOfferSubject = new Subject<IncomingProximityFileTransferOffer>();
@@ -157,8 +195,12 @@ export class ProximityFileTransferService {
                 }
                 // A transferId belongs to the peer that first offered it: another peer re-offering
                 // the same id must not be able to take over the card shown for the first sender.
-                const existing = this.incomingTransfers.get(offer.transferId);
-                if (existing && existing.senderSpaceUserId !== senderSpaceUserId) {
+                const owner = this.incomingOwners.get(offer.transferId);
+                if (
+                    this.deletedTransfers.has(offer.transferId) ||
+                    this.outgoingTransfers.has(offer.transferId) ||
+                    (owner && owner !== senderSpaceUserId)
+                ) {
                     return;
                 }
                 // Throttle a peer that floods us with offers. Re-offering a known transferId just
@@ -170,6 +212,7 @@ export class ProximityFileTransferService {
                 ) {
                     return;
                 }
+                this.incomingOwners.set(offer.transferId, senderSpaceUserId);
                 this.incomingTransfers.set(offer.transferId, offer);
                 this.transferUpdateSubject.next({ transferId: offer.transferId, state: "pending", progress: 0 });
                 this.incomingOfferSubject.next(offer);
@@ -219,6 +262,7 @@ export class ProximityFileTransferService {
 
         for (const offer of offers) {
             this.outgoingTransfers.set(offer.transferId, offer);
+            this.outgoingAbort.set(offer.transferId, new AbortController());
             for (const recipientId of recipientIds) {
                 this.options.space.emitPrivateMessage(
                     {
@@ -239,16 +283,36 @@ export class ProximityFileTransferService {
         return offers;
     }
 
+    /** Never rejects: a failure is reported as an "error" update, for the card to say so and offer a retry. */
     async download(transferId: string): Promise<void> {
         const offer = this.incomingTransfers.get(transferId);
         if (!offer) {
-            throw new Error("Unknown proximity file transfer");
+            this.transferUpdateSubject.next({ transferId, state: "error", progress: 0, error: "unavailable" });
+            return;
+        }
+        if (
+            this.connectingTransfers.has(transferId) ||
+            this.requestedTransfers.has(transferId) ||
+            this.receivingTransfers.has(transferId)
+        ) {
+            return;
         }
 
         this.transferUpdateSubject.next({ transferId, state: "connecting", progress: 0 });
-        const session = await this.ensureInitiatorPeerSession(offer.senderSpaceUserId, transferId);
-        const dataChannel = await session.openPromise;
-        this.sendControlMessage(dataChannel, { type: "proximity_file_request", transferId });
+        this.connectingTransfers.add(transferId);
+        try {
+            const session = await this.ensureInitiatorPeerSession(offer.senderSpaceUserId, transferId);
+            const dataChannel = await this.openedChannel(session);
+            if (this.deletedTransfers.has(transferId)) return;
+            this.requestedTransfers.set(transferId, offer.senderSpaceUserId);
+            this.sendControlMessage(dataChannel, { type: "proximity_file_request", transferId });
+        } catch (error) {
+            console.warn("Unable to reach the sender of a proximity file", error);
+            this.requestedTransfers.delete(transferId);
+            this.transferUpdateSubject.next({ transferId, state: "error", progress: 0, error: "connection" });
+        } finally {
+            this.connectingTransfers.delete(transferId);
+        }
     }
 
     /** Tells the sender this offer is declined, so they do not wait for it. */
@@ -265,14 +329,50 @@ export class ProximityFileTransferService {
         );
     }
 
+    /** Only the author can withdraw an offer; space signalling authenticates that author to recipients. */
+    deleteOutgoing(transferId: string): void {
+        const transfer = this.outgoingTransfers.get(transferId);
+        if (!transfer) return;
+        this.revokeTransfer(transferId);
+        for (const recipient of transfer.recipients) {
+            this.emitSignal(recipient, transferId, "", { type: "delete" });
+        }
+    }
+
+    private revokeTransfer(transferId: string): void {
+        this.deletedTransfers.add(transferId);
+        this.outgoingAbort.get(transferId)?.abort();
+        this.outgoingAbort.delete(transferId);
+        this.outgoingTransfers.delete(transferId);
+        this.incomingTransfers.delete(transferId);
+        this.connectingTransfers.delete(transferId);
+        this.failReceivingTransfer(transferId, "unavailable");
+        this.completedSinks
+            .get(transferId)
+            ?.discard()
+            .catch((error) => console.warn("Unable to discard deleted file", error));
+        this.completedSinks.delete(transferId);
+        for (const session of this.peerSessions.values()) session.awaitingReceipt.delete(transferId);
+        this.deletionSubject.next(transferId);
+    }
+
     destroy(): void {
         this.subscriptions.unsubscribe();
         this.incomingOfferSubject.complete();
         this.transferUpdateSubject.complete();
         this.outgoingUpdateSubject.complete();
+        for (const controller of this.outgoingAbort.values()) controller.abort();
+        this.outgoingAbort.clear();
+        this.incomingOwners.clear();
+        this.deletedTransfers.clear();
+        this.deletionSubject.complete();
         this.outgoingTransfers.clear();
         this.incomingTransfers.clear();
         this.receivingTransfers.clear();
+        this.completedSinks.clear();
+        this.requestedTransfers.clear();
+        this.connectingTransfers.clear();
+        this.initiatingSessions.clear();
         this.storage.destroy().catch((error) => console.warn("Unable to clean up proximity file storage", error));
         for (const session of this.peerSessions.values()) {
             clearTimeout(session.negotiationTimeout);
@@ -282,13 +382,44 @@ export class ProximityFileTransferService {
         this.peerSessions.clear();
     }
 
-    private async ensureInitiatorPeerSession(remoteSpaceUserId: string, transferId: string): Promise<PeerSession> {
+    private async openedChannel(session: PeerSession): Promise<RTCDataChannel> {
+        try {
+            return await session.openPromise;
+        } catch (error) {
+            // Both ends offered at once and ours gave way to the peer's: that connection carries this request too.
+            const successor = this.peerSessions.get(session.remoteSpaceUserId);
+            if (successor && successor !== session) {
+                return successor.openPromise;
+            }
+            throw error;
+        }
+    }
+
+    private ensureInitiatorPeerSession(remoteSpaceUserId: string, transferId: string): Promise<PeerSession> {
         const existingSession = this.peerSessions.get(remoteSpaceUserId);
         if (existingSession) {
-            return existingSession;
+            return Promise.resolve(existingSession);
         }
+        const initiating = this.initiatingSessions.get(remoteSpaceUserId);
+        if (initiating) {
+            return initiating;
+        }
+        const creation = this.createInitiatorPeerSession(remoteSpaceUserId, transferId).finally(() => {
+            this.initiatingSessions.delete(remoteSpaceUserId);
+        });
+        this.initiatingSessions.set(remoteSpaceUserId, creation);
+        return creation;
+    }
 
-        const session = await this.createPeerSession(remoteSpaceUserId, uuidv4());
+    private async createInitiatorPeerSession(remoteSpaceUserId: string, transferId: string): Promise<PeerSession> {
+        const session = await this.createPeerSession(remoteSpaceUserId, uuidv4(), true);
+        // The peer connected to us while the ICE servers were fetched: share its connection.
+        const raced = this.peerSessions.get(remoteSpaceUserId);
+        if (raced) {
+            clearTimeout(session.negotiationTimeout);
+            session.peerConnection.close();
+            return raced;
+        }
         const dataChannel = session.peerConnection.createDataChannel("proximity-file-transfer");
         this.bindDataChannel(session, dataChannel);
         this.peerSessions.set(remoteSpaceUserId, session);
@@ -304,7 +435,11 @@ export class ProximityFileTransferService {
         return session;
     }
 
-    private async createPeerSession(remoteSpaceUserId: string, connectionId: string): Promise<PeerSession> {
+    private async createPeerSession(
+        remoteSpaceUserId: string,
+        connectionId: string,
+        initiator: boolean,
+    ): Promise<PeerSession> {
         const peerConnection = new RTCPeerConnection({ iceServers: await this.options.getIceServers() });
         let resolveOpen!: (dataChannel: RTCDataChannel) => void;
         let rejectOpen!: (error: Error) => void;
@@ -312,9 +447,12 @@ export class ProximityFileTransferService {
             resolveOpen = resolve;
             rejectOpen = reject;
         });
+        // The answering side never awaits it: its failure must not surface as an unhandled rejection.
+        openPromise.catch(() => undefined);
         const session: PeerSession = {
             remoteSpaceUserId,
             connectionId,
+            initiator,
             peerConnection,
             dataChannel: undefined,
             openPromise,
@@ -328,7 +466,7 @@ export class ProximityFileTransferService {
             pendingCandidates: [],
             negotiationTimeout: setTimeout(() => {
                 rejectOpen(new Error("Proximity file transfer connection timeout"));
-                this.closePeerSession(remoteSpaceUserId);
+                this.closePeerSession(remoteSpaceUserId, session);
             }, PROXIMITY_FILE_TRANSFER_NEGOTIATION_TIMEOUT),
         };
 
@@ -351,7 +489,7 @@ export class ProximityFileTransferService {
         };
         peerConnection.onconnectionstatechange = () => {
             if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "closed") {
-                this.closePeerSession(remoteSpaceUserId);
+                this.closePeerSession(remoteSpaceUserId, session);
             }
         };
         return session;
@@ -376,7 +514,7 @@ export class ProximityFileTransferService {
                 });
         };
         dataChannel.onclose = () => {
-            this.closePeerSession(session.remoteSpaceUserId);
+            this.closePeerSession(session.remoteSpaceUserId, session);
         };
     }
 
@@ -384,20 +522,36 @@ export class ProximityFileTransferService {
         senderSpaceUserId: string,
         signalMessage: ProximityFileTransferSignalMessage,
     ): Promise<void> {
-        if (!this.options.canExchangeWith(senderSpaceUserId)) {
+        const signal = JSON.parse(signalMessage.signal) as ProximityFileTransferSignalPayload;
+        if (signal.type === "delete") {
+            if (this.incomingOwners.get(signalMessage.transferId) === senderSpaceUserId) {
+                this.revokeTransfer(signalMessage.transferId);
+            }
             return;
         }
-
-        const signal = JSON.parse(signalMessage.signal) as ProximityFileTransferSignalPayload;
+        if (!this.options.canExchangeWith(senderSpaceUserId)) return;
         let session = this.peerSessions.get(senderSpaceUserId);
 
         if (signal.type === "description" && signal.description.type === "offer") {
-            // A new negotiation supersedes any existing session for this peer. Close the
-            // previous one first so we don't leak its RTCPeerConnection and negotiation timer
-            // (a remote peer could otherwise force unbounded allocations by replaying offers).
-            this.closePeerSession(senderSpaceUserId);
-            session = await this.createPeerSession(senderSpaceUserId, signalMessage.connectionId);
+            // Both ends offered at once (each downloading from the other): the one with the greater id keeps
+            // its offer, the other answers it. Closing both would leave neither connected.
+            if (
+                session?.initiator &&
+                session.dataChannel?.readyState !== "open" &&
+                this.options.localSpaceUserId > senderSpaceUserId
+            ) {
+                return;
+            }
+            // A new negotiation supersedes any existing session for this peer. The previous one is closed so
+            // we don't leak its RTCPeerConnection and negotiation timer (a remote peer could otherwise force
+            // unbounded allocations by replaying offers), once its successor is in place for the downloads
+            // that were waiting on it.
+            const previous = session;
+            session = await this.createPeerSession(senderSpaceUserId, signalMessage.connectionId, false);
             this.peerSessions.set(senderSpaceUserId, session);
+            if (previous) {
+                this.shutDownSession(previous, true);
+            }
             await session.peerConnection.setRemoteDescription(signal.description);
             const answer = await session.peerConnection.createAnswer();
             await session.peerConnection.setLocalDescription(answer);
@@ -434,10 +588,18 @@ export class ProximityFileTransferService {
                     if (!offer) {
                         return;
                     }
+                    const wasRequested = this.requestedTransfers.has(message.transferId);
+                    const sink = await this.storage.createSink(message.transferId);
+                    // The connection dropped while the file was being opened, and its failure is already reported.
+                    if (wasRequested && !this.requestedTransfers.has(message.transferId)) {
+                        await sink.discard().catch(() => undefined);
+                        return;
+                    }
+                    this.requestedTransfers.delete(message.transferId);
                     this.receivingTransfers.set(message.transferId, {
                         offer,
                         receivedBytes: 0,
-                        sink: await this.storage.createSink(message.transferId),
+                        sink,
                         startedAt: performance.now(),
                     });
                     this.transferUpdateSubject.next({
@@ -505,7 +667,9 @@ export class ProximityFileTransferService {
     private async sendOutgoingTransfer(session: PeerSession, transferId: string): Promise<void> {
         const transfer = this.outgoingTransfers.get(transferId);
         const dataChannel = session.dataChannel;
+        const signal = this.outgoingAbort.get(transferId)?.signal;
         if (
+            !signal ||
             !transfer ||
             !dataChannel ||
             !transfer.recipients.includes(session.remoteSpaceUserId) ||
@@ -535,6 +699,7 @@ export class ProximityFileTransferService {
                 new WritableStream<Uint8Array>({
                     write: async (chunk) => {
                         for (let offset = 0; offset < chunk.byteLength; offset += PROXIMITY_FILE_TRANSFER_CHUNK_SIZE) {
+                            signal.throwIfAborted();
                             const frame = chunk.subarray(offset, offset + PROXIMITY_FILE_TRANSFER_CHUNK_SIZE);
                             dataChannel.send(encodeProximityFileChunkFrame(transferId, frame));
                             sentBytes += frame.byteLength;
@@ -546,12 +711,14 @@ export class ProximityFileTransferService {
                                 Math.max(0, sentBytes - dataChannel.bufferedAmount) / Math.max(size, 1),
                             );
                             // eslint-disable-next-line no-await-in-loop -- chunks must be sent in order
-                            await this.waitForBackpressure(dataChannel);
+                            await this.waitForBackpressure(dataChannel, signal);
                         }
                     },
                 }),
+                { signal },
             );
         } catch (error) {
+            if (signal.aborted) return;
             // The file changed or vanished on disk since the offer was made, or the recipient left.
             console.error("Error while sending proximity file transfer", error);
             if (dataChannel.readyState === "open") {
@@ -565,6 +732,7 @@ export class ProximityFileTransferService {
             return;
         }
 
+        if (signal.aborted) return;
         session.awaitingReceipt.add(transferId);
         this.sendControlMessage(dataChannel, { type: "proximity_file_complete", transferId });
     }
@@ -585,6 +753,11 @@ export class ProximityFileTransferService {
             this.failReceivingTransfer(transferId, "write-failed");
             return;
         }
+        if (this.deletedTransfers.has(transferId)) {
+            await receivingTransfer.sink.discard().catch(() => undefined);
+            return;
+        }
+        this.completedSinks.set(transferId, receivingTransfer.sink);
         this.receivingTransfers.delete(transferId);
         const durationMs = Math.round(performance.now() - receivingTransfer.startedAt);
         // Read before the receipt: once the sender has it, it may close the connection.
@@ -594,6 +767,7 @@ export class ProximityFileTransferService {
         } catch (error) {
             console.warn("Unable to read how a proximity file transfer travelled", error);
         }
+        if (this.deletedTransfers.has(transferId)) return;
         if (session.dataChannel?.readyState === "open") {
             this.sendControlMessage(session.dataChannel, { type: "proximity_file_received", transferId });
         }
@@ -607,7 +781,8 @@ export class ProximityFileTransferService {
         });
     }
 
-    private failReceivingTransfer(transferId: string, error: string): void {
+    private failReceivingTransfer(transferId: string, error: ProximityFileTransferFailure | string): void {
+        this.requestedTransfers.delete(transferId);
         this.receivingTransfers
             .get(transferId)
             ?.sink.discard()
@@ -621,7 +796,8 @@ export class ProximityFileTransferService {
         });
     }
 
-    private waitForBackpressure(dataChannel: RTCDataChannel): Promise<void> {
+    private waitForBackpressure(dataChannel: RTCDataChannel, signal: AbortSignal): Promise<void> {
+        signal.throwIfAborted();
         if (dataChannel.bufferedAmount <= PROXIMITY_FILE_TRANSFER_BUFFERED_AMOUNT_LOW_THRESHOLD) {
             return Promise.resolve();
         }
@@ -639,9 +815,11 @@ export class ProximityFileTransferService {
             const stopListening = () => {
                 dataChannel.removeEventListener("bufferedamountlow", onDrained);
                 dataChannel.removeEventListener("close", onClosed);
+                signal.removeEventListener("abort", onClosed);
             };
             dataChannel.addEventListener("bufferedamountlow", onDrained);
             dataChannel.addEventListener("close", onClosed);
+            signal.addEventListener("abort", onClosed, { once: true });
         });
     }
 
@@ -679,17 +857,44 @@ export class ProximityFileTransferService {
         }
     }
 
-    private closePeerSession(remoteSpaceUserId: string): void {
+    /** With `expected`, only if that session is still the peer's: a replaced session's late events must not close its successor. */
+    private closePeerSession(remoteSpaceUserId: string, expected?: PeerSession): void {
         const session = this.peerSessions.get(remoteSpaceUserId);
-        if (!session) {
+        if (!session || (expected && session !== expected)) {
+            if (expected) {
+                this.shutDownSession(expected, false);
+            }
             return;
         }
         this.peerSessions.delete(remoteSpaceUserId);
+        this.shutDownSession(session, true);
+    }
+
+    /** `failTransfers`: whether what was coming from this peer is lost with it (not when a successor carries it). */
+    private shutDownSession(session: PeerSession, failTransfers: boolean): void {
+        const remoteSpaceUserId = session.remoteSpaceUserId;
         clearTimeout(session.negotiationTimeout);
+        // A download still waiting for the channel learns now that it will not open.
+        session.rejectOpen(new Error("Proximity file transfer connection closed"));
         session.dataChannel?.close();
         session.peerConnection.close();
         for (const transferId of session.awaitingReceipt) {
             this.emitOutgoingUpdate(transferId, remoteSpaceUserId, "failed", 0);
+        }
+        session.awaitingReceipt.clear();
+        if (!failTransfers) {
+            return;
+        }
+        // What we were getting from this peer will not arrive: say so rather than leave it loading.
+        for (const [transferId, receivingTransfer] of this.receivingTransfers) {
+            if (receivingTransfer.offer.senderSpaceUserId === remoteSpaceUserId) {
+                this.failReceivingTransfer(transferId, "interrupted");
+            }
+        }
+        for (const [transferId, senderSpaceUserId] of this.requestedTransfers) {
+            if (senderSpaceUserId === remoteSpaceUserId) {
+                this.failReceivingTransfer(transferId, "interrupted");
+            }
         }
     }
 

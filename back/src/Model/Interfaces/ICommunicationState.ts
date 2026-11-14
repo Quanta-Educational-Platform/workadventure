@@ -17,6 +17,8 @@ export interface ICommunicationState<T extends ICommunicationStrategy> {
     handleUserAdded(user: SpaceUser): Promise<StateTransitionResult<T> | ICommunicationState<T> | void>;
     handleUserDeleted(user: SpaceUser): Promise<StateTransitionResult<T> | ICommunicationState<T> | void>;
     handleUserUpdated(user: SpaceUser): Promise<StateTransitionResult<T> | ICommunicationState<T> | void>;
+    /** quanta: mutes what a person publishes at the media server, where there is one (LiveKit); peer to peer can't. */
+    forceMute?(spaceUserId: string, source: "microphone" | "camera"): Promise<void>;
     handleUserToNotifyAdded(user: SpaceUser): Promise<StateTransitionResult<T> | ICommunicationState<T> | void>;
     handleUserToNotifyDeleted(user: SpaceUser): Promise<StateTransitionResult<T> | ICommunicationState<T> | void>;
     switchState(targetCommunicationType: string): void;

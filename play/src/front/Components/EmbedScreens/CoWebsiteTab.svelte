@@ -8,17 +8,38 @@
     import { popupStore } from "../../Stores/PopupStore";
     import { analyticsClient } from "../../Administration/AnalyticsClient";
     import { scriptUtils } from "../../Api/ScriptUtils";
+    import { ExcalidrawService } from "@workadventure/shared-utils";
+    import { EXCALIDRAW_DOMAINS, QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
     interface Props {
         coWebsite: CoWebsite;
         isLoading?: boolean;
         active?: boolean;
+        /** The panel's corner button closes the active tab, so its own X would be a second close. */
+        closeInCorner?: boolean;
         onclick?: () => void;
         onclose?: () => void;
         oncopy?: () => void;
     }
 
-    let { coWebsite, isLoading = false, active = false, onclick, onclose, oncopy }: Props = $props();
+    let {
+        coWebsite,
+        isLoading = false,
+        active = false,
+        closeInCorner = false,
+        onclick,
+        onclose,
+        oncopy,
+    }: Props = $props();
+
+    // quanta: a class board's link opens it editable to anyone who has it (view-only lives in this frame alone), so
+    // its tab shows neither the link nor ways to copy or open it.
+    const hideUrl = $derived(
+        coWebsite.getHideUrl() ||
+            (QUANTA_UI &&
+                !!EXCALIDRAW_DOMAINS?.length &&
+                ExcalidrawService.isExcalidrawLink(coWebsite.getUrl(), EXCALIDRAW_DOMAINS)),
+    );
 
     function closeTab() {
         onclose?.();
@@ -93,7 +114,7 @@
                     ></div>
                 {/if}
             </div>
-            {#if !coWebsite.getHideUrl()}
+            {#if !hideUrl}
                 <div class="text-xxs opacity-50 text-ellipsis max-w-[150px] whitespace-nowrap overflow-hidden">
                     {#if !isLoading}
                         {coWebsite.getUrl()}
@@ -109,7 +130,7 @@
         </div>
 
         <div class="flex gap-0.5">
-            {#if !coWebsite.getHideUrl()}
+            {#if !hideUrl}
                 <button
                     class="group {active
                         ? 'hover:bg-contrast/10'
@@ -127,7 +148,7 @@
                     />
                 </button>
             {/if}
-            {#if !coWebsite.getHideUrl()}
+            {#if !hideUrl}
                 <button
                     class="group {active
                         ? 'hover:bg-contrast/10'
@@ -145,7 +166,7 @@
                     />
                 </button>
             {/if}
-            {#if coWebsite.isClosable() === true}
+            {#if coWebsite.isClosable() === true && !(closeInCorner && active)}
                 <button
                     class="group {active
                         ? 'hover:bg-contrast/10'

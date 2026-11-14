@@ -6,17 +6,24 @@
         ProximityChatSidePanelRoom,
     } from "../../Connection/ChatConnection";
     import { openProximityParticipantWokaMenu } from "../../Connection/Proximity/ProximityParticipantWokaMenu";
+    import { fullNamesStore, shownName } from "../../../quanta/fullNames";
     import Avatar from "../Avatar.svelte";
 
     export let room: ProximityChatSidePanelRoom;
 
-    function getParticipantName(participant: ProximityChatSidePanelParticipant): string {
-        return participant.name ?? "?";
+    // quanta: staff see the real names Quanta sent this viewer, as on the map tags.
+    function getParticipantName(
+        participant: ProximityChatSidePanelParticipant,
+        names: ReadonlyMap<string, string>,
+    ): string {
+        return shownName(names, participant.uuid, participant.name ?? "?");
     }
 
     $: participantsStore = room.currentMeetingParticipantsStore;
     $: participants = [...$participantsStore].sort((participantA, participantB) =>
-        getParticipantName(participantA).localeCompare(getParticipantName(participantB)),
+        getParticipantName(participantA, $fullNamesStore).localeCompare(
+            getParticipantName(participantB, $fullNamesStore),
+        ),
     );
 
     function openParticipantWokaMenu(participant: ProximityChatSidePanelParticipant): void {
@@ -61,12 +68,12 @@
                         <Avatar
                             compact
                             pictureStore={participant.pictureStore}
-                            fallbackName={getParticipantName(participant)}
+                            fallbackName={getParticipantName(participant, $fullNamesStore)}
                         />
 
                         <div class="min-w-0 flex-1">
                             <div class="truncate text-sm font-semibold text-white">
-                                {getParticipantName(participant)}
+                                {getParticipantName(participant, $fullNamesStore)}
                             </div>
                             {#if participant.roomName}
                                 <div class="truncate text-xs opacity-70">

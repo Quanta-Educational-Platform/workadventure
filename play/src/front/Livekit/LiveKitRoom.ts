@@ -1,8 +1,16 @@
 import { z } from "zod";
 import { MapStore } from "@workadventure/store-utils";
-import type { LocalParticipant, Participant, RemoteParticipant, TrackPublishOptions } from "livekit-client";
+import type {
+    ConnectionQuality,
+    LocalParticipant,
+    Participant,
+    ReconnectPolicy,
+    RemoteParticipant,
+    TrackPublishOptions,
+} from "livekit-client";
 import {
     BackupCodecPolicy,
+    EngineEvent,
     LocalAudioTrack,
     LocalVideoTrack,
     Room,
@@ -42,6 +50,9 @@ import { LIVEKIT_PIXEL_DENSITY } from "../Enum/EnvironmentVariable";
 import { audioPlaybackStore } from "../Stores/AudioPlaybackStore";
 import { SCRIPTING_AUDIO_TRACK_NAME } from "./LivekitConstants";
 import { startCameraCap } from "./CameraCap";
+import { startScreenShareCap } from "./ScreenShareCap";
+import { createWeakConnectionTracker } from "./WeakConnection";
+import { startWeakLinkNotice } from "./WeakLinkNotice";
 import { LiveKitParticipant } from "./LivekitParticipant";
 import type { LiveKitRoomInterface } from "./LiveKitRoomInterface";
 
@@ -61,6 +72,39 @@ type LivekitRoomCounter = {
 // backoff if it ever matters.
 const RESTART_DELAY_WHEN_NEVER_CONNECTED_MS = 5000;
 
+// quanta: livekit-client's own policy gives up after about 45 s, and WA then asks the back for a new invitation: a full
+// rejoin. A student on mobile data or a train loses the link for longer, so the call keeps trying every few seconds for
+// as long as the room server keeps a dropped player (CLIENT_DISCONNECTION_RETENTION_MS, 2 minutes).
+const RECONNECT_GIVE_UP_MS = 120_000;
+const RECONNECT_FIRST_DELAYS_MS = [0, 300, 1200, 2700];
+const reconnectPolicy: ReconnectPolicy = {
+    nextRetryDelayInMs: ({ retryCount, elapsedMs }) => {
+        if (elapsedMs >= RECONNECT_GIVE_UP_MS) return null;
+        // Every attempt spread, the first ones too, so a room that lost the server together does not come back in
+        // the same second.
+        if (retryCount < RECONNECT_FIRST_DELAYS_MS.length) {
+            return RECONNECT_FIRST_DELAYS_MS[retryCount] + Math.random() * 1000;
+        }
+        return 4000 + Math.random() * 2000;
+    },
+};
+
+// quanta: after a room gave up, the new invitation is asked for after a random wait that grows while the space's
+// rooms keep failing (1 s, 2 s, 4 s ... up to 30 s; at least 5 s for a room that never connected; each half to one and
+// a half times), so a LiveKit server in trouble is not sent a whole class of new joins at once and again each time it
+// fails them. Kept per space, across the rooms that replace each other; a minute connected without a break resets it.
+const restartStreaks = new WeakMap<SpaceInterface, number>();
+const RESTART_STREAK_RESET_MS = 60_000;
+function restartDelayMs(space: SpaceInterface, neverConnected: boolean): number {
+    const streak = restartStreaks.get(space) ?? 0;
+    restartStreaks.set(space, streak + 1);
+    const step = Math.min(30_000, 1000 * 2 ** streak);
+    return Math.max(neverConnected ? RESTART_DELAY_WHEN_NEVER_CONNECTED_MS : 0, step) * (0.5 + Math.random());
+}
+
+// quanta: how often a room looks for remote participants it holds no LiveKitParticipant for (adoptMissedParticipants)
+const MISSED_PARTICIPANT_CHECK_MS = 10_000;
+
 export class LiveKitRoom implements LiveKitRoomInterface {
     private room: Room | undefined;
     // Keyed by identity, like livekit-client: it keeps the same RemoteParticipant across a full reconnection and
@@ -73,6 +117,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     // Scripting stream received while the room was not connected, published once it is (see dispatchStream)
     private pendingScriptingStream: MediaStream | undefined;
     private localScreenSharingVideoTrack: LocalVideoTrack | undefined;
+    /** quanta: ends the weak-link cap of the screen share published now (ScreenShareCap.ts). */
+    private stopScreenShareCap: (() => void) | undefined;
     private localScreenSharingAudioTrack: LocalAudioTrack | undefined;
     private localCameraTrack: LocalVideoTrack | undefined;
     private localMicrophoneTrack: LocalAudioTrack | undefined;
@@ -87,6 +133,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     private destroyed = false;
     private everConnected = false;
     private connectedAt: number | undefined;
+    // Since when the room has been connected without a break (unset while it reconnects): what resets the restart wait.
+    private stableSince: number | undefined;
     private diagnosticConnectionId: string | undefined;
     // Set while livekit-client is reconnecting by itself, reported as media.livekit.reconnected once it is back
     private reconnecting:
@@ -104,7 +152,19 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     private readonly boundHandleDisconnected = this.handleDisconnected.bind(this);
     private readonly boundHandleReconnected = this.handleReconnected.bind(this);
     private readonly boundHandleSignalReconnecting = () => this.handleReconnecting("resume");
-    private readonly boundHandleReconnecting = () => this.handleReconnecting("full");
+    // Reconnecting also comes from the engine going offline, which may well end in a resume: an episode is counted as
+    // full only once the engine restarts the session (boundHandleEngineRestarting).
+    private readonly boundHandleReconnecting = () => this.handleReconnecting("resume");
+    private readonly boundHandleEngineRestarting = () => this.handleReconnecting("full");
+    private readonly boundHandleConnectionQualityChanged = (quality: ConnectionQuality, participant: Participant) => {
+        if (participant === this.room?.localParticipant) this.weakConnection.update(quality);
+    };
+    private readonly weakConnection = createWeakConnectionTracker((weak) => {
+        analyticsClient.trackAdminEvent("media.weak_connection.state_changed", {
+            ...this.connectionProperties(),
+            enabled: weak,
+        });
+    });
     private readonly boundHandleAudioPlaybackStatusChanged = this.handleAudioPlaybackStatusChanged.bind(this);
 
     constructor(
@@ -132,6 +192,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
                 pixelDensity: LIVEKIT_PIXEL_DENSITY,
             },
             dynacast: true,
+            reconnectPolicy,
             publishDefaults: {
                 // Commented out: the default simulcast layers are sufficient for our use case
                 // videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360],
@@ -170,6 +231,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             return;
         }
         this.joinRoomCalled = true;
+        startWeakLinkNotice();
 
         const room = this.room ?? (await this.prepareConnection());
 
@@ -177,11 +239,19 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         const connectStartedAt = performance.now();
         await room.connect(this.serverUrl, this.token, {
             autoSubscribe: false,
+            // quanta: a slow link (mobile data, a crowded Wi-Fi) needs longer than the 15 s defaults to join. A failed
+            // join is not retried here (livekit-client retries at once): it goes through the restart below, whose
+            // wait is spread and grows.
+            websocketTimeout: 25_000,
+            peerConnectionTimeout: 25_000,
         });
+        // Only connect() replaces the engine; its automatic reconnections keep this one.
+        room.engine.on(EngineEvent.Restarting, this.boundHandleEngineRestarting);
         const roomSid = await room.getSid().catch(() => undefined);
         this.diagnosticConnectionId = roomSid ? `${roomSid}:${room.localParticipant.sid}` : undefined;
         this.everConnected = true;
         this.connectedAt = Date.now();
+        this.stableSince = Date.now();
         this.handleAudioPlaybackStatusChanged();
         if (this.abortSignal.aborted) {
             await room.disconnect();
@@ -201,6 +271,9 @@ export class LiveKitRoom implements LiveKitRoomInterface {
                 this.processPendingParticipantForUser(spaceUser);
             }),
         );
+
+        const adoptTimer = setInterval(() => this.adoptMissedParticipants(), MISSED_PARTICIPANT_CHECK_MS);
+        this.unsubscribers.push(() => clearInterval(adoptTimer));
 
         // Process existing remote participants
         Array.from(room.remoteParticipants.values()).forEach((participant) => {
@@ -472,6 +545,11 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     }
 
     private handleReconnecting(kind: "resume" | "full") {
+        // A minute up without a break ended here: it resets the restart wait, whatever this reconnection comes to.
+        if (this.stableSince !== undefined && Date.now() - this.stableSince >= RESTART_STREAK_RESET_MS) {
+            restartStreaks.delete(this.space);
+        }
+        this.stableSince = undefined;
         if (this.reconnecting) {
             // A resume that fails goes on with a full reconnection: one episode, counted as full
             if (kind === "full") {
@@ -483,6 +561,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     }
 
     private handleReconnected() {
+        this.stableSince = Date.now();
         if (this.reconnecting) {
             analyticsClient.trackAdminEvent("media.livekit.reconnected", {
                 ...this.connectionProperties(),
@@ -678,6 +757,10 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             await this.localParticipant.publishTrack(screenShareVideoLocalTrack, screenSharePublishOptions);
             // Only keep the reference once published (see handleCameraTrack)
             this.localScreenSharingVideoTrack = screenShareVideoLocalTrack;
+            this.stopScreenShareCap?.();
+            this.stopScreenShareCap = this.room
+                ? startScreenShareCap(this.room, screenShareVideoLocalTrack)
+                : undefined;
             this.screenShareAnalyticsUnsubscribe = this.subscribeToEncoderAnalytics(
                 screenShareVideoLocalTrack,
                 "screenSharing",
@@ -729,6 +812,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
     }
 
     private async unpublishAllScreenShareTrack() {
+        this.stopScreenShareCap?.();
+        this.stopScreenShareCap = undefined;
         if (!this.localParticipant) {
             console.error("Local participant not found");
             Sentry.captureException(new Error("Local participant not found"));
@@ -818,6 +903,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         this.room.on(RoomEvent.SignalReconnecting, this.boundHandleSignalReconnecting);
         this.room.on(RoomEvent.Reconnecting, this.boundHandleReconnecting);
         this.room.on(RoomEvent.AudioPlaybackStatusChanged, this.boundHandleAudioPlaybackStatusChanged);
+        this.room.on(RoomEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
     }
 
     private handleAudioPlaybackStatusChanged() {
@@ -880,17 +966,19 @@ export class LiveKitRoom implements LiveKitRoomInterface {
 
         // STATE_MISMATCH, JOIN_FAILURE, or no reason at all (livekit-client gave up after its reconnect attempts):
         // ask the back for a fresh invitation. LivekitConnection builds the replacement room when it arrives.
-        if (this.everConnected) {
-            this.requestRestart();
-            return;
+        if (this.stableSince !== undefined && Date.now() - this.stableSince >= RESTART_STREAK_RESET_MS) {
+            restartStreaks.delete(this.space);
         }
-        setTimeout(() => {
-            if (this.abortSignal.aborted) {
-                // The space left LiveKit mode in the meantime
-                return;
-            }
-            this.requestRestart();
-        }, RESTART_DELAY_WHEN_NEVER_CONNECTED_MS);
+        setTimeout(
+            () => {
+                if (this.abortSignal.aborted) {
+                    // The space left LiveKit mode in the meantime
+                    return;
+                }
+                this.requestRestart();
+            },
+            restartDelayMs(this.space, !this.everConnected),
+        );
     }
 
     private requestRestart() {
@@ -978,7 +1066,7 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         const id = this.getParticipantId(participant);
 
         // Skip if already registered
-        if (this.participants.has(participant.identity)) {
+        if (this.dropReplacedParticipant(participant)) {
             return;
         }
 
@@ -1026,8 +1114,71 @@ export class LiveKitRoom implements LiveKitRoomInterface {
                 () => this.getRegion(),
                 undefined,
                 () => this.diagnosticConnectionId,
+                () => this.isRoomConnected(),
+                () => this.isReceivingSettled(),
+                () => this.reportsForAllListeners(participant.identity),
             ),
         );
+    }
+
+    /** The connection remote media arrives on is on its way or briefly down: a subscription can't deliver yet. */
+    private isReceivingSettled(): boolean {
+        const pcManager = this.room?.engine.pcManager;
+        const state = (pcManager?.subscriber ?? pcManager?.publisher)?.getConnectionState();
+        return state !== "connecting" && state !== "disconnected";
+    }
+
+    /** Whether this client has the lowest identity in the room but the speaker's: the one listener that reports what
+     *  every listener sees the same. */
+    private reportsForAllListeners(speakerIdentity: string): boolean {
+        const room = this.room;
+        if (!room) return false;
+        const mine = room.localParticipant.identity;
+        for (const identity of room.remoteParticipants.keys()) {
+            if (identity !== speakerIdentity && identity < mine) return false;
+        }
+        return true;
+    }
+
+    /** A LiveKitParticipant still bound to an earlier object for this identity (its disconnect was missed) is dropped,
+     *  so the current one can be taken up. Returns whether one is left for it. */
+    private dropReplacedParticipant(participant: RemoteParticipant): boolean {
+        const existing = this.participants.get(participant.identity);
+        if (!existing) return false;
+        if (existing.participant === participant) return true;
+        existing.destroy({ replaced: true });
+        this.participants.delete(participant.identity);
+        return false;
+    }
+
+    /**
+     * A remote participant LiveKit has but no LiveKitParticipant was made for, though its space user is here: an event
+     * missed in a reconnection or a join. Nobody would hear or see that person until they rejoined.
+     */
+    private adoptMissedParticipants(): void {
+        if (this.abortSignal.aborted || !this.room || !this.isRoomConnected()) return;
+        for (const participant of this.room.remoteParticipants.values()) {
+            const held = this.participants.get(participant.identity);
+            if (held?.participant === participant || (!held && !participant.permissions?.canPublish)) continue;
+            let id: string;
+            try {
+                id = this.getParticipantId(participant);
+            } catch {
+                continue;
+            }
+            const spaceUser = this.space.getSpaceUserBySpaceUserId(id);
+            if (!spaceUser || spaceUser.spaceUserId === this.space.mySpaceUserId) continue;
+            this.pendingParticipants.delete(id);
+            this.dropReplacedParticipant(participant);
+            this.createLiveKitParticipant(participant, spaceUser);
+            analyticsClient.trackAdminEvent("media.remote_audio.missing", {
+                reason: "missed_participant",
+                durationMs: 0,
+                connectionId: this.diagnosticConnectionId ?? null,
+                participantSid: participant.sid,
+                trackSid: null,
+            });
+        }
     }
 
     /**
@@ -1057,6 +1208,8 @@ export class LiveKitRoom implements LiveKitRoomInterface {
 
     private handleParticipantDisconnected(participant: Participant) {
         const localParticipant = this.participants.get(participant.identity);
+        // A late disconnect for an object already replaced leaves the newer one alone.
+        if (localParticipant && localParticipant.participant !== participant) return;
 
         if (localParticipant) {
             localParticipant.destroy();
@@ -1126,6 +1279,9 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             this.room?.off(RoomEvent.SignalReconnecting, this.boundHandleSignalReconnecting);
             this.room?.off(RoomEvent.Reconnecting, this.boundHandleReconnecting);
             this.room?.off(RoomEvent.AudioPlaybackStatusChanged, this.boundHandleAudioPlaybackStatusChanged);
+            this.room?.off(RoomEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
+            this.room?.engine?.off(EngineEvent.Restarting, this.boundHandleEngineRestarting);
+            this.weakConnection.stop();
             this.unregisterAudioPlaybackRetry?.();
             this.unregisterAudioPlaybackRetry = undefined;
             this.cameraAnalyticsUnsubscribe?.();

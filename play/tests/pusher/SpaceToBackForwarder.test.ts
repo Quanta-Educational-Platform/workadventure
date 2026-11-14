@@ -876,5 +876,58 @@ describe("SpaceToBackForwarder", () => {
             send();
             expect(forwardSpy).toHaveBeenCalledOnce();
         });
+
+        it("forces a mute from an admin the filtered space does not list, such as a lecture's listening teacher", () => {
+            const teacherSocket = {} as PusherWebSocket;
+            const mockSpace = {
+                name: "lecture",
+                users: new Map([["student_2", { spaceUserId: "student_2", tags: [] }]]),
+                _localConnectedUser: new Map([["teacher_1", teacherSocket]]),
+                _localConnectedUserWithSpaceUser: new Map([
+                    [teacherSocket, { spaceUserId: "teacher_1", tags: ["admin"] }],
+                ]),
+            } as unknown as Space;
+            const spaceForwarder = new SpaceToBackForwarder(mockSpace, eventProcessor);
+            const forwardSpy = vi.spyOn(spaceForwarder, "forwardMessageToSpaceBack").mockImplementation(() => {});
+            spaceForwarder.sendPrivateEvent(
+                {
+                    spaceName: "lecture",
+                    receiverUserId: "student_2",
+                    spaceEvent: { event: { $case: "muteAudio", muteAudio: { force: false } } },
+                },
+                { spaceUserId: "teacher_1" } as SocketData,
+            );
+            expect(forwardSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    $case: "privateEvent",
+                    privateEvent: expect.objectContaining({
+                        senderUserId: "teacher_1",
+                        spaceEvent: { event: { $case: "muteAudio", muteAudio: { force: true } } },
+                    }),
+                }),
+            );
+        });
+
+        it("still refuses a sender connected nowhere in the space", () => {
+            const mockSpace = {
+                name: "lecture",
+                users: new Map(),
+                _localConnectedUser: new Map(),
+                _localConnectedUserWithSpaceUser: new Map(),
+            } as unknown as Space;
+            const spaceForwarder = new SpaceToBackForwarder(mockSpace, eventProcessor);
+            const forwardSpy = vi.spyOn(spaceForwarder, "forwardMessageToSpaceBack").mockImplementation(() => {});
+            expect(() =>
+                spaceForwarder.sendPrivateEvent(
+                    {
+                        spaceName: "lecture",
+                        receiverUserId: "student_2",
+                        spaceEvent: { event: { $case: "muteAudio", muteAudio: { force: true } } },
+                    },
+                    { spaceUserId: "ghost_9" } as SocketData,
+                ),
+            ).toThrow();
+            expect(forwardSpy).not.toHaveBeenCalled();
+        });
     });
 });

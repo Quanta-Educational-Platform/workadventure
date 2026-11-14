@@ -12,6 +12,8 @@ import type { FetchMemberDataByUuidResponse } from "../services/AdminApi";
 import type { AdminSocketTokenData } from "../services/JWTTokenManager";
 import { jwtTokenManager, tokenInvalidException } from "../services/JWTTokenManager";
 import { socketManager } from "../services/SocketManager";
+import { adminApi } from "../services/AdminApi";
+import { roomSessionOfToken, watchRoomSession } from "../services/QuantaRoomSessionWatch";
 import {
     ADMIN_SOCKETS_TOKEN,
     DISABLE_ANONYMOUS,
@@ -34,6 +36,7 @@ import { processAnalyticsReportMessage } from "../services/AnalyticsReportMessag
 import { PusherRoomSocketController } from "../services/PusherRoomSocketController";
 import { AdminWebSocketBackpressureWriter } from "../services/AdminWebSocketBackpressureWriter";
 import type { PusherWebSocket } from "../services/PusherWebSocket";
+import { mayJoinSpace } from "../quanta/restrictedSpaces";
 
 type PendingAnswerMessage = Omit<AnswerMessage, "answer"> & { answer?: AnswerMessage["answer"] };
 
@@ -437,6 +440,7 @@ export class IoSocketController {
                         userId: undefined,
                         userUuid: userData.userUuid,
                         quantaPublicName: userData.username?.trim().slice(0, 64) || "Guest",
+                        quantaRoomSession: roomSessionOfToken(tokenData),
                         isLogged,
                         ipAddress,
                         characterTextures,
@@ -509,6 +513,16 @@ export class IoSocketController {
             },
             open: async (socket) => {
                 debug("WebSocket connection established");
+
+                const roomSession = socket.getUserData().quantaRoomSession;
+                if (roomSession) {
+                    const roomUrl = socket.getUserData().roomId;
+                    socket.getUserData().stopRoomSessionWatch = watchRoomSession({
+                        session: roomSession,
+                        isLive: (token) => adminApi.quantaRoomSessionIsLive(token, roomUrl),
+                        onEnded: () => socketManager.endRoomSession(socket),
+                    });
+                }
 
                 await socketManager.handleConnectToRoom(socket);
 
@@ -939,6 +953,9 @@ export class IoSocketController {
                                         case "joinSpaceQuery": {
                                             const localSpaceName =
                                                 message.message.queryMessage.query.joinSpaceQuery.spaceName;
+                                            if (!(await mayJoinSpace(userData.roomId, localSpaceName, userData.tags))) {
+                                                throw new Error("This call is not open to you");
+                                            }
                                             message.message.queryMessage.query.joinSpaceQuery.spaceName = `${userData.world}.${message.message.queryMessage.query.joinSpaceQuery.spaceName}`;
                                             await socketManager.handleJoinSpace(
                                                 socket,
@@ -1160,6 +1177,7 @@ export class IoSocketController {
                 });
             },
             close: (socket) => {
+                socket.getUserData().stopRoomSessionWatch?.();
                 socketManager.cleanupSocket(socket);
             },
         });

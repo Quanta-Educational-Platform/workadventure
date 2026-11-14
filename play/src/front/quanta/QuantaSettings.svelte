@@ -1,7 +1,7 @@
 <script lang="ts">
     // quanta: WA's settings as one dialog in the dock's language (QUANTA_UI). Every control writes the same store or
     // localUserStore key as WA's own SettingsSubMenu.svelte, so the two stay interchangeable.
-    import { onMount, tick, untrack } from "svelte";
+    import { onMount, untrack } from "svelte";
     import { derived, get } from "svelte/store";
     import { analyticsClient } from "../Administration/AnalyticsClient";
     import { localUserStore } from "../Connection/LocalUserStore";
@@ -35,8 +35,9 @@
         videoQualityStore,
     } from "../Stores/MediaStore";
     import {
-        activeSubMenuStore,
+        contactPageStore,
         customMenuIframe,
+        getProfileUrl,
         menuVisiblilityStore,
         SubMenusInterface,
         subMenusStore,
@@ -58,14 +59,20 @@
     import { screenShareQualityStore } from "../Stores/ScreenSharingStore";
     import { srcObject } from "../Components/Video/utils";
     import GlobalMessagesSubMenu from "../Components/Menu/GlobalMessagesSubMenu.svelte";
+    import ChatSubMenu from "../Components/Menu/ChatSubMenu.svelte";
+    import { connectionManager } from "../Connection/ConnectionManager";
+    import { QUANTA_UI, REPORT_ISSUES_URL } from "../Enum/EnvironmentVariable";
     import { LL } from "../../i18n/i18n-svelte";
     import { sendMenuClickedEvent } from "../Api/Iframe/Ui/MenuItem";
     import { QL } from "./i18n";
     import Icon from "./Icon.svelte";
     import type { IconName } from "./icons";
     import Dropdown from "./settings/Dropdown.svelte";
+    import MenuFrame from "./settings/MenuFrame.svelte";
     import Switch from "./settings/Switch.svelte";
-    import { quantaSettingsTabStore, type QuantaSettingsTab } from "./settingsTab";
+    import { mapCredits, quantaAssetCredits } from "./mapCredits";
+    import { menuPage } from "./settingsMenuPages";
+    import { menuTab, menuTabKey, quantaSettingsTabStore, type QuantaSettingsTab } from "./settingsTab";
 
     interface Props {
         initialTab?: QuantaSettingsTab;
@@ -88,8 +95,8 @@
             : []),
     ]);
 
-    // WA's other menu pages (map credits, profile, contact, a room script's own commands) open in WA's menu, which
-    // only this dialog leads to; WA's help and tips page is left out, as in the ⋮ menu.
+    // WA's other menu pages (map credits, profile, contact, a room script's own commands) are tabs here too, never
+    // WA's own menu; WA's help and tips page is left out, as in the ⋮ menu.
     const OWN_TABS: string[] = [
         SubMenusInterface.settings,
         SubMenusInterface.shortcuts,
@@ -112,19 +119,58 @@
         return menu.type === "translated" ? $LL.menu.sub[menu.key]() : menu.label;
     }
 
-    // A room script's plain command runs here: WA's menu, mounted on it, would run it twice (Menu.svelte runs its
-    // switchMenu on mount and again from its store subscription). Pages open in WA's menu, focus on their entry.
-    async function openMenu(menu: MenuItem): Promise<void> {
-        if (menu.type === "scripting" && !customMenuIframe.has(menu.key)) {
-            analyticsClient.trackAdminEvent("menu.custom.opened", { name: menu.key });
+    function pageOf(menu: MenuItem) {
+        return menuPage(menu, {
+            customFrames: customMenuIframe,
+            profileUrl: getProfileUrl,
+            contactUrl: get(contactPageStore),
+            reportUrl: connectionManager.currentRoom?.reportIssuesUrl ?? REPORT_ISSUES_URL,
+        });
+    }
+
+    // The same analytics as WA's menu (Menu.svelte switchMenu).
+    function trackMenuOpened(menu: MenuItem): void {
+        if (menu.type === "scripting") analyticsClient.trackAdminEvent("menu.custom.opened", { name: menu.key });
+        else if (menu.key === SubMenusInterface.aboutRoom) analyticsClient.trackAdminEvent("menu.credit.opened");
+        else if (menu.key === SubMenusInterface.profile)
+            analyticsClient.trackAdminEvent("profile.opened", { source: "menu" });
+        else if (menu.key === SubMenusInterface.contact) analyticsClient.trackAdminEvent("menu.contact.opened");
+        else if (menu.key === SubMenusInterface.chat) analyticsClient.trackAdminEvent("menu.chat.opened");
+        else if (menu.key === SubMenusInterface.report)
+            analyticsClient.trackAdminEvent("feedback.opened", { feedbackSource: "external_report_url" });
+    }
+
+    // A room script's plain command runs and the dialog closes; every other page opens as a tab.
+    function openMenu(menu: MenuItem): void {
+        const page = pageOf(menu);
+        if (!page) return;
+        trackMenuOpened(menu);
+        if (page.kind === "command") {
             sendMenuClickedEvent(menu.key);
             close();
             return;
         }
-        activeSubMenuStore.activateByMenuItem(menu);
-        await tick();
-        document.querySelector<HTMLElement>(".menu-item-container.active .menu-item")?.focus();
+        selectTab(menuTab(menu.key));
     }
+
+    const openMenuItem = $derived.by(() => {
+        const key = menuTabKey(tab);
+        return key === undefined ? undefined : $otherMenus.find((menu) => menu.key === key);
+    });
+    const openPage = $derived(openMenuItem && pageOf(openMenuItem));
+
+    // A page whose menu entry goes away (a script unregisters it) gives way to the first tab.
+    $effect(() => {
+        if (menuTabKey(tab) !== undefined && (!openPage || openPage.kind === "command"))
+            untrack(() => selectTab("audio"));
+    });
+
+    const credits = $derived(
+        openPage?.kind === "credit"
+            ? mapCredits(gameManager.getCurrentGameScene().mapFile, QUANTA_UI ? quantaAssetCredits($QL) : [])
+            : undefined,
+    );
+    const safeMapLink = $derived(credits && /^https?:\/\//i.test(credits.link) ? credits.link : undefined);
 
     function menuIcon(menu: MenuItem): IconName {
         if (menu.key === SubMenusInterface.profile) return "people";
@@ -142,7 +188,10 @@
     let moreBelow = $state(false);
 
     function updateFades(): void {
-        if (!scroller) return;
+        if (!scroller) {
+            moreAbove = moreBelow = false;
+            return;
+        }
         moreAbove = scroller.scrollTop > 0;
         moreBelow = scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight - 1;
     }
@@ -393,12 +442,15 @@
                     {#if $otherMenus.length > 0}
                         <li class="qs-nav-gap" role="presentation"></li>
                         {#each $otherMenus as menu (menu.key)}
+                            {@const current = tab === menuTab(menu.key)}
                             <li>
                                 <button
                                     type="button"
+                                    class:current
+                                    aria-current={current ? "page" : undefined}
                                     data-testid={`quanta-settings-menu-${menu.key}`}
                                     title={menuLabel(menu)}
-                                    onclick={() => openMenu(menu).catch((error) => console.error(error))}
+                                    onclick={() => openMenu(menu)}
                                 >
                                     <Icon name={menuIcon(menu)} />
                                     <span>{menuLabel(menu)}</span>
@@ -409,342 +461,394 @@
                 </ul>
             </nav>
             <section class:more-above={moreAbove} class:more-below={moreBelow}>
-                <div class="qs-scroll" bind:this={scroller} onscroll={updateFades}>
-                    {#if tab === "audio"}
-                        <h3>{$LL.actionbar.subtitle.microphone()}</h3>
-                        {#if $microphoneListStore && $microphoneListStore.length > 0}
-                            <div class="qs-block">
-                                <Dropdown
-                                    icon="mic"
-                                    label={$LL.actionbar.subtitle.microphone()}
-                                    options={deviceOptions($microphoneListStore, (index) =>
-                                        $QL.microphoneNumber({ index }),
-                                    )}
-                                    value={$requestedMicrophoneState
-                                        ? $usedMicrophoneDeviceIdStore
-                                        : ($requestedMicrophoneDeviceIdStore ?? $usedMicrophoneDeviceIdStore)}
-                                    onchange={selectMicrophone}
-                                />
-                            </div>
-                            <div class="qs-meter"><i style:width={`${micLevel * 100}%`}></i></div>
-                        {:else}
-                            <p class="qs-lead">{$LL.actionbar.microphone.disabled()}</p>
-                        {/if}
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.microphone.enableAdvancedNoiseReduction()}</span></div>
-                            <Dropdown
-                                compact
-                                label={$LL.menu.settings.microphone.enableAdvancedNoiseReduction()}
-                                options={noiseOptions}
-                                value={noiseChoice}
-                                testId="quanta-noise-suppression"
-                                onchange={chooseNoise}
+                {#if openPage?.kind === "frame" && openMenuItem}
+                    <div class="qs-frame">
+                        {#key openPage.src}
+                            <MenuFrame
+                                src={openPage.src}
+                                title={menuLabel(openMenuItem)}
+                                allowApi={openPage.allowApi}
+                                allow={openPage.allow}
                             />
-                        </div>
-                        {#if noiseChoice === "workadventure"}
-                            <div class="qs-row">
-                                <div>
-                                    <span>{$LL.menu.settings.microphone.noiseSuppressionEngine()}</span>
-                                    {#if $noiseSuppressionStateStore.status === "initializing"}
-                                        <small>{$LL.actionbar.microphone.noiseSuppressionInitializing()}</small>
-                                    {:else if $noiseSuppressionStateStore.status === "unsupported"}
-                                        <!-- WA's own message carries file paths and HTTP codes: never shown to users -->
-                                        <small class="warn"
-                                            >{$LL.actionbar.microphone.noiseSuppressionUnsupported()}</small
-                                        >
-                                    {:else if $noiseSuppressionStateStore.status === "error"}
-                                        <small class="warn">{$LL.actionbar.microphone.noiseSuppressionError()}</small>
-                                    {/if}
+                        {/key}
+                    </div>
+                {:else}
+                    <div class="qs-scroll" bind:this={scroller} onscroll={updateFades}>
+                        {#if tab === "audio"}
+                            <h3>{$LL.actionbar.subtitle.microphone()}</h3>
+                            {#if $microphoneListStore && $microphoneListStore.length > 0}
+                                <div class="qs-block">
+                                    <Dropdown
+                                        icon="mic"
+                                        label={$LL.actionbar.subtitle.microphone()}
+                                        options={deviceOptions($microphoneListStore, (index) =>
+                                            $QL.microphoneNumber({ index }),
+                                        )}
+                                        value={$requestedMicrophoneState
+                                            ? $usedMicrophoneDeviceIdStore
+                                            : ($requestedMicrophoneDeviceIdStore ?? $usedMicrophoneDeviceIdStore)}
+                                        onchange={selectMicrophone}
+                                    />
                                 </div>
+                                <div class="qs-meter"><i style:width={`${micLevel * 100}%`}></i></div>
+                            {:else}
+                                <p class="qs-lead">{$LL.actionbar.microphone.disabled()}</p>
+                            {/if}
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.microphone.enableAdvancedNoiseReduction()}</span></div>
                                 <Dropdown
                                     compact
-                                    label={$LL.menu.settings.microphone.noiseSuppressionEngine()}
-                                    options={engineOptions}
-                                    value={$noiseSuppressionEngineStore}
-                                    onchange={(value) => noiseSuppressionEngineStore.setEngine(value)}
+                                    label={$LL.menu.settings.microphone.enableAdvancedNoiseReduction()}
+                                    options={noiseOptions}
+                                    value={noiseChoice}
+                                    testId="quanta-noise-suppression"
+                                    onchange={chooseNoise}
                                 />
                             </div>
-                        {/if}
-                        {#if $browserNoiseSuppressionSupportedStore}
+                            {#if noiseChoice === "workadventure"}
+                                <div class="qs-row">
+                                    <div>
+                                        <span>{$LL.menu.settings.microphone.noiseSuppressionEngine()}</span>
+                                        {#if $noiseSuppressionStateStore.status === "initializing"}
+                                            <small>{$LL.actionbar.microphone.noiseSuppressionInitializing()}</small>
+                                        {:else if $noiseSuppressionStateStore.status === "unsupported"}
+                                            <!-- WA's own message carries file paths and HTTP codes: never shown to users -->
+                                            <small class="warn"
+                                                >{$LL.actionbar.microphone.noiseSuppressionUnsupported()}</small
+                                            >
+                                        {:else if $noiseSuppressionStateStore.status === "error"}
+                                            <small class="warn"
+                                                >{$LL.actionbar.microphone.noiseSuppressionError()}</small
+                                            >
+                                        {/if}
+                                    </div>
+                                    <Dropdown
+                                        compact
+                                        label={$LL.menu.settings.microphone.noiseSuppressionEngine()}
+                                        options={engineOptions}
+                                        value={$noiseSuppressionEngineStore}
+                                        onchange={(value) => noiseSuppressionEngineStore.setEngine(value)}
+                                    />
+                                </div>
+                            {/if}
+                            {#if $browserNoiseSuppressionSupportedStore}
+                                <div class="qs-row">
+                                    <div>
+                                        <span>{$LL.menu.settings.microphone.browserNoiseSuppression()}</span>
+                                        <small
+                                            >{$LL.menu.settings.microphone.browserNoiseSuppressionDescription()}</small
+                                        >
+                                    </div>
+                                    <Switch
+                                        label={$LL.menu.settings.microphone.browserNoiseSuppression()}
+                                        checked={$microphoneBrowserNoiseSuppressionStore}
+                                        onchange={(value) => microphoneBrowserNoiseSuppressionStore.setEnabled(value)}
+                                    />
+                                </div>
+                            {/if}
                             <div class="qs-row">
                                 <div>
-                                    <span>{$LL.menu.settings.microphone.browserNoiseSuppression()}</span>
-                                    <small>{$LL.menu.settings.microphone.browserNoiseSuppressionDescription()}</small>
+                                    <span>{$LL.menu.settings.microphone.autoGainControl()}</span>
+                                    <small>{$LL.menu.settings.microphone.autoGainControlDescription()}</small>
                                 </div>
                                 <Switch
-                                    label={$LL.menu.settings.microphone.browserNoiseSuppression()}
-                                    checked={$microphoneBrowserNoiseSuppressionStore}
-                                    onchange={(value) => microphoneBrowserNoiseSuppressionStore.setEnabled(value)}
+                                    label={$LL.menu.settings.microphone.autoGainControl()}
+                                    checked={$microphoneAutoGainControlStore}
+                                    onchange={(value) => microphoneAutoGainControlStore.setEnabled(value)}
                                 />
                             </div>
-                        {/if}
-                        <div class="qs-row">
-                            <div>
-                                <span>{$LL.menu.settings.microphone.autoGainControl()}</span>
-                                <small>{$LL.menu.settings.microphone.autoGainControlDescription()}</small>
-                            </div>
-                            <Switch
-                                label={$LL.menu.settings.microphone.autoGainControl()}
-                                checked={$microphoneAutoGainControlStore}
-                                onchange={(value) => microphoneAutoGainControlStore.setEnabled(value)}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.microphone.echoCancellation()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.microphone.echoCancellation()}
-                                checked={$microphoneEchoCancellationStore}
-                                onchange={(value) => microphoneEchoCancellationStore.setEnabled(value)}
-                            />
-                        </div>
-
-                        {#if $speakerListStore && $speakerListStore.length > 0}
-                            <h3>{$LL.actionbar.subtitle.speaker()}</h3>
-                            <div class="qs-block">
-                                <Dropdown
-                                    icon="speaker"
-                                    label={$LL.actionbar.subtitle.speaker()}
-                                    options={deviceOptions($speakerListStore, (index) => $QL.speakerNumber({ index }))}
-                                    value={$speakerSelectedStore}
-                                    onchange={selectSpeaker}
-                                />
-                            </div>
-                        {/if}
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.proximityDiscussionVolume()}</span></div>
-                            <input
-                                class="qs-slider"
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                aria-label={$LL.menu.settings.proximityDiscussionVolume()}
-                                style:--fill={`${volumeProximityDiscussion * 100}%`}
-                                bind:value={volumeProximityDiscussion}
-                                onchange={updateVolumeProximityDiscussion}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.bubbleSound()}</span></div>
-                            <Dropdown
-                                compact
-                                label={$LL.menu.settings.bubbleSound()}
-                                options={bubbleSoundOptions}
-                                value={bubbleSound}
-                                onchange={changeBubbleSound}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.audio.manager.reduce()}</span></div>
-                            <Switch
-                                label={$LL.audio.manager.reduce()}
-                                checked={decreaseMusicWhileTalking}
-                                onchange={changeDecreaseMusicWhileTalking}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.blockAudio()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.blockAudio()}
-                                checked={blockAudio}
-                                onchange={changeBlockAudio}
-                            />
-                        </div>
-                    {:else if tab === "video"}
-                        <h3>{$LL.actionbar.subtitle.camera()}</h3>
-                        {#if $cameraListStore && $cameraListStore.length > 0}
-                            <div class="qs-block">
-                                <Dropdown
-                                    icon="videocam"
-                                    label={$LL.actionbar.subtitle.camera()}
-                                    options={deviceOptions($cameraListStore, (index) => $QL.cameraNumber({ index }))}
-                                    value={$requestedCameraState
-                                        ? $usedCameraDeviceIdStore
-                                        : ($requestedCameraDeviceIdStore ?? $usedCameraDeviceIdStore)}
-                                    onchange={selectCamera}
-                                />
-                            </div>
-                        {/if}
-                        <div class="qs-block">
-                            <div class="qs-preview">
-                                {#if $requestedCameraState && $localStreamStore.type === "success" && $localStreamStore.stream?.getVideoTracks().length}
-                                    <video use:srcObject={$localStreamStore.stream} autoplay muted playsinline></video>
-                                {:else}
-                                    <span>{$LL.actionbar.camera.disabled()}</span>
-                                {/if}
-                            </div>
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.videoBandwidth.title()}</span></div>
-                            <Dropdown
-                                compact
-                                label={$LL.menu.settings.videoBandwidth.title()}
-                                options={qualityOptions}
-                                value={videoQuality}
-                                onchange={(value) => {
-                                    videoQuality = value;
-                                    videoQualityStore.setQuality(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.shareScreenBandwidth.title()}</span></div>
-                            <Dropdown
-                                compact
-                                label={$LL.menu.settings.shareScreenBandwidth.title()}
-                                options={qualityOptions}
-                                value={screenShareQuality}
-                                onchange={(value) => {
-                                    screenShareQuality = value;
-                                    screenShareQualityStore.setQuality(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.bandwidthConstrainedPreference.title()}</span></div>
-                            <Dropdown
-                                compact
-                                label={$LL.menu.settings.bandwidthConstrainedPreference.title()}
-                                options={bandwidthOptions}
-                                value={bandwidthPreference}
-                                onchange={(value) => {
-                                    bandwidthPreference = value;
-                                    bandwidthConstrainedPreferenceStore.setPreference(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.displayVideoQualityStats()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.displayVideoQualityStats()}
-                                checked={videoQualityStats}
-                                onchange={(value) => {
-                                    videoQualityStats = value;
-                                    localUserStore.setDisplayVideoQualityStats(value);
-                                    displayVideoQualityStore.set(value);
-                                }}
-                            />
-                        </div>
-                    {:else if tab === "general"}
-                        <!-- No language picker: the room follows the user's language in Quanta (?lang=). -->
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.notifications()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.notifications()}
-                                checked={notification}
-                                onchange={changeNotification}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.enablePictureInPicture()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.enablePictureInPicture()}
-                                checked={pictureInPicture}
-                                onchange={(value) => {
-                                    pictureInPicture = value;
-                                    analyticsClient.trackAdminEvent("settings.picture_in_picture.changed", {
-                                        value: value ? "true" : "false",
-                                    });
-                                    localUserStore.setAllowPictureInPicture(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.fullscreen()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.fullscreen()}
-                                checked={fullscreen}
-                                onchange={changeFullscreen}
-                            />
-                        </div>
-
-                        <h3>{$LL.menu.settings.privacySettings.title()}</h3>
-                        <p class="qs-lead">{$LL.menu.settings.privacySettings.explanation()}</p>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.privacySettings.cameraToggle()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.privacySettings.cameraToggle()}
-                                checked={keepCamera}
-                                onchange={(value) => {
-                                    keepCamera = value;
-                                    analyticsClient.trackAdminEvent("settings.camera.changed", {
-                                        value: value ? "true" : "false",
-                                    });
-                                    localUserStore.setCameraPrivacySettings(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.privacySettings.microphoneToggle()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.privacySettings.microphoneToggle()}
-                                checked={keepMicrophone}
-                                onchange={(value) => {
-                                    keepMicrophone = value;
-                                    analyticsClient.trackAdminEvent("settings.microphone.changed", {
-                                        value: value ? "true" : "false",
-                                    });
-                                    localUserStore.setMicrophonePrivacySettings(value);
-                                }}
-                            />
-                        </div>
-
-                        <h3>{$LL.menu.settings.otherSettings()}</h3>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.ignoreFollowRequest()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.ignoreFollowRequest()}
-                                checked={ignoreFollowRequests}
-                                onchange={(value) => {
-                                    ignoreFollowRequests = value;
-                                    analyticsClient.trackAdminEvent("settings.request_follow.changed", {
-                                        value: value ? "true" : "false",
-                                    });
-                                    localUserStore.setIgnoreFollowRequests(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.cowebsiteTrigger()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.cowebsiteTrigger()}
-                                checked={forceCowebsiteTrigger}
-                                onchange={(value) => {
-                                    forceCowebsiteTrigger = value;
-                                    analyticsClient.trackAdminEvent("settings.ask_website.changed", {
-                                        value: value ? "true" : "false",
-                                    });
-                                    localUserStore.setForceCowebsiteTrigger(value);
-                                }}
-                            />
-                        </div>
-                        <div class="qs-row">
-                            <div><span>{$LL.menu.settings.disableAnimations()}</span></div>
-                            <Switch
-                                label={$LL.menu.settings.disableAnimations()}
-                                checked={disableAnimations}
-                                onchange={(value) => {
-                                    disableAnimations = value;
-                                    localUserStore.setDisableAnimations(value);
-                                    gameManager.getCurrentGameScene().setTileAnimationsPaused(value);
-                                }}
-                            />
-                        </div>
-                    {:else if tab === "shortcuts"}
-                        {#each shortcuts as shortcut, i (i)}
                             <div class="qs-row">
-                                <div><span>{shortcut.description}</span></div>
-                                <div class="qs-keys">
-                                    {#each shortcut.keys as combo, k (k)}
-                                        <kbd>{combo}</kbd>
-                                    {/each}
+                                <div><span>{$LL.menu.settings.microphone.echoCancellation()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.microphone.echoCancellation()}
+                                    checked={$microphoneEchoCancellationStore}
+                                    onchange={(value) => microphoneEchoCancellationStore.setEnabled(value)}
+                                />
+                            </div>
+
+                            {#if $speakerListStore && $speakerListStore.length > 0}
+                                <h3>{$LL.actionbar.subtitle.speaker()}</h3>
+                                <div class="qs-block">
+                                    <Dropdown
+                                        icon="speaker"
+                                        label={$LL.actionbar.subtitle.speaker()}
+                                        options={deviceOptions($speakerListStore, (index) =>
+                                            $QL.speakerNumber({ index }),
+                                        )}
+                                        value={$speakerSelectedStore}
+                                        onchange={selectSpeaker}
+                                    />
+                                </div>
+                            {/if}
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.proximityDiscussionVolume()}</span></div>
+                                <input
+                                    class="qs-slider"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    aria-label={$LL.menu.settings.proximityDiscussionVolume()}
+                                    style:--fill={`${volumeProximityDiscussion * 100}%`}
+                                    bind:value={volumeProximityDiscussion}
+                                    onchange={updateVolumeProximityDiscussion}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.bubbleSound()}</span></div>
+                                <Dropdown
+                                    compact
+                                    label={$LL.menu.settings.bubbleSound()}
+                                    options={bubbleSoundOptions}
+                                    value={bubbleSound}
+                                    onchange={changeBubbleSound}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.audio.manager.reduce()}</span></div>
+                                <Switch
+                                    label={$LL.audio.manager.reduce()}
+                                    checked={decreaseMusicWhileTalking}
+                                    onchange={changeDecreaseMusicWhileTalking}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.blockAudio()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.blockAudio()}
+                                    checked={blockAudio}
+                                    onchange={changeBlockAudio}
+                                />
+                            </div>
+                        {:else if tab === "video"}
+                            <h3>{$LL.actionbar.subtitle.camera()}</h3>
+                            {#if $cameraListStore && $cameraListStore.length > 0}
+                                <div class="qs-block">
+                                    <Dropdown
+                                        icon="videocam"
+                                        label={$LL.actionbar.subtitle.camera()}
+                                        options={deviceOptions($cameraListStore, (index) =>
+                                            $QL.cameraNumber({ index }),
+                                        )}
+                                        value={$requestedCameraState
+                                            ? $usedCameraDeviceIdStore
+                                            : ($requestedCameraDeviceIdStore ?? $usedCameraDeviceIdStore)}
+                                        onchange={selectCamera}
+                                    />
+                                </div>
+                            {/if}
+                            <div class="qs-block">
+                                <div class="qs-preview">
+                                    {#if $requestedCameraState && $localStreamStore.type === "success" && $localStreamStore.stream?.getVideoTracks().length}
+                                        <video use:srcObject={$localStreamStore.stream} autoplay muted playsinline
+                                        ></video>
+                                    {:else}
+                                        <span>{$LL.actionbar.camera.disabled()}</span>
+                                    {/if}
                                 </div>
                             </div>
-                        {/each}
-                    {:else if tab === "globalMessages"}
-                        <div class="qs-embedded"><GlobalMessagesSubMenu /></div>
-                    {/if}
-                </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.videoBandwidth.title()}</span></div>
+                                <Dropdown
+                                    compact
+                                    label={$LL.menu.settings.videoBandwidth.title()}
+                                    options={qualityOptions}
+                                    value={videoQuality}
+                                    onchange={(value) => {
+                                        videoQuality = value;
+                                        videoQualityStore.setQuality(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.shareScreenBandwidth.title()}</span></div>
+                                <Dropdown
+                                    compact
+                                    label={$LL.menu.settings.shareScreenBandwidth.title()}
+                                    options={qualityOptions}
+                                    value={screenShareQuality}
+                                    onchange={(value) => {
+                                        screenShareQuality = value;
+                                        screenShareQualityStore.setQuality(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.bandwidthConstrainedPreference.title()}</span></div>
+                                <Dropdown
+                                    compact
+                                    label={$LL.menu.settings.bandwidthConstrainedPreference.title()}
+                                    options={bandwidthOptions}
+                                    value={bandwidthPreference}
+                                    onchange={(value) => {
+                                        bandwidthPreference = value;
+                                        bandwidthConstrainedPreferenceStore.setPreference(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.displayVideoQualityStats()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.displayVideoQualityStats()}
+                                    checked={videoQualityStats}
+                                    onchange={(value) => {
+                                        videoQualityStats = value;
+                                        localUserStore.setDisplayVideoQualityStats(value);
+                                        displayVideoQualityStore.set(value);
+                                    }}
+                                />
+                            </div>
+                        {:else if tab === "general"}
+                            <!-- No language picker: the room follows the user's language in Quanta (?lang=). -->
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.notifications()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.notifications()}
+                                    checked={notification}
+                                    onchange={changeNotification}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.enablePictureInPicture()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.enablePictureInPicture()}
+                                    checked={pictureInPicture}
+                                    onchange={(value) => {
+                                        pictureInPicture = value;
+                                        analyticsClient.trackAdminEvent("settings.picture_in_picture.changed", {
+                                            value: value ? "true" : "false",
+                                        });
+                                        localUserStore.setAllowPictureInPicture(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.fullscreen()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.fullscreen()}
+                                    checked={fullscreen}
+                                    onchange={changeFullscreen}
+                                />
+                            </div>
+
+                            <h3>{$LL.menu.settings.privacySettings.title()}</h3>
+                            <p class="qs-lead">{$LL.menu.settings.privacySettings.explanation()}</p>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.privacySettings.cameraToggle()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.privacySettings.cameraToggle()}
+                                    checked={keepCamera}
+                                    onchange={(value) => {
+                                        keepCamera = value;
+                                        analyticsClient.trackAdminEvent("settings.camera.changed", {
+                                            value: value ? "true" : "false",
+                                        });
+                                        localUserStore.setCameraPrivacySettings(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.privacySettings.microphoneToggle()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.privacySettings.microphoneToggle()}
+                                    checked={keepMicrophone}
+                                    onchange={(value) => {
+                                        keepMicrophone = value;
+                                        analyticsClient.trackAdminEvent("settings.microphone.changed", {
+                                            value: value ? "true" : "false",
+                                        });
+                                        localUserStore.setMicrophonePrivacySettings(value);
+                                    }}
+                                />
+                            </div>
+
+                            <h3>{$LL.menu.settings.otherSettings()}</h3>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.ignoreFollowRequest()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.ignoreFollowRequest()}
+                                    checked={ignoreFollowRequests}
+                                    onchange={(value) => {
+                                        ignoreFollowRequests = value;
+                                        analyticsClient.trackAdminEvent("settings.request_follow.changed", {
+                                            value: value ? "true" : "false",
+                                        });
+                                        localUserStore.setIgnoreFollowRequests(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.cowebsiteTrigger()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.cowebsiteTrigger()}
+                                    checked={forceCowebsiteTrigger}
+                                    onchange={(value) => {
+                                        forceCowebsiteTrigger = value;
+                                        analyticsClient.trackAdminEvent("settings.ask_website.changed", {
+                                            value: value ? "true" : "false",
+                                        });
+                                        localUserStore.setForceCowebsiteTrigger(value);
+                                    }}
+                                />
+                            </div>
+                            <div class="qs-row">
+                                <div><span>{$LL.menu.settings.disableAnimations()}</span></div>
+                                <Switch
+                                    label={$LL.menu.settings.disableAnimations()}
+                                    checked={disableAnimations}
+                                    onchange={(value) => {
+                                        disableAnimations = value;
+                                        localUserStore.setDisableAnimations(value);
+                                        gameManager.getCurrentGameScene().setTileAnimationsPaused(value);
+                                    }}
+                                />
+                            </div>
+                        {:else if tab === "shortcuts"}
+                            {#each shortcuts as shortcut, i (i)}
+                                <div class="qs-row">
+                                    <div><span>{shortcut.description}</span></div>
+                                    <div class="qs-keys">
+                                        {#each shortcut.keys as combo, k (k)}
+                                            <kbd>{combo}</kbd>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/each}
+                        {:else if tab === "globalMessages"}
+                            <div class="qs-embedded"><GlobalMessagesSubMenu /></div>
+                        {:else if credits}
+                            {#if credits.name || credits.description || safeMapLink}
+                                <div class="qs-map">
+                                    {#if credits.name}<span>{credits.name}</span>{/if}
+                                    {#if credits.description}<p class="qs-lead">{credits.description}</p>{/if}
+                                    {#if safeMapLink}
+                                        <a href={safeMapLink} target="_blank" rel="noopener noreferrer"
+                                            >{$LL.menu.about.mapLink()}</a
+                                        >
+                                    {/if}
+                                </div>
+                            {/if}
+                            <h3>{$LL.menu.about.copyrights.map.title()}</h3>
+                            <p class="qs-credit" class:empty={credits.mapCopyright === undefined}>
+                                {credits.mapCopyright ?? $LL.menu.about.copyrights.map.empty()}
+                            </p>
+                            <h3>{$LL.menu.about.copyrights.tileset.title()}</h3>
+                            {#each credits.tilesets as copyright (copyright)}
+                                <p class="qs-credit">{copyright}</p>
+                            {:else}
+                                <p class="qs-credit empty">{$LL.menu.about.copyrights.tileset.empty()}</p>
+                            {/each}
+                            <h3>{$LL.menu.about.copyrights.audio.title()}</h3>
+                            {#each credits.audio as copyright (copyright)}
+                                <p class="qs-credit">{copyright}</p>
+                            {:else}
+                                <p class="qs-credit empty">{$LL.menu.about.copyrights.audio.empty()}</p>
+                            {/each}
+                        {:else if openPage?.kind === "chat"}
+                            <div class="qs-embedded"><ChatSubMenu /></div>
+                        {/if}
+                    </div>
+                {/if}
             </section>
         </div>
     </div>
@@ -769,6 +873,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        /* Centred on the room's axis (QuantaDock.svelte), as every overlay over the room is; the scrim still covers all. */
+        padding-left: max(0px, 2 * var(--quanta-room-x, 50vw) - 100vw);
+        padding-right: max(0px, 100vw - 2 * var(--quanta-room-x, 50vw));
         color: var(--qs-text);
         pointer-events: auto;
     }
@@ -781,7 +888,7 @@
 
     .qs-dialog {
         position: relative;
-        width: min(860px, calc(100vw - 24px));
+        width: min(860px, calc(100% - 24px));
         height: min(600px, calc(100vh - 24px));
         display: flex;
         flex-direction: column;
@@ -1122,6 +1229,63 @@
         white-space: nowrap;
     }
 
+    /* WA's map credits: each copyright a row, as the settings are. */
+    .qs-map {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding-bottom: 8px;
+        overflow-wrap: anywhere;
+    }
+
+    .qs-map > span {
+        font-size: 15px;
+        color: var(--qs-text);
+    }
+
+    .qs-map .qs-lead {
+        white-space: pre-line;
+    }
+
+    .qs-map a {
+        font-size: 14px;
+        color: var(--qs-on);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+
+    .qs-credit {
+        margin: 0;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--qs-line);
+        font-size: 15px;
+        line-height: 22px;
+        color: var(--qs-text);
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+    }
+
+    h3 + .qs-credit {
+        padding-top: 0;
+    }
+
+    .qs-scroll > .qs-credit:last-child {
+        border-bottom: 0;
+    }
+
+    .qs-credit.empty {
+        font-size: 13px;
+        line-height: 20px;
+        color: var(--qs-muted);
+    }
+
+    /* A page that is a website fills the content area; the page scrolls itself. */
+    .qs-frame {
+        height: 100%;
+        padding: 0 24px 24px 32px;
+    }
+
     /* A narrow room (the room beside a lesson): the tabs become a row of icons above the settings, the open one with
        its name (as in Meet), so they all fit without a scrollbar; the names stay for screen readers and as tooltips. */
     @media (max-width: 720px) {
@@ -1185,6 +1349,10 @@
 
         .qs-scroll {
             padding: 20px 16px 24px 20px;
+        }
+
+        .qs-frame {
+            padding: 20px 16px 16px 20px;
         }
 
         .qs-row :global(.qs-dropdown.compact) {

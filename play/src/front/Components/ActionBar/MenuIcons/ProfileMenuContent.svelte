@@ -6,6 +6,10 @@
     import { derived, get } from "svelte/store";
     import { analyticsClient } from "../../../Administration/AnalyticsClient";
     import { connectionManager } from "../../../Connection/ConnectionManager";
+    import { showModalGlobalComminucationVisibilityStore } from "../../../Stores/ModalStore";
+    import { userIsAdminStore } from "../../../Stores/GameStore";
+    import { BUTTON_ZOOM_STEP_FACTOR } from "../../../Phaser/Game/CameraZoomUtils";
+    import MegaphoneIcon from "../../Icons/MegaphoneIcon.svelte";
     import { ENABLE_OPENID, QUANTA_UI, SENTRY_DSN_FRONT } from "../../../Enum/EnvironmentVariable";
     import { gameManager } from "../../../Phaser/Game/GameManager";
     import { EnableCameraScene, EnableCameraSceneName } from "../../../Phaser/Login/EnableCameraScene";
@@ -18,7 +22,6 @@
     import { enableCameraSceneVisibilityStore } from "../../../Stores/MediaStore";
     import type { RightMenuItem } from "../../../Stores/MenuStore";
     import {
-        additionalRightButtonsMenu,
         openedMenuStore,
         rightActionBarMenuItems,
         showMenuItem,
@@ -31,12 +34,29 @@
     import { selectCompanionSceneVisibleStore } from "../../../Stores/SelectCompanionStore";
     import { getStatusInformation } from "../../../Utils/AvailabilityStatus";
     import { LL } from "../../../../i18n/i18n-svelte";
+    import { profileMenuEntryVisible as entryVisible } from "../../../quanta/classroomUi";
+    import { canViewAsStudentStore, setStudentView, studentViewStore } from "../../../quanta/studentView";
+    import { stopSpeakingToClass } from "../../../quanta/speakingToClass";
+    import { QL } from "../../../quanta/i18n";
+    import { dockFoldedStore } from "../../../quanta/dockFold";
+    import { pageMenuStore } from "../../../quanta/pageMenu";
+    import DockFoldedItems from "../../../quanta/DockFoldedItems.svelte";
+    import LayoutMenuItems from "../../../quanta/LayoutMenuItems.svelte";
     import ActionBarButton from "../ActionBarButton.svelte";
     import AvailabilityStatusList from "../AvailabilityStatus/AvailabilityStatusList.svelte";
     import Companion from "../../Companion/Companion.svelte";
     import ExternalComponents from "../../ExternalModules/ExternalComponents.svelte";
     import CamSettingsIcon from "../../Icons/CamSettingsIcon.svelte";
-    import { IconBug, IconFileDownload, IconHelpCircle, IconLogout } from "../../Icons";
+    import {
+        IconBug,
+        IconEye,
+        IconFileDownload,
+        IconHelpCircle,
+        IconLogout,
+        IconMinus,
+        IconPlus,
+        IconZoomInArea,
+    } from "../../Icons";
     import ProfilIcon from "../../Icons/ProfilIcon.svelte";
     import SettingsIcon from "../../Icons/SettingsIcon.svelte";
     import Woka from "../../Woka/WokaFromUserId.svelte";
@@ -157,9 +177,18 @@
 <div class="bg-contrast/80 backdrop-blur rounded-md p-1 w-56 text-white select-none" data-testid="profile-menu">
     <div class="p-0 m-0 list-none overflow-y-auto max-h-[calc(100vh-96px)]">
         <ExternalComponents zone="menuTop" />
-        <AvailabilityStatusList statusInformation={getStatusInformation(statusToShow)} />
-        <HeaderMenuItem label={$LL.menu.sub.profile()} />
-        {#if showWokaNameMenuItem()}
+        <!-- quanta: what the dock had no room for comes first -->
+        {#if QUANTA_UI && ($dockFoldedStore.length > 0 || $pageMenuStore.length > 0)}
+            <DockFoldedItems />
+        {/if}
+        <!-- quanta: a class's menu is two rows, and needs no headings between them -->
+        {#if entryVisible(QUANTA_UI, "status")}
+            <AvailabilityStatusList statusInformation={getStatusInformation(statusToShow)} />
+        {/if}
+        {#if !QUANTA_UI}
+            <HeaderMenuItem label={$LL.menu.sub.profile()} />
+        {/if}
+        {#if entryVisible(QUANTA_UI, "name", showWokaNameMenuItem())}
             <ActionBarButton
                 label={$LL.actionbar.profil()}
                 onclick={() => {
@@ -179,17 +208,26 @@
         >
             <Woka userId={-1} placeholderSrc="" customWidth="26px" />
         </ActionBarButton>
-        <ActionBarButton
-            label={$LL.actionbar.companion()}
-            onclick={() => {
-                openEditCompanionScene();
-                analyticsClient.trackAdminEvent("profile.companion_edit_opened");
-            }}
-        >
-            <Companion userId={-1} placeholderSrc="../static/images/default-companion.png" width="26px" height="26px" />
-        </ActionBarButton>
+        {#if entryVisible(QUANTA_UI, "companion")}
+            <ActionBarButton
+                label={$LL.actionbar.companion()}
+                onclick={() => {
+                    openEditCompanionScene();
+                    analyticsClient.trackAdminEvent("profile.companion_edit_opened");
+                }}
+            >
+                <Companion
+                    userId={-1}
+                    placeholderSrc="../static/images/default-companion.png"
+                    width="26px"
+                    height="26px"
+                />
+            </ActionBarButton>
+        {/if}
 
-        <HeaderMenuItem label={$LL.menu.sub.settings()} />
+        {#if !QUANTA_UI}
+            <HeaderMenuItem label={$LL.menu.sub.settings()} />
+        {/if}
         <!-- quanta: the dock's device trays replace it -->
         {#if !QUANTA_UI}
             <ActionBarButton label={$LL.actionbar.editCamMic()} onclick={openEnableCameraScene}>
@@ -197,14 +235,53 @@
             </ActionBarButton>
         {/if}
 
-        {#if SENTRY_DSN_FRONT != undefined && connectionManager.currentRoom?.isIssueReportEnabled}
+        {#if entryVisible(QUANTA_UI, "issueReport", SENTRY_DSN_FRONT != undefined && !!connectionManager.currentRoom?.isIssueReportEnabled)}
             <ActionBarButton label={$LL.actionbar.issueReport.menuAction()} onclick={openFeedbackScene}>
                 <IconBug font-size="22" />
             </ActionBarButton>
         {/if}
 
+        <!-- quanta: the map's zoom, from the corner column that no longer stands over the room (ExplorerMenu.svelte) -->
+        {#if QUANTA_UI}
+            <ActionBarButton
+                label={$QL.zoomIn()}
+                dataTestId="quanta-zoom-in"
+                onclick={() =>
+                    gameManager.getCurrentGameScene().getCameraManager()?.smoothZoomByFactor(BUTTON_ZOOM_STEP_FACTOR)}
+            >
+                <IconPlus font-size="22" />
+            </ActionBarButton>
+            <ActionBarButton
+                label={$QL.zoomOut()}
+                dataTestId="quanta-zoom-out"
+                onclick={() =>
+                    gameManager
+                        .getCurrentGameScene()
+                        .getCameraManager()
+                        ?.smoothZoomByFactor(1 / BUTTON_ZOOM_STEP_FACTOR)}
+            >
+                <IconMinus font-size="22" />
+            </ActionBarButton>
+            <ActionBarButton
+                label={$QL.zoomWholeRoom()}
+                dataTestId="quanta-zoom-fit"
+                onclick={() => {
+                    gameManager.getCurrentGameScene().getCameraManager()?.refitRoom(true, true);
+                    openedMenuStore.close("profileMenu");
+                }}
+            >
+                <IconZoomInArea font-size="22" />
+            </ActionBarButton>
+        {/if}
+
+        <!-- quanta: the class screen's layout, each person's own (quanta/layout.ts) -->
+        {#if QUANTA_UI}
+            <LayoutMenuItems />
+        {/if}
+
+        <!-- quanta: the dialog opens on Audio, and devices are what anyone in a class comes here for -->
         <ActionBarButton
-            label={$LL.actionbar.allSettings()}
+            label={QUANTA_UI ? $QL.audioVideoSettings() : $LL.actionbar.allSettings()}
             onclick={() => {
                 showMenuItem(SubMenusInterface.settings);
                 analyticsClient.trackAdminEvent("menu.opened");
@@ -214,6 +291,34 @@
             <SettingsIcon />
         </ActionBarButton>
 
+        {#if QUANTA_UI && $userIsAdminStore}
+            <ActionBarButton
+                label={$LL.megaphone.modal.title()}
+                dataTestId="quanta-announce"
+                onclick={() => {
+                    showModalGlobalComminucationVisibilityStore.set(true);
+                    openedMenuStore.close("profileMenu");
+                }}
+            >
+                <MegaphoneIcon />
+            </ActionBarButton>
+        {/if}
+
+        {#if $canViewAsStudentStore}
+            <ActionBarButton
+                label={$studentViewStore ? $QL.stopStudentView() : $QL.viewAsStudent()}
+                dataTestId="quanta-student-view-toggle"
+                onclick={() => {
+                    // Students can't speak to the class from anywhere, so this view has no button to stop it.
+                    if (!$studentViewStore) stopSpeakingToClass();
+                    setStudentView(!$studentViewStore);
+                    openedMenuStore.close("profileMenu");
+                }}
+            >
+                <IconEye font-size="22" />
+            </ActionBarButton>
+        {/if}
+
         {#if showContextualMenuItems}
             <div class="items-center">
                 <ContextualMenuItems />
@@ -222,13 +327,15 @@
 
         <AdditionalMenuItems menu="profileMenu" />
 
-        <!-- quanta: the docked controls have no right-hand bar, so its items are here; the room script's own buttons (a recording pill) stay on screen in the dock's corner -->
-        {#each (QUANTA_UI ? $rightActionBarMenuItems.filter((item) => !$additionalRightButtonsMenu.some((custom) => custom.id === item.id)) : $rightActionBarMenuItemsInBurgerMenu) ?? [] as button (button.id)}
-            {@const ButtonComponent = button.component}
-            <ButtonComponent {...button.props} />
-        {/each}
+        <!-- quanta: the right-hand bar's invite, map and participant items are all in Quanta's page or the zoom column -->
+        {#if entryVisible(QUANTA_UI, "rightBar")}
+            {#each $rightActionBarMenuItemsInBurgerMenu ?? [] as button (button.id)}
+                {@const ButtonComponent = button.component}
+                <ButtonComponent {...button.props} />
+            {/each}
+        {/if}
 
-        {#if $pwaInstallProfileMenuEligibleStore === true}
+        {#if entryVisible(QUANTA_UI, "installApp", $pwaInstallProfileMenuEligibleStore === true)}
             <button
                 data-testid="profile-menu-install-web-app"
                 disabled={$pwaInstallProfileMenuEligibleStore !== true}

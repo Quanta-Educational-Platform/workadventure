@@ -12,6 +12,7 @@ import { jwtTokenManager } from "../services/JWTTokenManager";
 import { openIDClient } from "../services/OpenIDClient";
 import { DISABLE_ANONYMOUS, FRONT_URL, MATRIX_PUBLIC_URI, PUSHER_URL } from "../enums/EnvironmentVariable";
 import { adminService } from "../services/AdminService";
+import { adminApi } from "../services/AdminApi";
 import { validateQuery } from "../services/QueryValidator";
 import { VerifyDomainService } from "../services/verifyDomain/VerifyDomainService";
 import { matrixProvider } from "../services/MatrixProvider";
@@ -62,6 +63,7 @@ export class AuthenticateController extends BaseHttpController {
     routes(): void {
         this.openIDLogin();
         this.me();
+        this.quantaSignIn();
         this.openIDCallback();
         this.matrixCallback();
         this.logoutCallback();
@@ -198,10 +200,14 @@ export class AuthenticateController extends BaseHttpController {
             try {
                 const authTokenData: AuthTokenData = await jwtTokenManager.verifyJWTToken(token, false);
 
+                // quanta: a sign-in code's token carries a room session, not an OpenID token: Quanta's Admin API, called
+                // below, reads it and says whether it still stands. A refusal comes back as WA's unauthorized error.
+                const roomSession = authTokenData.quantaSession === true ? authTokenData.accessToken : undefined;
+
                 // Check the OpenID access token (renewing it if expired) before calling the admin, which uses it to
                 // identify the member
                 const checkResult =
-                    authTokenData.accessToken === undefined
+                    authTokenData.accessToken === undefined || roomSession !== undefined
                         ? undefined
                         : await openIDClient
                               .checkTokenAuthWithRefresh(authTokenData.accessToken, authTokenData.encryptedRefreshToken)
@@ -216,7 +222,7 @@ export class AuthenticateController extends BaseHttpController {
                 //This is very important to create User Local in LocalStorage in WorkAdventure
                 const resUserData = await adminService.fetchMemberDataByUuid(
                     authTokenData.identifier,
-                    checkResult?.accessToken,
+                    roomSession ?? checkResult?.accessToken,
                     playUri,
                     IPAddress,
                     localStorageCharacterTextureIds ?? [],
@@ -288,6 +294,50 @@ export class AuthenticateController extends BaseHttpController {
                     }
                 }*/
                 throw err;
+            }
+        });
+    }
+
+    /**
+     * quanta: the framed room's sign-in from a single-use code the page gave it (`quantaCode`), swapped through the
+     * Admin API for a room session. Answers an auth token like the OpenID callback's, carrying that session. 401 is a
+     * refusal; 503 says nothing about the user.
+     */
+    private quantaSignIn(): void {
+        this.app.post("/quanta-sign-in", async (req, res) => {
+            res.set("Cache-Control", "no-store");
+            const body = z
+                .object({ code: z.string().regex(/^[A-Za-z0-9_-]{43}$/), playUri: z.string().url().max(2048) })
+                .safeParse(req.body);
+            if (!body.success) {
+                res.status(400).send("Invalid sign-in code");
+                return;
+            }
+            if (!adminApi.isEnabled()) {
+                res.status(503).send("Sign-in unavailable");
+                return;
+            }
+            try {
+                const user = await adminApi.exchangeQuantaSignInCode(body.data.code, body.data.playUri);
+                if (!user) {
+                    res.status(401).send("Invalid sign-in code");
+                    return;
+                }
+                const authToken = await jwtTokenManager.createAuthToken(
+                    user.email,
+                    user.roomSession,
+                    undefined,
+                    undefined,
+                    undefined,
+                    matrixProvider.getBareMatrixIdFromEmail(user.email),
+                    undefined,
+                    true,
+                    user.userId,
+                );
+                res.json({ authToken });
+            } catch (err) {
+                console.warn("Quanta sign-in exchange failed", err instanceof Error ? err.message : "unknown error");
+                res.status(503).send("Sign-in unavailable");
             }
         });
     }
@@ -505,7 +555,7 @@ export class AuthenticateController extends BaseHttpController {
             }
             const { token, playUri } = query;
             const authTokenData: AuthTokenData = await jwtTokenManager.verifyJWTToken(token, false);
-            if (authTokenData.accessToken == undefined) {
+            if (authTokenData.accessToken == undefined || authTokenData.quantaSession === true) {
                 throw Error("Token cannot be checked on OpenID connect provider");
             }
             await openIDClient.checkTokenAuth(authTokenData.accessToken);
@@ -592,7 +642,10 @@ export class AuthenticateController extends BaseHttpController {
             // TODO: change that to use end session endpoint
             // Use post logout redirect and id token hint to redirect on the logut session endpoint of the OpenId provider
             // https://openid.net/specs/openid-connect-session-1_0.html#RPLogout
-            await openIDClient.logoutUser(authTokenData.accessToken, authTokenData.encryptedRefreshToken);
+            // quanta: a room session is not the provider's to end.
+            if (authTokenData.quantaSession !== true) {
+                await openIDClient.logoutUser(authTokenData.accessToken, authTokenData.encryptedRefreshToken);
+            }
 
             // if no redirect, redirect to playUri and connect user to the world
             // if the world is with authentication mandatory, the user will be redirected to the login screen

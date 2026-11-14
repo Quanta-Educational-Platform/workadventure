@@ -68,6 +68,7 @@ function fakeSession(remoteSpaceUserId: string, dataChannel?: unknown, stats = n
         dataChannel,
         awaitingReceipt: new Set<string>(),
         peerConnection: { getStats: () => Promise.resolve(stats) },
+        rejectOpen: vi.fn(),
     };
 }
 

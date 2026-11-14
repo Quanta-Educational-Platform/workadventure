@@ -35,6 +35,7 @@
     import { isStructuredCloneSupported } from "../Utils/BrowserCompatibility";
     import { gameSceneIsLoadedStore } from "../Stores/GameSceneStore";
     import QuantaDock from "../quanta/QuantaDock.svelte";
+    import ZoomPill from "../quanta/ZoomPill.svelte";
     import { clipDomLayer } from "../quanta/domLayerClip";
     import { roomControlsVisibleStore } from "../quanta/roomControlsVisible";
     import { QUANTA_UI } from "../Enum/EnvironmentVariable";
@@ -46,6 +47,7 @@
     let game: Game | undefined = $state();
     let gameDiv: HTMLDivElement | undefined = $state();
     let activeCowebsite = $state($coWebsites[0]);
+    const renderedCoWebsites = coWebsites.rendered;
     let gameContainer: HTMLDivElement | undefined = $state();
     let canvas: HTMLCanvasElement;
     let handleCanvasClick: () => void;
@@ -181,7 +183,8 @@
             disableContextMenu: true,
             render: {
                 pixelArt: false,
-                roundPixels: false,
+                // Snap drawn positions to whole pixels so moving sprites and tiles do not shimmer at the settled zoom.
+                roundPixels: true,
                 antialias: false,
                 antialiasGL: false,
             },
@@ -301,8 +304,12 @@
                 <GameOverlay {game} />
             {/if}
         </div>
-        {#if $coWebsites.length > 0}
-            <div class="flex-1">
+        {#if $renderedCoWebsites.length > 0}
+            <div
+                class={$coWebsites.length > 0
+                    ? "flex-1"
+                    : "fixed top-0 start-0 w-1/2 h-full invisible pointer-events-none -z-10"}
+            >
                 <!-- Transitions are breaking the onDestroy lifecycle of cowebsites -->
                 <!--            transition:fly={{-->
                 <!--            duration: 200,-->
@@ -322,5 +329,6 @@
          full-screen one. -->
     {#if QUANTA_UI && game && $roomControlsVisibleStore}
         <QuantaDock />
+        <ZoomPill />
     {/if}
 {/if}

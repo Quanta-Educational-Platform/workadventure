@@ -5,6 +5,7 @@
     import { z } from "zod";
     import Debug from "debug";
     import { isInRemoteConversation, streamableCollectionStore } from "../../Stores/StreamableCollectionStore";
+    import { pipWindowHeight } from "../../quanta/pipHeight";
     import {
         activePictureInPictureStore,
         askPictureInPictureActivatingStore,
@@ -181,17 +182,9 @@
             return;
         }
 
-        let pipHeightOption =
-            ($streamableCollectionStore.size > 1 ? $streamableCollectionStore.size - 1 : 1) * 227 + 80 + 78;
-        if (window.screen.availHeight && pipHeightOption > window.screen.availHeight) {
-            pipHeightOption = window.screen.availHeight;
-        }
         const options = {
             preferInitialWindowPlacement: true,
-            // 227: the height of a video
-            // 80: the height of the action bar
-            // 78: the height of the video feedback of the current user
-            height: `${pipHeightOption}`,
+            height: `${pipWindowHeight($streamableCollectionStore.size, window.screen.availHeight)}`,
             width: "400",
         };
 
@@ -241,8 +234,10 @@
             debug("PictureInPicture enterpictureinpicture handler is not supported", e);
         }
 
-        if (WindowExtSchema.safeParse(window).success === false) {
-            debug("PictureInPicture is not supported by the browser");
+        // Document Picture-in-Picture only opens from a top-level page; embedded in the platform's iframe the
+        // request is refused, so the button would do nothing.
+        if (WindowExtSchema.safeParse(window).success === false || window.self !== window.top) {
+            debug("PictureInPicture is not supported by the browser or in an embedded frame");
             pictureInPictureSupportedStore.set(false);
         }
 

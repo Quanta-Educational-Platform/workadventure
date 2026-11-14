@@ -1,6 +1,5 @@
 <script lang="ts">
     import { fly } from "svelte/transition";
-    import { onDestroy } from "svelte";
     import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import { errorScreenStore } from "../../Stores/ErrorScreenStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
@@ -12,11 +11,16 @@
     import logoImg from "../images/logo-min-white.png";
     import LoaderIcon from "../Icons/LoaderIcon.svelte";
     import type { Room } from "../../Connection/Room";
+    import { RETRY_ATTEMPT_KEY, retryWaitMs } from "../../quanta/retryBackoff";
+    import { QL } from "../../quanta/i18n";
+    import { roomScreenText } from "../../quanta/roomScreens";
     import Button from "./Button.svelte";
     import errorGif from "./images/error.gif";
     import { IconRefresh } from "@wa-icons";
 
-    let errorScreen = $errorScreenStore;
+    let errorScreen = $derived($errorScreenStore);
+    // quanta: the room server's own screens, in the reader's language.
+    let roomScreen = $derived(QUANTA_UI ? roomScreenText(errorScreen?.code, $QL) : undefined);
 
     let startRoom: Room | undefined = $state();
     try {
@@ -37,20 +41,54 @@
         }
     };
 
+    // quanta: each retry in a row waits about twice as long, up to 3 minutes, so a long outage can't turn a class into
+    // a reload storm; the count is cleared once the player is in the room (quanta/roomBridge.ts).
+    let retryAttempt = 0;
+    try {
+        retryAttempt = Number(sessionStorage.getItem(RETRY_ATTEMPT_KEY)) || 0;
+    } catch {
+        retryAttempt = 0;
+    }
     function click() {
         if (errorScreen?.type === "unauthorized") connectionManager.logout();
-        else window.location.reload();
+        // quanta: the room is open in another tab or device; coming back here takes it over (a fresh tab id).
+        else if (errorScreen?.type === "replaced") window.location.reload();
+        else {
+            if (errorScreen?.type === "retry") {
+                try {
+                    sessionStorage.setItem(RETRY_ATTEMPT_KEY, String(retryAttempt + 1));
+                } catch {
+                    // A blocked store only loses the backoff, not the retry.
+                }
+            }
+            window.location.reload();
+        }
     }
-    let details = errorScreen?.details ?? "";
-    let timeVar = $state(errorScreen?.timeToRetry ?? 0);
+    let details = $derived(errorScreen?.details ?? "");
+    let timeVar = $state(0);
 
-    if (errorScreen?.type === "retry") {
-        let interval = setInterval(() => {
-            if (timeVar <= 1000) click();
+    // The countdown follows the screen, which can turn into a retry while shown (a reconnection that then fails).
+    $effect(() => {
+        const screen = $errorScreenStore;
+        // quanta: a new build shows this screen only once a reload by itself didn't help; another would loop.
+        if (screen?.type !== "retry" || (QUANTA_UI && screen.code === "NEW_VERSION")) {
+            timeVar = screen?.timeToRetry ?? 0;
+            return;
+        }
+        timeVar = retryWaitMs(screen.timeToRetry ?? 0, retryAttempt);
+        // Once: a reload replaces the page only when the new one arrives, and calling it again meanwhile starts it
+        // over, so a slow server would never get to answer.
+        const interval = setInterval(() => {
+            if (timeVar <= 1000) {
+                clearInterval(interval);
+                timeVar = 0;
+                click();
+                return;
+            }
             timeVar -= 1000;
         }, 1000);
-        onDestroy(() => clearInterval(interval));
-    }
+        return () => clearInterval(interval);
+    });
 
     function getBackgroundColor() {
         return startRoom?.backgroundColor;
@@ -105,9 +143,15 @@
                     />
                 </div>
             {/if}
-            {#if $errorScreenStore.type !== "retry"}<h2 class="mt-10">{$errorScreenStore.title}</h2>{/if}
-            {#if $errorScreenStore.subtitle}<p>{$errorScreenStore.subtitle}</p>{/if}
-            {#if $errorScreenStore.type !== "retry" && $errorScreenStore.type !== "reconnecting"}<p class="code">
+            {#if $errorScreenStore.type !== "retry"}<h2 class="mt-10">
+                    {roomScreen?.title ?? $errorScreenStore.title}
+                </h2>{/if}
+            {#if roomScreen?.subtitle ?? $errorScreenStore.subtitle}<p>
+                    {roomScreen?.subtitle ?? $errorScreenStore.subtitle}
+                </p>{/if}
+            {#if !roomScreen && $errorScreenStore.type !== "retry" && $errorScreenStore.type !== "reconnecting" && $errorScreenStore.type !== "replaced"}<p
+                    class="code"
+                >
                     Code : {$errorScreenStore.code}
                 </p>{/if}
             <!-- quanta: not WA's "new version of WorkAdventure" line (the subtitle says it) nor its never-ending wait -->
@@ -122,7 +166,7 @@
                 </div>
             {/if}
             <div class="flex gap-2">
-                {#if ($errorScreenStore.type === "retry" && $errorScreenStore.canRetryManual) || $errorScreenStore.type === "unauthorized"}
+                {#if ($errorScreenStore.type === "retry" && $errorScreenStore.canRetryManual) || $errorScreenStore.type === "unauthorized" || $errorScreenStore.type === "replaced"}
                     <Button
                         type="button"
                         size="lg"
@@ -132,7 +176,7 @@
                         icon={$errorScreenStore.type === "retry" ? refreshIcon : undefined}
                         onclick={click}
                     >
-                        {$errorScreenStore.buttonTitle}
+                        {roomScreen?.buttonTitle ?? $errorScreenStore.buttonTitle}
                     </Button>
                     <!-- quanta: signing out of the platform signs out of the room -->
                     {#if $userIsConnected && !QUANTA_UI}

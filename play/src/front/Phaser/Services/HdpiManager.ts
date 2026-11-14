@@ -31,15 +31,9 @@ export class HdpiManager {
     public getOptimalGameSize(realPixelScreenSize: Size): { game: Size; real: Size } {
         this._maxZoomInReached = false;
         const realPixelNumber = realPixelScreenSize.width * realPixelScreenSize.height;
-        // If the screen has not a definition small enough to match the minimum number of pixels we want to display,
-        // let's make the canvas the size of the screen (in real pixels)
-        if (realPixelNumber <= this.minRecommendedGamePixelsNumber) {
-            return {
-                game: realPixelScreenSize,
-                real: realPixelScreenSize,
-            };
-        }
-
+        // quanta: a screen with fewer pixels than recommended (a map beside a board on a 1x display) is drawn one
+        // game pixel per screen pixel, and still zooms: it used to keep a fixed size, ignoring the zoom modifier,
+        // and its optimal zoom level of 0 drew zoom animations at Phaser's minimum zoom (the map vanished).
         this._optimalZoomLevel = this.getOptimalZoomLevel(realPixelNumber);
 
         // Has the canvas more pixels than the screen? This is forbidden
@@ -103,7 +97,7 @@ export class HdpiManager {
         if (1.5 <= result && result < 2) {
             return 1.5;
         } else {
-            return Math.floor(result);
+            return Math.max(1, Math.floor(result));
         }
     }
 

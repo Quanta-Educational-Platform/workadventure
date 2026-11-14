@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     AvailabilityStatus,
     JoinRoomMessage,
@@ -10,14 +10,17 @@ import {
 } from "@workadventure/messages";
 import { LocalUrlError } from "@workadventure/map-editor/src/LocalUrlError";
 import { mapFetcher } from "@workadventure/map-editor/src/MapFetcher";
+import type { ITiledMap } from "@workadventure/tiled-map-type-guard";
 import type { ConnectCallback, DisconnectCallback } from "../src/Model/GameRoom";
-import { GameRoom } from "../src/Model/GameRoom";
+import { GameRoom, VARIABLE_MANAGER_RETRY_MAX_MS, VARIABLE_MANAGER_RETRY_MIN_MS } from "../src/Model/GameRoom";
 import { Point } from "../src/Model/Websocket/MessageUserPosition";
 import { Group } from "../src/Model/Group";
 import type { User, UserSocket } from "../src/Model/User";
 import type { RoomSocket, VariableSocket } from "../src/RoomManager";
 import { socketManager } from "../src/Services/SocketManager";
 import type { EmoteCallback, ZonePosition } from "../src/Model/Zone";
+import { MapLoadingError } from "../src/Services/MapLoadingError";
+import { VariableError } from "../src/Services/VariableError";
 
 function createMockUser(userId: number): User {
     return {
@@ -488,6 +491,134 @@ describe("GameRoom", () => {
             world.removeVariableListener(createMockVariableSocket("neverListenedTo").socket);
 
             expect(world.isEmpty()).toBe(true);
+        });
+    });
+
+    describe("when the map can't be loaded", () => {
+        // A board variable only staff may change.
+        const map = {
+            layers: [
+                {
+                    type: "objectgroup",
+                    name: "variables",
+                    objects: [
+                        {
+                            id: 1,
+                            name: "board",
+                            type: "variable",
+                            x: 0,
+                            y: 0,
+                            properties: [{ name: "writableBy", type: "string", value: "admin" }],
+                        },
+                    ],
+                },
+            ],
+        } as unknown as ITiledMap;
+        const student = { name: "student", tags: [] } as unknown as User;
+        const teacher = { name: "teacher", tags: ["admin"] } as unknown as User;
+
+        // Earlier tests leave mapFetcher spied on.
+        beforeEach(() => vi.restoreAllMocks());
+        afterEach(() => {
+            vi.restoreAllMocks();
+            vi.useRealTimers();
+        });
+
+        it("retries the load instead of keeping a variable manager that checks nothing", async () => {
+            vi.useFakeTimers();
+            const fetchMap = vi
+                .spyOn(mapFetcher, "fetchMap")
+                .mockRejectedValueOnce(new Error("map-storage is restarting"))
+                .mockResolvedValue(map);
+            const world = await createWorld();
+            const listener = createMockVariableSocket("board");
+            world.addVariableListener(listener.socket);
+
+            await world.setVariable("board", JSON.stringify("open"), student);
+            expect(listener.write).not.toHaveBeenCalled();
+            expect(await world.getVariablesForTags([])).toEqual(new Map());
+            await expect(world.setVariable("board", JSON.stringify("open"), "RoomApi")).rejects.toThrow(
+                MapLoadingError,
+            );
+            expect(fetchMap).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(VARIABLE_MANAGER_RETRY_MIN_MS);
+            await expect(world.setVariable("board", JSON.stringify("open"), student)).rejects.toThrow(VariableError);
+            expect(fetchMap).toHaveBeenCalledTimes(2);
+            expect(listener.write).not.toHaveBeenCalled();
+
+            await world.setVariable("board", JSON.stringify("open"), teacher);
+            expect(listener.write).toHaveBeenCalledWith("open");
+            expect(await world.getVariablesForTags([])).toEqual(new Map([["board", JSON.stringify("open")]]));
+            expect(fetchMap).toHaveBeenCalledTimes(2);
+        });
+
+        it("sends the variables to the people who joined without them once the map loads", async () => {
+            vi.useFakeTimers();
+            const mapWithDefault = structuredClone(map);
+            const layer = mapWithDefault.layers[0] as { objects: { properties: unknown[] }[] };
+            layer.objects[0].properties.push({ name: "default", type: "string", value: "closed" });
+            vi.spyOn(mapFetcher, "fetchMap")
+                .mockRejectedValueOnce(new Error("map-storage is restarting"))
+                .mockResolvedValue(mapWithDefault);
+            const world = await createWorld();
+            const earlySocket = createMockUserSocket();
+            const early = await world.join(earlySocket.socket, createJoinRoomMessage("early", 100, 100));
+            flushPendingMessages(early);
+            expect(await world.getVariablesForTags(early.tags)).toEqual(new Map());
+
+            vi.advanceTimersByTime(VARIABLE_MANAGER_RETRY_MIN_MS);
+            const lateSocket = createMockUserSocket();
+            const late = await world.join(lateSocket.socket, createJoinRoomMessage("late", 300, 300));
+            flushPendingMessages(late);
+            expect(await world.getVariablesForTags(late.tags)).toEqual(new Map([["board", JSON.stringify("closed")]]));
+            vi.advanceTimersByTime(100);
+
+            const sentVariables = (socket: ReturnType<typeof createMockUserSocket>) =>
+                JSON.stringify(socket.write.mock.calls).match(/"variableMessage":\{[^}]*\}/g) ?? [];
+            expect(sentVariables(earlySocket)).toEqual([
+                `"variableMessage":{"name":"board","value":${JSON.stringify(JSON.stringify("closed"))}}`,
+            ]);
+
+            // Once loaded, a later load that works sends nothing again.
+            earlySocket.write.mockClear();
+            await world.getVariablesForTags([]);
+            vi.advanceTimersByTime(100);
+            expect(sentVariables(earlySocket)).toEqual([]);
+        });
+
+        it("waits longer after each failure, up to a bound, and starts over after a success", async () => {
+            vi.useFakeTimers();
+            const fetchMap = vi.spyOn(mapFetcher, "fetchMap").mockRejectedValue(new Error("map-storage is down"));
+            const world = await createWorld();
+            await world.getVariablesForTags([]);
+            expect(fetchMap).toHaveBeenCalledTimes(1);
+
+            const waits = [1000, 2000, 4000, 8000, 16000, VARIABLE_MANAGER_RETRY_MAX_MS, VARIABLE_MANAGER_RETRY_MAX_MS];
+            for (const [index, wait] of waits.entries()) {
+                vi.advanceTimersByTime(wait - 1);
+                // eslint-disable-next-line no-await-in-loop
+                await world.getVariablesForTags([]);
+                expect(fetchMap).toHaveBeenCalledTimes(index + 1);
+                vi.advanceTimersByTime(1);
+                // eslint-disable-next-line no-await-in-loop
+                await world.getVariablesForTags([]);
+                expect(fetchMap).toHaveBeenCalledTimes(index + 2);
+            }
+
+            fetchMap.mockResolvedValue(map);
+            vi.advanceTimersByTime(VARIABLE_MANAGER_RETRY_MAX_MS);
+            await world.setVariable("board", JSON.stringify("open"), teacher);
+            expect(fetchMap).toHaveBeenCalledTimes(waits.length + 2);
+
+            // An unknown variable reloads the map, which fails again: the wait is back to the shortest.
+            fetchMap.mockRejectedValue(new Error("map-storage is down"));
+            vi.advanceTimersByTime(10_001);
+            await world.setVariable("unknown", JSON.stringify(1), teacher);
+            expect(fetchMap).toHaveBeenCalledTimes(waits.length + 3);
+            vi.advanceTimersByTime(VARIABLE_MANAGER_RETRY_MIN_MS);
+            await world.getVariablesForTags([]);
+            expect(fetchMap).toHaveBeenCalledTimes(waits.length + 4);
         });
     });
 });

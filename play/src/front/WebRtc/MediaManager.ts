@@ -1,6 +1,6 @@
 import { get } from "svelte/store";
 import type { UserInputManager } from "../Phaser/UserInput/UserInputManager";
-import { localStreamStore } from "../Stores/MediaStore";
+import { localStreamStore, requestedCameraState, requestedMicrophoneState } from "../Stores/MediaStore";
 import { screenSharingLocalStreamStore } from "../Stores/ScreenSharingStore";
 import { showHelpCameraSettings } from "../Stores/HelpSettingsStore";
 import {
@@ -15,6 +15,11 @@ import { localeDetector } from "../Utils/locales";
 import { notificationPlayingStore } from "../Stores/NotificationStore";
 import { LL } from "../../i18n/i18n-svelte";
 import infoIcon from "../Components/images/info.svg";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
+import { startBlockedDevices } from "../quanta/blockedDevices";
+import { startCameraHold } from "../quanta/cameraHold";
+import { QL } from "../quanta/i18n";
+import HelpCameraSettingsPopup from "../Components/HelpSettings/HelpCameraSettingsPopup.svelte";
 import { startCpuLimitationDetectors } from "./CpuLimitationDetector";
 
 export type StartScreenSharingCallback = (media: MediaStream) => void;
@@ -25,6 +30,24 @@ export class MediaManager {
 
     constructor() {
         startCpuLimitationDetectors();
+        if (QUANTA_UI) {
+            startBlockedDevices(
+                HelpCameraSettingsPopup,
+                {
+                    requested: requestedCameraState,
+                    on: () => requestedCameraState.enableWebcam(),
+                    off: () => requestedCameraState.disableWebcam(),
+                },
+                {
+                    requested: requestedMicrophoneState,
+                    on: () => requestedMicrophoneState.enableMicrophone(),
+                    off: () => requestedMicrophoneState.disableMicrophone(),
+                },
+            );
+            startCameraHold(requestedCameraState, () =>
+                notificationPlayingStore.playNotification(get(QL).cameraAllowed(), "camera-off.png"),
+            );
+        }
         localeDetector()
             .catch((e) => {
                 console.error("Cannot load locale on media manager", e);
@@ -51,7 +74,15 @@ export class MediaManager {
                     if (result.type === "error") {
                         console.error(result.error);
                         // showHelpCameraSettings();
-                        notificationPlayingStore.playNotification(get(LL).notification.screenSharingError(), infoIcon);
+                        notificationPlayingStore.playNotification(
+                            get(LL).notification.screenSharingError(),
+                            infoIcon,
+                            undefined,
+                            undefined,
+                            {
+                                tone: "problem",
+                            },
+                        );
                         //remove it after 10 sec
                         /*setTimeout(() => {
                             popupStore.removePopup("screenSharingAccessDenied");

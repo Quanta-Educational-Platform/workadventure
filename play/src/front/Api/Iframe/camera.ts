@@ -22,10 +22,10 @@ export class WorkAdventureCameraCommands extends IframeApiContribution<WorkAdven
      *
      * @param smooth Smooth transition
      */
-    public followPlayer(smooth = false, duration?: number): void {
+    public followPlayer(smooth = false, duration?: number, keepZoom?: boolean): void {
         sendToWorkadventure({
             type: "cameraFollowPlayer",
-            data: { smooth, duration },
+            data: { smooth, duration, keepZoom },
         });
     }
 

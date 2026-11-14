@@ -50,8 +50,11 @@ export type EventSocket = ServerWritableStream<EventRequest, EventResponse>;
 
 // Maximum time to wait for a pong answer to a ping before closing connection.
 // Note: PONG_TIMEOUT must be less than PING_INTERVAL
-const PONG_TIMEOUT = 70000; // PONG_TIMEOUT is > 1 minute because of Chrome heavy throttling. See: https://docs.google.com/document/d/11FhKHRcABGS4SWPFGwoL6g0ALMqrFKapCk5ZTKKupEk/edit#
-const PING_INTERVAL = 80000;
+// quanta: both past the pusher's CLIENT_DISCONNECTION_RETENTION_MS (2 minutes), so a student whose link drops right
+// after a ping still has the whole retention to resume: the ping waits in the pusher and is answered on resume. Was
+// 70 s / 80 s. The front's manualPingDelay (RoomConnection.ts) must stay above PING_INTERVAL.
+const PONG_TIMEOUT = 125_000; // PONG_TIMEOUT is > 1 minute because of Chrome heavy throttling. See: https://docs.google.com/document/d/11FhKHRcABGS4SWPFGwoL6g0ALMqrFKapCk5ZTKKupEk/edit#
+const PING_INTERVAL = 130_000;
 
 // Maximum number of zones a single pusher connection (i.e. a single listenRoom stream) may subscribe to for a room.
 // The pusher already bounds the size of a viewport, this is a safety net so that a buggy or hostile pusher cannot

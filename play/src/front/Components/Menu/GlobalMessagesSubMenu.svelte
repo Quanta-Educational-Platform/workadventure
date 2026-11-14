@@ -2,6 +2,7 @@
     import { LL } from "../../../i18n/i18n-svelte";
     import TextGlobalMessage, { type TextGlobalMessageHandle } from "./TextGlobalMessage.svelte";
     import AudioGlobalMessage, { type AudioGlobalMessageHandle } from "./AudioGlobalMessage.svelte";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
     let handleSendText: TextGlobalMessageHandle | undefined = $state();
     let handleSendAudio: AudioGlobalMessageHandle | undefined = $state();
@@ -44,6 +45,7 @@
             >
                 {$LL.menu.globalMessage.text()}
             </button>
+{#if !QUANTA_UI}
             <button
                 type="button"
                 class="py-6 px-12 text-lg bold relative {uploadAudioActive
@@ -56,6 +58,7 @@
             >
                 {$LL.menu.globalMessage.audio()}
             </button>
+            {/if}
         </section>
     </div>
     <div class="global-message-content">

@@ -7,6 +7,7 @@ import {
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 import * as Sentry from "@sentry/node";
 import { asError } from "catch-unknown";
+import { noteRoomJoin, takeJoinToken } from "../quanta/rejoinPressure";
 import { CLIENT_DISCONNECTION_RETENTION_MS } from "../enums/EnvironmentVariable";
 import type { ConnectingSocketData } from "../models/Websocket/SocketData";
 import type { UpgradeFailedData } from "../controllers/IoSocketController";
@@ -37,6 +38,12 @@ type RejectedOpenHandler = (socketData: UpgradeFailedData) => ServerToClientMess
 type ReconnectHandler = (socket: PusherWebSocket) => void | Promise<void>;
 type MessageHandler = (socket: PusherWebSocket, message: ClientToServerMessage) => void | Promise<void>;
 type CloseHandler = (socket: PusherWebSocket, code: number, reason: string) => void | Promise<void>;
+
+// quanta: a resume of a session this pusher no longer holds, refused before the admin API (see the upgrade handler).
+type ResumeNotRetainedData = { rejected: true; reason: "resumeNotRetained" };
+
+// A refusal answers the transport that asked: a resume carries the last nonce its client received.
+type RejectedSocketData = (UpgradeFailedData | ResumeNotRetainedData) & { clientLastReceivedNonce?: number };
 
 type RoomWsQuery = {
     connectionId?: string;
@@ -145,7 +152,7 @@ export class PusherRoomSocketController {
     private upgradeSocket(
         aborted: boolean,
         res: HttpResponse,
-        data: ConnectingSocketData | UpgradeFailedData,
+        data: ConnectingSocketData | RejectedSocketData,
         websocketKey: string,
         websocketProtocol: string,
         websocketExtensions: string,
@@ -172,7 +179,7 @@ export class PusherRoomSocketController {
     }
 
     public ws<TQuery extends RoomWsQuery>(path: string, config: RoomWsConfig<TQuery>): void {
-        this.app.ws<ConnectingSocketData | UpgradeFailedData>(path, {
+        this.app.ws<ConnectingSocketData | RejectedSocketData>(path, {
             idleTimeout: config.idleTimeout,
             maxPayloadLength: config.maxPayloadLength,
             maxBackpressure: config.maxBackpressure,
@@ -218,6 +225,36 @@ export class PusherRoomSocketController {
                         );
                         return;
                     }
+                    // quanta: a resume of a session this pusher no longer holds (it restarted, or the session expired)
+                    // can only be refused. It is refused here, before the admin API, with the same 1008 the open would
+                    // give: a room that lost a restarted pusher does not send it an access check each.
+                    if (
+                        clientLastReceivedNonce !== undefined &&
+                        (retained === undefined || retained.isDisconnecting())
+                    ) {
+                        this.upgradeSocket(
+                            upgradeAborted.aborted,
+                            res,
+                            { rejected: true, reason: "resumeNotRetained", clientLastReceivedNonce },
+                            websocketKey,
+                            websocketProtocol,
+                            websocketExtensions,
+                            context,
+                        );
+                        return;
+                    }
+                    // quanta: admission (quanta/rejoinPressure.ts). Past the rate, a 503 before any work: the browser
+                    // sees the connection fail and retries with backoff (ConnectionManager.connectToRoomSocket).
+                    if (!takeJoinToken()) {
+                        if (!upgradeAborted.aborted) {
+                            res.cork(() => {
+                                res.writeStatus("503 Service Unavailable")
+                                    .writeHeader("Retry-After", "2")
+                                    .end("Too many people are joining at once. Retrying in a few seconds.");
+                            });
+                        }
+                        return;
+                    }
                     const ipAddress = getClientIpFromXForwardedFor(req.getHeader("x-forwarded-for"));
                     await config.upgrade({
                         query,
@@ -246,7 +283,7 @@ export class PusherRoomSocketController {
                             this.upgradeSocket(
                                 upgradeAborted.aborted,
                                 res,
-                                data,
+                                { ...data, clientLastReceivedNonce },
                                 websocketKey,
                                 websocketProtocol,
                                 websocketExtensions,
@@ -264,11 +301,19 @@ export class PusherRoomSocketController {
                 (async () => {
                     const socketData = ws.getUserData();
 
+                    if (socketData.rejected === true && socketData.reason === "resumeNotRetained") {
+                        ws.end(1008, "Cannot replace socket: previous connection not retained");
+                        return;
+                    }
+
                     if (socketData.rejected === true) {
                         const errorMessage = await config.rejectedOpen(socketData);
                         ws.send(
                             PusherToFrontWebSocketMessage.encode({
-                                nonce: 1,
+                                // A resuming client drops any frame at or below the last nonce it received: the
+                                // refusal (a new version, an expired token) would be lost, and the close below
+                                // would read as a normal one.
+                                nonce: (socketData.clientLastReceivedNonce ?? 0) + 1,
                                 message: errorMessage,
                             }).finish(),
                             true,
@@ -301,6 +346,10 @@ export class PusherRoomSocketController {
                         if (replaced) {
                             this.clearRetentionTimeout(connectionId);
                             this.wrappersBySocket.set(rawSocket, retained);
+                            // quanta: the replay comes after the registration, so if it finds messages lost and closes
+                            // the transport, the close handler finds it and ends the session for good.
+                            retained.handleDrain();
+                            if (!retained.isTransportAvailable()) return;
 
                             await config.reconnect(retained);
                         }
@@ -318,6 +367,7 @@ export class PusherRoomSocketController {
                         this.clearRetentionTimeout(connectionId);
                         this.retainedByConnectionId.set(connectionId, socket);
                     }
+                    noteRoomJoin();
                     await config.open(socket);
                 })().catch((e) => {
                     Sentry.captureException(e);

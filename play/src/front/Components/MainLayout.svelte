@@ -2,7 +2,8 @@
     import { fly } from "svelte/transition";
     import { onDestroy, onMount } from "svelte";
     import { get } from "svelte/store";
-    import { requestVisitCardsStore } from "../Stores/GameStore";
+    import { phoneLayoutStore } from "../quanta/roomWindow";
+    import { bannerStore, requestVisitCardsStore } from "../Stores/GameStore";
     import { helpNotificationSettingsVisibleStore, helpWebRtcSettingsVisibleStore } from "../Stores/HelpSettingsStore";
     import { helpSettingsPopupBlockedStore } from "../Stores/HelpSettingsPopupBlockedStore";
     import {
@@ -37,6 +38,7 @@
     import { highlightFullScreen } from "../Stores/ActionsCamStore";
     import { chatVisibilityStore } from "../Stores/ChatStore";
     import { chatSidebarWidthStore } from "../Chat/ChatSidebarWidthStore";
+    import { sideColumnShownStore } from "../quanta/sidePanel";
     import { EditorToolName } from "../Phaser/Game/MapEditor/MapEditorModeManager";
     import { streamableCollectionStore } from "../Stores/StreamableCollectionStore";
     import { inputFormFocusStore } from "../Stores/UserInputStore";
@@ -53,6 +55,12 @@
     import { sidePanelWidthStore } from "../Stores/SidePanelStore";
     import QuantaSettings from "../quanta/QuantaSettings.svelte";
     import { QUANTA_UI } from "../Enum/EnvironmentVariable";
+    import NoticeStack from "../quanta/NoticeStack.svelte";
+    import StageRoomTile from "../quanta/StageRoomTile.svelte";
+    import RailColumn from "../quanta/RailColumn.svelte";
+    import BubblesLayer from "../quanta/BubblesLayer.svelte";
+    import { startStage } from "../quanta/stage";
+    import { startRoomLayout } from "../quanta/layout";
     import { mapEditorSideBarWidthStore } from "./MapEditor/MapEditorSideBarWidthStore";
     import { calendarRemindersStore, startCalendarReminders } from "./Calendar/CalendarReminder";
     import ActionBar from "./ActionBar/ActionBar.svelte";
@@ -112,8 +120,10 @@
     $effect(() => {
         const active = Boolean($highlightedEmbedScreen && $highlightFullScreen);
         if (active && !wasHighlightFullscreenActive) {
-            chatVisibilityStore.set(false);
-            highlightParticipantCamerasListOpen = true;
+            // quanta: on a phone every new share opens full screen by itself; a student typing keeps the chat.
+            if (!get(phoneLayoutStore)) chatVisibilityStore.set(false);
+            // quanta: on a phone the list would cover most of the shared screen; its edge toggle still opens it.
+            highlightParticipantCamerasListOpen = !get(phoneLayoutStore);
             if (participantListAutoHideTimer) {
                 clearTimeout(participantListAutoHideTimer);
             }
@@ -183,6 +193,10 @@
     let stopCalendarReminders: (() => void) | undefined;
 
     onMount(() => {
+        // quanta: the class's stage, when the platform presents a board over the room (quanta/stage.ts), in the
+        // layout the person chose (quanta/layout.ts).
+        startRoomLayout();
+        startStage();
         document.addEventListener("focusin", handleFocusInEvent);
         document.addEventListener("focusout", handleFocusOutEvent);
         stopCalendarReminders = startCalendarReminders();
@@ -198,7 +212,13 @@
         stopCalendarReminders?.();
     });
 
-    let marginLeft = $derived($chatVisibilityStore ? $chatSidebarWidthStore : 0);
+    // quanta: the chat sits in the side column on the right (quanta/sidePanel.ts), or over the whole room. Beside a
+    // co-website (landscape) the column is over the website's side, so the map keeps its width.
+    let marginLeft = $derived($chatVisibilityStore && !QUANTA_UI ? $chatSidebarWidthStore : 0);
+    // What the column holds now (sidePanel.ts): beside the page it grows and shrinks with the frame's slide.
+    let quantaChatSpace = $derived(
+        QUANTA_UI && !($coWebsites.length > 0 && $windowSize.width > $windowSize.height) ? $sideColumnShownStore : 0,
+    );
     let mapEditorPanelVisible = $derived(
         $mapEditorVisibilityStore && $mapEditorSelectedToolStore !== EditorToolName.WAMSettingsEditor,
     );
@@ -215,7 +235,7 @@
                 : $mapEditorSideBarWidthStore,
         }) + (QUANTA_UI && $mapEditorModeStore ? 24 : 0),
     );
-    let marginRight = $derived(mapEditorReservedSpace + $sidePanelWidthStore);
+    let marginRight = $derived(mapEditorReservedSpace + $sidePanelWidthStore + quantaChatSpace);
 
     function onHighlightFullscreenSendMessage() {
         if (get(chatVisibilityStore) && get(navChat).key === "chat") {
@@ -374,7 +394,9 @@
 
     <div class="flex min-h-full flex-col-reverse mobile:flex-col">
         <section id="main-layout-main" class="pb-0 flex-1 pointer-events-none h-full w-full relative">
-            <div class="fixed z-[1000] bottom-0 start-0 right-0 m-auto w-max mobile:w-[98vw] md:max-w-[80%]">
+            <div
+                class="quanta-popups fixed z-[1000] bottom-0 start-0 right-0 m-auto w-max mobile:w-[98vw] md:max-w-[80%]"
+            >
                 <div class="popups flex items-end relative w-full justify-center mobile:mb-24 mb-4 h-[calc(100%-96px)]">
                     {#each $popupStore.slice().reverse() as popup, index (popup.uuid)}
                         {@const PopupComponent = popup.component}
@@ -399,11 +421,17 @@
                 {/if}
             {/if}
 
-            {#if $textMessageStore.length > 0}
+            {#if $textMessageStore.length > 0 && !QUANTA_UI}
                 <TextMessageContainer />
             {/if}
             <ProximityNotificationContainer />
-            {#if $notificationPlayingStore}
+            {#if QUANTA_UI}
+                <!-- quanta: every notice in one stack above the dock, in the order they came (quanta/NoticeStack.svelte). -->
+                <NoticeStack />
+                <StageRoomTile />
+                <RailColumn />
+                <BubblesLayer />
+            {:else if $notificationPlayingStore}
                 <div class="flex flex-col absolute w-auto end-0">
                     {#each [...$notificationPlayingStore.values()] as notification, index (`${index}-${notification.id}`)}
                         <Notification {notification} />
@@ -411,7 +439,7 @@
                 </div>
             {/if}
 
-            {#if $warningBannerStore}
+            {#if $warningBannerStore && !(QUANTA_UI && $bannerStore)}
                 <WarningBanner />
             {/if}
 
@@ -439,11 +467,13 @@
                  stacked under it so nothing covers anything else's buttons (the dock self-gates on
                  visibleRaisedHandSectionsStore). Opening the agenda settles the reminders: it lists the same meetings. -->
             <div class="absolute top-0 right-2 z-[999] flex flex-col gap-2 items-end" data-toast-stack>
-                {#each [...$toastStore.entries()] as toastEntry (toastEntry[0])}
-                    {@const toast = toastEntry[1]}
-                    {@const ToastComponent = toast.component}
-                    <ToastComponent {...toast.props} />
-                {/each}
+                {#if !QUANTA_UI}
+                    {#each [...$toastStore.entries()] as toastEntry (toastEntry[0])}
+                        {@const toast = toastEntry[1]}
+                        {@const ToastComponent = toast.component}
+                        <ToastComponent {...toast.props} />
+                    {/each}
+                {/if}
                 <!-- Only with a reminder: an empty block would still push the dock down. -->
                 {#if $calendarIsActivatedStore && !$isCalendarVisibleStore && $calendarRemindersStore.length > 0}
                     <CalendarReminders />
@@ -485,7 +515,7 @@
                 <MapList />
             {/if}
 
-            {#if $warningMessageStore.length > 0}
+            {#if $warningMessageStore.length > 0 && !QUANTA_UI}
                 <WarningToast />
             {/if}
 

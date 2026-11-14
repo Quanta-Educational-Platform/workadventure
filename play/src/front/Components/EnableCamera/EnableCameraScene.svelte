@@ -23,6 +23,10 @@
     import { localUserStore } from "../../Connection/LocalUserStore";
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { playSpeakerTestSound } from "../../WebRtc/AudioOutputManager";
+    import { cameraPermissionStateStore, microphonePermissionStateStore } from "../../Stores/MediaStatusStore";
+    import { QL } from "../../quanta/i18n";
+    import Icon from "../../quanta/Icon.svelte";
+    import { permissionPromptPending, permissionPromptPlace } from "../../quanta/permissionPrompt";
 
     import bgMap from "../images/map-exemple.webp";
     import Button from "../UI/Button.svelte";
@@ -47,6 +51,12 @@
     let selectedCameraLabel: string | undefined = $state(undefined);
     let selectedMicrophone: string | undefined = $state(undefined);
     let selectedMicrophoneLabel: string | undefined = $state(undefined);
+
+    // quanta: while the browser asks for the devices, where to answer it.
+    const promptPlace = permissionPromptPlace(navigator.userAgent, navigator.maxTouchPoints);
+    let permissionPending = $derived(
+        QUANTA_UI && permissionPromptPending($cameraPermissionStateStore, $microphonePermissionStateStore),
+    );
 
     let legalStrings: string[] = [];
     if (legals?.termsOfUseUrl) {
@@ -95,6 +105,13 @@
         // no preference, follow the system default.
         localUserStore.setPreferredVideoInputDevice(localUserStore.getPreferredVideoInputDevice() ?? "");
         localUserStore.setPreferredAudioInputDevice(localUserStore.getPreferredAudioInputDevice() ?? "");
+        // quanta: this page only checks the devices; a class is entered with both off (quanta/joinMedia.ts).
+        if (QUANTA_UI) {
+            batchGetUserMediaStore.startBatch();
+            requestedCameraState.disableWebcam();
+            requestedMicrophoneState.disableMicrophone();
+            batchGetUserMediaStore.commitChanges();
+        }
         enableCameraScene.login();
     }
 
@@ -200,6 +217,22 @@
                 <p class="opacity-50 w-2/3 m-auto pt-2 hidden md:block">
                     {$LL.camera.enable.start()}
                 </p>
+                {#if permissionPending}
+                    <p
+                        class="mx-auto mt-4 flex w-fit max-w-full items-center gap-2 rounded-full bg-white px-4 py-2 text-start text-sm font-medium text-contrast"
+                        role="status"
+                        data-testid="quanta-permission-prompt-hint"
+                    >
+                        {#if promptPlace === "addressBar"}
+                            <span class="flex shrink-0"><Icon name="arrowUpLeft" size={18} /></span>
+                        {/if}
+                        <span>
+                            {promptPlace === "addressBar"
+                                ? $QL.permissionPromptAddressBar()
+                                : $QL.permissionPromptDialog()}
+                        </span>
+                    </p>
+                {/if}
             </section>
 
             <div

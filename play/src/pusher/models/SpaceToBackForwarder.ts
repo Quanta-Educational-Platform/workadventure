@@ -302,8 +302,20 @@ export class SpaceToBackForwarder implements SpaceToBackForwarderInterface {
         });
     }
 
+    /**
+     * The sender as the space knows them. A filtered space (a lecture's listeners, who do not stream) does not list
+     * the users it filters out, the sender included: they are still connected here, with their tags.
+     */
+    private senderOf(senderSocket: SocketData): SpaceUserExtended | undefined {
+        const spaceUserId = senderSocket.spaceUserId || "";
+        const listed = this._space.users.get(spaceUserId);
+        if (listed) return listed;
+        const socket = this._space._localConnectedUser.get(spaceUserId);
+        return socket ? this._space._localConnectedUserWithSpaceUser.get(socket) : undefined;
+    }
+
     sendPublicEvent(event: PublicEventFrontToPusher, senderSocket: SocketData): void {
-        const senderSpaceUser = this._space.users.get(senderSocket.spaceUserId || "");
+        const senderSpaceUser = this.senderOf(senderSocket);
 
         if (!event.spaceEvent?.event) {
             throw new Error("Event is required in spaceEvent");
@@ -328,7 +340,7 @@ export class SpaceToBackForwarder implements SpaceToBackForwarderInterface {
     }
 
     sendPrivateEvent(event: PrivateEventFrontToPusher, senderSocket: SocketData): void {
-        const senderSpaceUser = this._space.users.get(senderSocket.spaceUserId);
+        const senderSpaceUser = this.senderOf(senderSocket);
 
         if (!event.spaceEvent?.event) {
             throw new Error("Event is required in spaceEvent");

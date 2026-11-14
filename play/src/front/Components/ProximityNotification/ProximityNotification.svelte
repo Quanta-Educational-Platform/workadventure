@@ -8,6 +8,7 @@
     import { navChat } from "../../Chat/Stores/ChatStore";
     import LL from "../../../i18n/i18n-svelte";
     import { focusNotificationTarget } from "./NotificationRoomFocus";
+    import { QL } from "../../quanta/i18n";
 
     interface Props {
         notification: ProximityNotification;
@@ -31,6 +32,11 @@
     });
 
     function handleClick() {
+        if (notification.onOpen) {
+            chatNotificationStore.removeNotification(notification.id);
+            notification.onOpen();
+            return;
+        }
         chatVisibilityStore.set(true);
         navChat.switchToChat();
 
@@ -61,16 +67,24 @@
     }}
     out:fade={{ duration: 150 }}
 >
-    <div class="mt-1 text-white text-xl flex-shrink-0">💬</div>
+    {#if notification.mention}
+        <div class="quanta-mention-toast-icon" aria-hidden="true">@</div>
+    {:else}
+        <div class="mt-1 text-white text-xl flex-shrink-0">💬</div>
+    {/if}
 
     <div class="flex flex-col text-white flex-1 min-w-0 overflow-hidden">
         <div
             class="font-bold mb-1 text-base text-white truncate font-['Roboto_Condensed'] tracking-normal align-middle"
         >
             {notification.userName}
-            {#if $roomType !== "direct"}
-                {$LL.chat.notification.in()}
-                {$roomName}
+            {#if notification.mention}
+                <span class="proximity-notification-room"
+                    >{notification.onOpen ? $QL.mentionedYouDirect() : $QL.mentionedYou()}</span
+                >
+            {:else if $roomType !== "direct"}
+                <!-- quanta: the room steps back from the sender's name (quanta-ui.css). -->
+                <span class="proximity-notification-room">{$LL.chat.notification.in()} {$roomName}</span>
             {/if}
         </div>
         <div
@@ -96,5 +110,20 @@
 
     .proximity-notification {
         animation: slide-up 0.3s ease-out;
+    }
+
+    .quanta-mention-toast-icon {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        margin-top: 2px;
+        border-radius: 50%;
+        background: #f2c14e;
+        color: #1b1f26;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1;
     }
 </style>

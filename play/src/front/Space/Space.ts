@@ -555,6 +555,9 @@ export class Space implements SpaceInterface {
      */
     async destroy() {
         this._isDestroyed = true;
+        // quanta: a destroyed space streams nothing; its stores must not keep saying so (the dock's on-air button).
+        this._isSpeakerStreamingStore.set(false);
+        this._isListenerStreamingStore.set(false);
         this.state.destroy();
 
         this.retryAbortController?.abort();
