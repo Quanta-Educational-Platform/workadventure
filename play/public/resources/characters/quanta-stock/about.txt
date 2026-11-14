@@ -1,0 +1,6 @@
+Eight-way sheets (8 x 9 frames of 32 x 32) made from the Pipoya stock characters in ../pipoya.
+The four original facings and their walk are the Pipoya frames; the three-quarter facings and the seated row were
+drawn from them for Quanta (~/.local/lib/quanta/wokas-stock on the dev host).
+
+Pipoya collection of sprites: https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32
+Licence: use and edit freely, commercial or personal use; do not redistribute or resell the assets themselves.

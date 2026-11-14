@@ -1,6 +1,9 @@
 // quanta: new woka sheets, 8 columns by 9 rows of 32 x 32 frames. Rows follow FACINGS, then one seated row. Columns:
-// a breath, the still (frame 1 stays the front-facing still that snapshots take), then six walking frames.
+// a breath, the still (frame 1 stays the front-facing still that snapshots take), then six walking frames. The seated
+// row: front breath, front still, back breath, back still, then the turned views' stills (front-right, right,
+// back-right), drawn facing right and mirrored for the left. Sheets drawn before the turned views leave those empty.
 // Older sheets are 3 x 4; a character with any such layer plays them all the old way.
+import type * as Phaser from "phaser";
 import type { Facing } from "../../quanta/wokaFacing";
 import { FACINGS } from "../../quanta/wokaFacing";
 import type { AnimationData } from "./Animation";
@@ -16,6 +19,43 @@ const SHEET_WIDTH = COLUMNS * 32;
 
 export const SEATED_FRONT_FRAME = SEATED_ROW * COLUMNS + 1;
 export const SEATED_BACK_FRAME = SEATED_ROW * COLUMNS + 3;
+
+export function seatedFrame(column: number): number {
+    return SEATED_ROW * COLUMNS + column;
+}
+
+export function stillFrame(facing: Facing): number {
+    return FACINGS.indexOf(facing) * COLUMNS + STILL_COLUMN;
+}
+
+const seatedColumns = new Map<string, number>();
+let probe: CanvasRenderingContext2D | null | undefined;
+
+/** Which frames of a sheet's seated row are drawn, a bit per column; read once per texture. */
+export function seatedColumnsOf(textures: Phaser.Textures.TextureManager, key: string): number {
+    const known = seatedColumns.get(key);
+    if (known !== undefined) return known;
+    // Unreadable: the front and back frames every new sheet has.
+    let drawn = (1 << 1) | (1 << 3);
+    try {
+        const image = textures.get(key).getSourceImage() as CanvasImageSource;
+        probe ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+        if (probe) {
+            probe.canvas.width = SHEET_WIDTH;
+            probe.canvas.height = 32;
+            probe.clearRect(0, 0, SHEET_WIDTH, 32);
+            probe.drawImage(image, 0, SEATED_ROW * 32, SHEET_WIDTH, 32, 0, 0, SHEET_WIDTH, 32);
+            const alpha = probe.getImageData(0, 0, SHEET_WIDTH, 32).data;
+            drawn = 0;
+            for (let i = 3; i < alpha.length; i += 4)
+                if (alpha[i] > 0) drawn |= 1 << Math.floor(((i >> 2) % SHEET_WIDTH) / 32);
+        }
+    } catch (e) {
+        console.warn("quanta: seated frames unreadable", key, e);
+    }
+    seatedColumns.set(key, drawn);
+    return drawn;
+}
 
 export function isSheetFrameCount(frames: number): boolean {
     return frames >= SHEET_FRAMES;

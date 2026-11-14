@@ -4594,7 +4594,7 @@ ${escapedMessage}
         }
         this.MapPlayersByKey.set(player.userId, player);
         player.updatePosition(addPlayerData.position);
-        this.seatManager?.showRemote(player, addPlayerData.variables?.get(SEAT_VARIABLE));
+        this.seatManager?.showRemote(player, addPlayerData.variables?.get(SEAT_VARIABLE), true);
         this.remotePlayersSpatialIndex.set(player.userId, player);
 
         player.on(Phaser.Input.Events.POINTER_OVER, () => {

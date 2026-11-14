@@ -575,6 +575,9 @@ export class RoomConnection implements RoomConnection {
                     }
                     this.tags = message.roomConnectedMessage.tag;
                     this.canEdit = message.roomConnectedMessage.canEdit;
+                    // quanta: the scene reads the switch as soon as this resolves (a #mapEditor link opens the editor
+                    // there), before roomJoinedMessage sets it again: set it from this message's right too.
+                    mapEditorActivated.set(ENABLE_MAP_EDITOR && this.canEdit);
                     this._roomConnectedPromise.resolve({
                         connection: this,
                         roomConnectedMessage: message.roomConnectedMessage,

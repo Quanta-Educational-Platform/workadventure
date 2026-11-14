@@ -169,7 +169,6 @@
         align-items: center;
         column-gap: 12px;
         row-gap: 6px;
-        padding: 5px 0;
     }
 
     .qn-trailing {
@@ -177,10 +176,13 @@
         display: flex;
     }
 
+    /* The text's own room above and below, not the body's: around the button the body added it to the card's 6px,
+       and the button stood further from the top and bottom than from the end. */
     .qn-text {
         flex: 1 1 auto;
         min-width: 0;
         margin: 0;
+        padding: 5px 0;
         overflow-wrap: break-word;
         hyphens: manual;
     }

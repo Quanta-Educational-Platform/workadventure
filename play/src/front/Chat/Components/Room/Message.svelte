@@ -270,10 +270,16 @@
         const row = actionsRef.querySelector<HTMLElement>(".quanta-react-row");
         const width = Math.max(actionsRef.offsetWidth, row?.offsetWidth ?? 0);
         const height = Math.max(actionsRef.offsetHeight, row?.offsetHeight ?? 0);
-        // The reaction row from a bar already in the clear stays there when it fits too.
+        // The reaction row opens where the bar is, under the pointer that opened it, inside the list: over this
+        // message's own name and time at most. Moved below or above the whole message it opened a message away, and
+        // reaching it meant crossing other messages, whose bars took over on the way.
         if (row && !actionsFolded && actionsAt) {
             const barRect = actionsRef.getBoundingClientRect();
-            if (barRect.bottom <= g.bubble.top && clearAbove(g, barRect.top, barRect.right, width, height)) return;
+            const listLeft = (g.scroller?.left ?? g.item.left) + ACTIONS_INSET_PX;
+            const listRight = Math.min(g.scroller?.right ?? Infinity, g.item.right) - ACTIONS_INSET_PX;
+            const right = Math.min(Math.max(barRect.right, listLeft + width), listRight);
+            actionsAt = { top: barRect.top - g.column.top, right: g.column.right - right };
+            return;
         }
         const bottom = g.scroller?.bottom ?? Infinity;
         const top = g.scroller?.top ?? -Infinity;

@@ -52,6 +52,7 @@ import { SCRIPTING_AUDIO_TRACK_NAME } from "./LivekitConstants";
 import { startCameraCap } from "./CameraCap";
 import { startScreenShareCap } from "./ScreenShareCap";
 import { createWeakConnectionTracker } from "./WeakConnection";
+import { watchSenderLink, type SenderLinkReason } from "./SenderLinkWatch";
 import { startWeakLinkNotice } from "./WeakLinkNotice";
 import { LiveKitParticipant } from "./LivekitParticipant";
 import type { LiveKitRoomInterface } from "./LiveKitRoomInterface";
@@ -163,8 +164,19 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         analyticsClient.trackAdminEvent("media.weak_connection.state_changed", {
             ...this.connectionProperties(),
             enabled: weak,
+            reason: "livekit_quality",
         });
     });
+    // quanta: the same link judged by this browser's own sender stats (SenderLinkWatch.ts), its own entry in the weak set.
+    private senderLinkReason: SenderLinkReason | undefined;
+    private readonly senderLink = createWeakConnectionTracker((weak) => {
+        analyticsClient.trackAdminEvent("media.weak_connection.state_changed", {
+            ...this.connectionProperties(),
+            enabled: weak,
+            reason: this.senderLinkReason ?? "sender_rtt",
+        });
+    }, { backOff: true });
+    private stopSenderLinkWatch: (() => void) | undefined;
     private readonly boundHandleAudioPlaybackStatusChanged = this.handleAudioPlaybackStatusChanged.bind(this);
 
     constructor(
@@ -904,6 +916,11 @@ export class LiveKitRoom implements LiveKitRoomInterface {
         this.room.on(RoomEvent.Reconnecting, this.boundHandleReconnecting);
         this.room.on(RoomEvent.AudioPlaybackStatusChanged, this.boundHandleAudioPlaybackStatusChanged);
         this.room.on(RoomEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
+        this.stopSenderLinkWatch?.();
+        this.stopSenderLinkWatch = watchSenderLink(this.room, (quality, reason) => {
+            if (reason) this.senderLinkReason = reason;
+            this.senderLink.update(quality);
+        });
     }
 
     private handleAudioPlaybackStatusChanged() {
@@ -1282,6 +1299,9 @@ export class LiveKitRoom implements LiveKitRoomInterface {
             this.room?.off(RoomEvent.ConnectionQualityChanged, this.boundHandleConnectionQualityChanged);
             this.room?.engine?.off(EngineEvent.Restarting, this.boundHandleEngineRestarting);
             this.weakConnection.stop();
+            this.stopSenderLinkWatch?.();
+            this.stopSenderLinkWatch = undefined;
+            this.senderLink.stop();
             this.unregisterAudioPlaybackRetry?.();
             this.unregisterAudioPlaybackRetry = undefined;
             this.cameraAnalyticsUnsubscribe?.();

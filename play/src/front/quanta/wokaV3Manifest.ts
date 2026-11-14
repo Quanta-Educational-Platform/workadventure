@@ -120,6 +120,18 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
                 {
                     "id": "gentle",
                     "label": "Gentle"
+                },
+                {
+                    "id": "shiny",
+                    "label": "Shiny"
+                },
+                {
+                    "id": "dot",
+                    "label": "Dots"
+                },
+                {
+                    "id": "iris",
+                    "label": "Big iris"
                 }
             ],
             "colours": [
@@ -257,6 +269,10 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
                 {
                     "id": "skirt",
                     "label": "Skirt"
+                },
+                {
+                    "id": "pleated",
+                    "label": "Pleated skirt"
                 }
             ],
             "colours": [
@@ -336,6 +352,14 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
                     "label": "Polo"
                 },
                 {
+                    "id": "collar",
+                    "label": "Collar blouse"
+                },
+                {
+                    "id": "sailor",
+                    "label": "Sailor top"
+                },
+                {
                     "id": "hoodie",
                     "label": "Hoodie"
                 },
@@ -348,8 +372,24 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
                     "label": "Shirt"
                 },
                 {
+                    "id": "tie",
+                    "label": "Shirt and tie"
+                },
+                {
                     "id": "jacket",
                     "label": "Jacket"
+                },
+                {
+                    "id": "blazer",
+                    "label": "Blazer"
+                },
+                {
+                    "id": "standcollar",
+                    "label": "Stand-collar jacket"
+                },
+                {
+                    "id": "pinafore",
+                    "label": "Pinafore"
                 }
             ],
             "colours": [

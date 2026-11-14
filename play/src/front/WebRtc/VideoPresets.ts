@@ -138,7 +138,9 @@ const screenShareCurve: BitrateCurve = {
     anchorPixels: MAX_PIXELS,
     anchor: { low: 1_000_000, recommended: 3_000_000, high: 4_500_000 },
     exponent: 0.5,
-    fps: () => 30,
+    // quanta: lessons share slides, documents and boards: 15 frames a second is smooth for them, halves the
+    // presenter's software encoding and leaves twice the bits per frame for legible text. "High" keeps 30 for video.
+    fps: (_pixels, quality) => (quality === "high" ? 30 : 15),
 };
 
 /**
@@ -170,7 +172,8 @@ export function selectVideoPreset(
  * resolution.
  */
 export const screenShareMaxResolution: Record<VideoQualitySetting, MediaTrackConstraints> = {
-    low: { width: { max: 1280 }, height: { max: 720 } },
-    recommended: { width: { max: 1920 }, height: { max: 1080 } },
+    // quanta: captured no faster than screenShareCurve sends them, so the capture costs no more than it has to.
+    low: { width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 15 } },
+    recommended: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 15 } },
     high: { width: { max: 2560 }, height: { max: 1440 } },
 };

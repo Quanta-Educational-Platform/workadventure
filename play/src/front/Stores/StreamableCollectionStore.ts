@@ -253,6 +253,12 @@ function createStreamableCollectionStore(): Readable<Map<string, VideoBox>> {
                 addPeer($screenSharingLocalVideoBox);
             }
 
+            // quanta: your own picture with the camera off, and no one else's: a strip of just your face over the
+            // room, put up and taken down as you step on and off a megaphone spot, the room refitting each time.
+            if (QUANTA_UI && !$requestedCameraState && peers.size === 1 && peers.has("-1")) {
+                peers.delete("-1");
+            }
+
             if ($isListenerStore && (peers.size === 0 || (peers.size === 1 && peers.has("-1")))) {
                 addPeer(listenerBoxVideoBox);
             }

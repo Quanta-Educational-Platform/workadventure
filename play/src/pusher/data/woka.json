@@ -86,145 +86,145 @@
                     {
                         "id": "male1",
                         "name": "male1",
-                        "url": "resources/characters/pipoya/Male 01-1.png",
+                        "url": "resources/characters/quanta-stock/male1.png",
                         "position": 0
                     },
                     {
                         "id": "male2",
                         "name": "male2",
-                        "url": "resources/characters/pipoya/Male 02-2.png",
+                        "url": "resources/characters/quanta-stock/male2.png",
                         "position": 1
                     },
                     {
                         "id": "male3",
                         "name": "male3",
-                        "url": "resources/characters/pipoya/Male 03-4.png",
+                        "url": "resources/characters/quanta-stock/male3.png",
                         "position": 2
                     },
                     {
                         "id": "male4",
                         "name": "male4",
-                        "url": "resources/characters/pipoya/Male 09-1.png",
+                        "url": "resources/characters/quanta-stock/male4.png",
                         "position": 3
                     },
                     {
                         "id": "male5",
                         "name": "male5",
-                        "url": "resources/characters/pipoya/Male 10-3.png",
+                        "url": "resources/characters/quanta-stock/male5.png",
                         "position": 4
                     },
                     {
                         "id": "male6",
                         "name": "male6",
-                        "url": "resources/characters/pipoya/Male 17-2.png",
+                        "url": "resources/characters/quanta-stock/male6.png",
                         "position": 5
                     },
                     {
                         "id": "male7",
                         "name": "male7",
-                        "url": "resources/characters/pipoya/Male 18-1.png",
+                        "url": "resources/characters/quanta-stock/male7.png",
                         "position": 6
                     },
                     {
                         "id": "male8",
                         "name": "male8",
-                        "url": "resources/characters/pipoya/Male 16-4.png",
+                        "url": "resources/characters/quanta-stock/male8.png",
                         "position": 7
                     },
                     {
                         "id": "male9",
                         "name": "male9",
-                        "url": "resources/characters/pipoya/Male 07-2.png",
+                        "url": "resources/characters/quanta-stock/male9.png",
                         "position": 8
                     },
                     {
                         "id": "male10",
                         "name": "male10",
-                        "url": "resources/characters/pipoya/Male 05-3.png",
+                        "url": "resources/characters/quanta-stock/male10.png",
                         "position": 9
                     },
                     {
                         "id": "male11",
                         "name": "male11",
-                        "url": "resources/characters/pipoya/Teacher male 02.png",
+                        "url": "resources/characters/quanta-stock/male11.png",
                         "position": 10
                     },
                     {
                         "id": "male12",
                         "name": "male12",
-                        "url": "resources/characters/pipoya/su4 Student male 12.png",
+                        "url": "resources/characters/quanta-stock/male12.png",
                         "position": 11
                     },
                     {
                         "id": "female1",
                         "name": "female1",
-                        "url": "resources/characters/pipoya/Female 01-1.png",
+                        "url": "resources/characters/quanta-stock/female1.png",
                         "position": 12
                     },
                     {
                         "id": "female2",
                         "name": "female2",
-                        "url": "resources/characters/pipoya/Female 02-2.png",
+                        "url": "resources/characters/quanta-stock/female2.png",
                         "position": 13
                     },
                     {
                         "id": "female3",
                         "name": "female3",
-                        "url": "resources/characters/pipoya/Female 03-4.png",
+                        "url": "resources/characters/quanta-stock/female3.png",
                         "position": 14
                     },
                     {
                         "id": "female4",
                         "name": "female4",
-                        "url": "resources/characters/pipoya/Female 09-1.png",
+                        "url": "resources/characters/quanta-stock/female4.png",
                         "position": 15
                     },
                     {
                         "id": "female5",
                         "name": "female5",
-                        "url": "resources/characters/pipoya/Female 10-3.png",
+                        "url": "resources/characters/quanta-stock/female5.png",
                         "position": 16
                     },
                     {
                         "id": "female6",
                         "name": "female6",
-                        "url": "resources/characters/pipoya/Female 17-2.png",
+                        "url": "resources/characters/quanta-stock/female6.png",
                         "position": 17
                     },
                     {
                         "id": "female7",
                         "name": "female7",
-                        "url": "resources/characters/pipoya/Female 18-1.png",
+                        "url": "resources/characters/quanta-stock/female7.png",
                         "position": 18
                     },
                     {
                         "id": "female8",
                         "name": "female8",
-                        "url": "resources/characters/pipoya/Female 16-4.png",
+                        "url": "resources/characters/quanta-stock/female8.png",
                         "position": 19
                     },
                     {
                         "id": "female9",
                         "name": "female9",
-                        "url": "resources/characters/pipoya/Female 07-2.png",
+                        "url": "resources/characters/quanta-stock/female9.png",
                         "position": 20
                     },
                     {
                         "id": "female10",
                         "name": "female10",
-                        "url": "resources/characters/pipoya/Female 05-3.png",
+                        "url": "resources/characters/quanta-stock/female10.png",
                         "position": 21
                     },
                     {
                         "id": "female11",
                         "name": "female11",
-                        "url": "resources/characters/pipoya/Teacher fmale 02.png",
+                        "url": "resources/characters/quanta-stock/female11.png",
                         "position": 22
                     },
                     {
                         "id": "female12",
                         "name": "female12",
-                        "url": "resources/characters/pipoya/su4 Student fmale 12.png",
+                        "url": "resources/characters/quanta-stock/female12.png",
                         "position": 23
                     }
                 ]
@@ -1254,30 +1254,6 @@
                         "position": 38
                     },
                     {
-                        "id": "clothes40",
-                        "name": "clothes40",
-                        "url": "resources/customisation/character_clothes/character_clothes39.png",
-                        "position": 39
-                    },
-                    {
-                        "id": "clothes41",
-                        "name": "clothes41",
-                        "url": "resources/customisation/character_clothes/character_clothes40.png",
-                        "position": 40
-                    },
-                    {
-                        "id": "clothes42",
-                        "name": "clothes42",
-                        "url": "resources/customisation/character_clothes/character_clothes41.png",
-                        "position": 41
-                    },
-                    {
-                        "id": "clothes43",
-                        "name": "clothes43",
-                        "url": "resources/customisation/character_clothes/character_clothes42.png",
-                        "position": 42
-                    },
-                    {
                         "id": "clothes44",
                         "name": "clothes44",
                         "url": "resources/customisation/character_clothes/character_clothes43.png",
@@ -1350,64 +1326,10 @@
                         "position": 54
                     },
                     {
-                        "id": "clothes56",
-                        "name": "clothes56",
-                        "url": "resources/customisation/character_clothes/character_clothes55.png",
-                        "position": 55
-                    },
-                    {
-                        "id": "clothes57",
-                        "name": "clothes57",
-                        "url": "resources/customisation/character_clothes/character_clothes56.png",
-                        "position": 56
-                    },
-                    {
-                        "id": "clothes58",
-                        "name": "clothes58",
-                        "url": "resources/customisation/character_clothes/character_clothes57.png",
-                        "position": 57
-                    },
-                    {
-                        "id": "clothes59",
-                        "name": "clothes59",
-                        "url": "resources/customisation/character_clothes/character_clothes58.png",
-                        "position": 58
-                    },
-                    {
-                        "id": "clothes60",
-                        "name": "clothes60",
-                        "url": "resources/customisation/character_clothes/character_clothes59.png",
-                        "position": 59
-                    },
-                    {
-                        "id": "clothes61",
-                        "name": "clothes61",
-                        "url": "resources/customisation/character_clothes/character_clothes60.png",
-                        "position": 60
-                    },
-                    {
-                        "id": "clothes62",
-                        "name": "clothes62",
-                        "url": "resources/customisation/character_clothes/character_clothes61.png",
-                        "position": 61
-                    },
-                    {
                         "id": "clothes63",
                         "name": "clothes63",
                         "url": "resources/customisation/character_clothes/character_clothes62.png",
                         "position": 62
-                    },
-                    {
-                        "id": "clothes64",
-                        "name": "clothes64",
-                        "url": "resources/customisation/character_clothes/character_clothes63.png",
-                        "position": 63
-                    },
-                    {
-                        "id": "clothes65",
-                        "name": "clothes65",
-                        "url": "resources/customisation/character_clothes/character_clothes64.png",
-                        "position": 64
                     },
                     {
                         "id": "clothes66",
@@ -2249,6 +2171,168 @@
                         "position": 7
                     }
                 ]
+            },
+            {
+                "name": "shiny",
+                "position": 6,
+                "textures": [
+                    {
+                        "id": "q3-eyes-shiny-dark",
+                        "name": "Shiny · Dark brown",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-dark.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-eyes-shiny-brown",
+                        "name": "Shiny · Brown",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-brown.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-eyes-shiny-hazel",
+                        "name": "Shiny · Hazel",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-hazel.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-eyes-shiny-amber",
+                        "name": "Shiny · Amber",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-amber.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-eyes-shiny-green",
+                        "name": "Shiny · Green",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-eyes-shiny-blue",
+                        "name": "Shiny · Blue",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-blue.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-eyes-shiny-grey",
+                        "name": "Shiny · Grey",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-grey.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-eyes-shiny-violet",
+                        "name": "Shiny · Violet",
+                        "url": "resources/characters/quanta-v3/eyes/shiny-violet.png",
+                        "position": 7
+                    }
+                ]
+            },
+            {
+                "name": "dot",
+                "position": 7,
+                "textures": [
+                    {
+                        "id": "q3-eyes-dot-dark",
+                        "name": "Dots · Dark brown",
+                        "url": "resources/characters/quanta-v3/eyes/dot-dark.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-eyes-dot-brown",
+                        "name": "Dots · Brown",
+                        "url": "resources/characters/quanta-v3/eyes/dot-brown.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-eyes-dot-hazel",
+                        "name": "Dots · Hazel",
+                        "url": "resources/characters/quanta-v3/eyes/dot-hazel.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-eyes-dot-amber",
+                        "name": "Dots · Amber",
+                        "url": "resources/characters/quanta-v3/eyes/dot-amber.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-eyes-dot-green",
+                        "name": "Dots · Green",
+                        "url": "resources/characters/quanta-v3/eyes/dot-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-eyes-dot-blue",
+                        "name": "Dots · Blue",
+                        "url": "resources/characters/quanta-v3/eyes/dot-blue.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-eyes-dot-grey",
+                        "name": "Dots · Grey",
+                        "url": "resources/characters/quanta-v3/eyes/dot-grey.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-eyes-dot-violet",
+                        "name": "Dots · Violet",
+                        "url": "resources/characters/quanta-v3/eyes/dot-violet.png",
+                        "position": 7
+                    }
+                ]
+            },
+            {
+                "name": "iris",
+                "position": 8,
+                "textures": [
+                    {
+                        "id": "q3-eyes-iris-dark",
+                        "name": "Big iris · Dark brown",
+                        "url": "resources/characters/quanta-v3/eyes/iris-dark.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-eyes-iris-brown",
+                        "name": "Big iris · Brown",
+                        "url": "resources/characters/quanta-v3/eyes/iris-brown.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-eyes-iris-hazel",
+                        "name": "Big iris · Hazel",
+                        "url": "resources/characters/quanta-v3/eyes/iris-hazel.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-eyes-iris-amber",
+                        "name": "Big iris · Amber",
+                        "url": "resources/characters/quanta-v3/eyes/iris-amber.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-eyes-iris-green",
+                        "name": "Big iris · Green",
+                        "url": "resources/characters/quanta-v3/eyes/iris-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-eyes-iris-blue",
+                        "name": "Big iris · Blue",
+                        "url": "resources/characters/quanta-v3/eyes/iris-blue.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-eyes-iris-grey",
+                        "name": "Big iris · Grey",
+                        "url": "resources/characters/quanta-v3/eyes/iris-grey.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-eyes-iris-violet",
+                        "name": "Big iris · Violet",
+                        "url": "resources/characters/quanta-v3/eyes/iris-violet.png",
+                        "position": 7
+                    }
+                ]
             }
         ]
     },
@@ -2680,6 +2764,72 @@
                         "id": "q3-bottoms-skirt-burgundy",
                         "name": "Skirt · Burgundy",
                         "url": "resources/characters/quanta-v3/bottoms/skirt-burgundy.png",
+                        "position": 9
+                    }
+                ]
+            },
+            {
+                "name": "pleated",
+                "position": 4,
+                "textures": [
+                    {
+                        "id": "q3-bottoms-pleated-denim",
+                        "name": "Pleated skirt · Denim",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-denim.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-darkdenim",
+                        "name": "Pleated skirt · Dark denim",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-darkdenim.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-lightdenim",
+                        "name": "Pleated skirt · Light denim",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-lightdenim.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-black",
+                        "name": "Pleated skirt · Black",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-black.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-grey",
+                        "name": "Pleated skirt · Grey",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-grey.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-khaki",
+                        "name": "Pleated skirt · Khaki",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-khaki.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-brown",
+                        "name": "Pleated skirt · Brown",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-brown.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-navy",
+                        "name": "Pleated skirt · Navy",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-navy.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-olive",
+                        "name": "Pleated skirt · Olive",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-olive.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-bottoms-pleated-burgundy",
+                        "name": "Pleated skirt · Burgundy",
+                        "url": "resources/characters/quanta-v3/bottoms/pleated-burgundy.png",
                         "position": 9
                     }
                 ]
@@ -3315,6 +3465,798 @@
                         "name": "Jacket · Charcoal",
                         "url": "resources/characters/quanta-v3/top/jacket-charcoal.png",
                         "position": 13
+                    }
+                ]
+            },
+            {
+                "name": "collar",
+                "position": 7,
+                "textures": [
+                    {
+                        "id": "q3-top-collar-navy",
+                        "name": "Collar blouse · Navy",
+                        "url": "resources/characters/quanta-v3/top/collar-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-collar-royal",
+                        "name": "Collar blouse · Blue",
+                        "url": "resources/characters/quanta-v3/top/collar-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-collar-sky",
+                        "name": "Collar blouse · Sky",
+                        "url": "resources/characters/quanta-v3/top/collar-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-collar-teal",
+                        "name": "Collar blouse · Teal",
+                        "url": "resources/characters/quanta-v3/top/collar-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-collar-green",
+                        "name": "Collar blouse · Green",
+                        "url": "resources/characters/quanta-v3/top/collar-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-collar-olive",
+                        "name": "Collar blouse · Olive",
+                        "url": "resources/characters/quanta-v3/top/collar-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-collar-mustard",
+                        "name": "Collar blouse · Mustard",
+                        "url": "resources/characters/quanta-v3/top/collar-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-collar-orange",
+                        "name": "Collar blouse · Orange",
+                        "url": "resources/characters/quanta-v3/top/collar-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-collar-red",
+                        "name": "Collar blouse · Red",
+                        "url": "resources/characters/quanta-v3/top/collar-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-collar-burgundy",
+                        "name": "Collar blouse · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/collar-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-collar-pink",
+                        "name": "Collar blouse · Pink",
+                        "url": "resources/characters/quanta-v3/top/collar-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-collar-lavender",
+                        "name": "Collar blouse · Lavender",
+                        "url": "resources/characters/quanta-v3/top/collar-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-collar-white",
+                        "name": "Collar blouse · White",
+                        "url": "resources/characters/quanta-v3/top/collar-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-collar-charcoal",
+                        "name": "Collar blouse · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/collar-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-collar-denim",
+                        "name": "Collar blouse · Denim",
+                        "url": "resources/characters/quanta-v3/top/collar-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-collar-grey",
+                        "name": "Collar blouse · Grey",
+                        "url": "resources/characters/quanta-v3/top/collar-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-collar-cream",
+                        "name": "Collar blouse · Cream",
+                        "url": "resources/characters/quanta-v3/top/collar-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-collar-khaki",
+                        "name": "Collar blouse · Khaki",
+                        "url": "resources/characters/quanta-v3/top/collar-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-collar-brown",
+                        "name": "Collar blouse · Brown",
+                        "url": "resources/characters/quanta-v3/top/collar-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-collar-forest",
+                        "name": "Collar blouse · Forest green",
+                        "url": "resources/characters/quanta-v3/top/collar-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-collar-plum",
+                        "name": "Collar blouse · Plum",
+                        "url": "resources/characters/quanta-v3/top/collar-plum.png",
+                        "position": 20
+                    }
+                ]
+            },
+            {
+                "name": "sailor",
+                "position": 8,
+                "textures": [
+                    {
+                        "id": "q3-top-sailor-navy",
+                        "name": "Sailor top · Navy",
+                        "url": "resources/characters/quanta-v3/top/sailor-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-sailor-royal",
+                        "name": "Sailor top · Blue",
+                        "url": "resources/characters/quanta-v3/top/sailor-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-sailor-sky",
+                        "name": "Sailor top · Sky",
+                        "url": "resources/characters/quanta-v3/top/sailor-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-sailor-teal",
+                        "name": "Sailor top · Teal",
+                        "url": "resources/characters/quanta-v3/top/sailor-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-sailor-green",
+                        "name": "Sailor top · Green",
+                        "url": "resources/characters/quanta-v3/top/sailor-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-sailor-olive",
+                        "name": "Sailor top · Olive",
+                        "url": "resources/characters/quanta-v3/top/sailor-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-sailor-mustard",
+                        "name": "Sailor top · Mustard",
+                        "url": "resources/characters/quanta-v3/top/sailor-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-sailor-orange",
+                        "name": "Sailor top · Orange",
+                        "url": "resources/characters/quanta-v3/top/sailor-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-sailor-red",
+                        "name": "Sailor top · Red",
+                        "url": "resources/characters/quanta-v3/top/sailor-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-sailor-burgundy",
+                        "name": "Sailor top · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/sailor-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-sailor-pink",
+                        "name": "Sailor top · Pink",
+                        "url": "resources/characters/quanta-v3/top/sailor-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-sailor-lavender",
+                        "name": "Sailor top · Lavender",
+                        "url": "resources/characters/quanta-v3/top/sailor-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-sailor-white",
+                        "name": "Sailor top · White",
+                        "url": "resources/characters/quanta-v3/top/sailor-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-sailor-charcoal",
+                        "name": "Sailor top · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/sailor-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-sailor-denim",
+                        "name": "Sailor top · Denim",
+                        "url": "resources/characters/quanta-v3/top/sailor-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-sailor-grey",
+                        "name": "Sailor top · Grey",
+                        "url": "resources/characters/quanta-v3/top/sailor-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-sailor-cream",
+                        "name": "Sailor top · Cream",
+                        "url": "resources/characters/quanta-v3/top/sailor-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-sailor-khaki",
+                        "name": "Sailor top · Khaki",
+                        "url": "resources/characters/quanta-v3/top/sailor-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-sailor-brown",
+                        "name": "Sailor top · Brown",
+                        "url": "resources/characters/quanta-v3/top/sailor-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-sailor-forest",
+                        "name": "Sailor top · Forest green",
+                        "url": "resources/characters/quanta-v3/top/sailor-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-sailor-plum",
+                        "name": "Sailor top · Plum",
+                        "url": "resources/characters/quanta-v3/top/sailor-plum.png",
+                        "position": 20
+                    }
+                ]
+            },
+            {
+                "name": "tie",
+                "position": 9,
+                "textures": [
+                    {
+                        "id": "q3-top-tie-navy",
+                        "name": "Shirt and tie · Navy",
+                        "url": "resources/characters/quanta-v3/top/tie-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-tie-royal",
+                        "name": "Shirt and tie · Blue",
+                        "url": "resources/characters/quanta-v3/top/tie-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-tie-sky",
+                        "name": "Shirt and tie · Sky",
+                        "url": "resources/characters/quanta-v3/top/tie-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-tie-teal",
+                        "name": "Shirt and tie · Teal",
+                        "url": "resources/characters/quanta-v3/top/tie-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-tie-green",
+                        "name": "Shirt and tie · Green",
+                        "url": "resources/characters/quanta-v3/top/tie-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-tie-olive",
+                        "name": "Shirt and tie · Olive",
+                        "url": "resources/characters/quanta-v3/top/tie-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-tie-mustard",
+                        "name": "Shirt and tie · Mustard",
+                        "url": "resources/characters/quanta-v3/top/tie-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-tie-orange",
+                        "name": "Shirt and tie · Orange",
+                        "url": "resources/characters/quanta-v3/top/tie-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-tie-red",
+                        "name": "Shirt and tie · Red",
+                        "url": "resources/characters/quanta-v3/top/tie-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-tie-burgundy",
+                        "name": "Shirt and tie · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/tie-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-tie-pink",
+                        "name": "Shirt and tie · Pink",
+                        "url": "resources/characters/quanta-v3/top/tie-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-tie-lavender",
+                        "name": "Shirt and tie · Lavender",
+                        "url": "resources/characters/quanta-v3/top/tie-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-tie-white",
+                        "name": "Shirt and tie · White",
+                        "url": "resources/characters/quanta-v3/top/tie-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-tie-charcoal",
+                        "name": "Shirt and tie · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/tie-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-tie-denim",
+                        "name": "Shirt and tie · Denim",
+                        "url": "resources/characters/quanta-v3/top/tie-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-tie-grey",
+                        "name": "Shirt and tie · Grey",
+                        "url": "resources/characters/quanta-v3/top/tie-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-tie-cream",
+                        "name": "Shirt and tie · Cream",
+                        "url": "resources/characters/quanta-v3/top/tie-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-tie-khaki",
+                        "name": "Shirt and tie · Khaki",
+                        "url": "resources/characters/quanta-v3/top/tie-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-tie-brown",
+                        "name": "Shirt and tie · Brown",
+                        "url": "resources/characters/quanta-v3/top/tie-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-tie-forest",
+                        "name": "Shirt and tie · Forest green",
+                        "url": "resources/characters/quanta-v3/top/tie-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-tie-plum",
+                        "name": "Shirt and tie · Plum",
+                        "url": "resources/characters/quanta-v3/top/tie-plum.png",
+                        "position": 20
+                    }
+                ]
+            },
+            {
+                "name": "blazer",
+                "position": 10,
+                "textures": [
+                    {
+                        "id": "q3-top-blazer-navy",
+                        "name": "Blazer · Navy",
+                        "url": "resources/characters/quanta-v3/top/blazer-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-blazer-royal",
+                        "name": "Blazer · Blue",
+                        "url": "resources/characters/quanta-v3/top/blazer-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-blazer-sky",
+                        "name": "Blazer · Sky",
+                        "url": "resources/characters/quanta-v3/top/blazer-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-blazer-teal",
+                        "name": "Blazer · Teal",
+                        "url": "resources/characters/quanta-v3/top/blazer-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-blazer-green",
+                        "name": "Blazer · Green",
+                        "url": "resources/characters/quanta-v3/top/blazer-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-blazer-olive",
+                        "name": "Blazer · Olive",
+                        "url": "resources/characters/quanta-v3/top/blazer-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-blazer-mustard",
+                        "name": "Blazer · Mustard",
+                        "url": "resources/characters/quanta-v3/top/blazer-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-blazer-orange",
+                        "name": "Blazer · Orange",
+                        "url": "resources/characters/quanta-v3/top/blazer-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-blazer-red",
+                        "name": "Blazer · Red",
+                        "url": "resources/characters/quanta-v3/top/blazer-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-blazer-burgundy",
+                        "name": "Blazer · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/blazer-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-blazer-pink",
+                        "name": "Blazer · Pink",
+                        "url": "resources/characters/quanta-v3/top/blazer-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-blazer-lavender",
+                        "name": "Blazer · Lavender",
+                        "url": "resources/characters/quanta-v3/top/blazer-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-blazer-white",
+                        "name": "Blazer · White",
+                        "url": "resources/characters/quanta-v3/top/blazer-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-blazer-charcoal",
+                        "name": "Blazer · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/blazer-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-blazer-denim",
+                        "name": "Blazer · Denim",
+                        "url": "resources/characters/quanta-v3/top/blazer-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-blazer-grey",
+                        "name": "Blazer · Grey",
+                        "url": "resources/characters/quanta-v3/top/blazer-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-blazer-cream",
+                        "name": "Blazer · Cream",
+                        "url": "resources/characters/quanta-v3/top/blazer-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-blazer-khaki",
+                        "name": "Blazer · Khaki",
+                        "url": "resources/characters/quanta-v3/top/blazer-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-blazer-brown",
+                        "name": "Blazer · Brown",
+                        "url": "resources/characters/quanta-v3/top/blazer-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-blazer-forest",
+                        "name": "Blazer · Forest green",
+                        "url": "resources/characters/quanta-v3/top/blazer-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-blazer-plum",
+                        "name": "Blazer · Plum",
+                        "url": "resources/characters/quanta-v3/top/blazer-plum.png",
+                        "position": 20
+                    }
+                ]
+            },
+            {
+                "name": "standcollar",
+                "position": 11,
+                "textures": [
+                    {
+                        "id": "q3-top-standcollar-navy",
+                        "name": "Stand-collar jacket · Navy",
+                        "url": "resources/characters/quanta-v3/top/standcollar-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-standcollar-royal",
+                        "name": "Stand-collar jacket · Blue",
+                        "url": "resources/characters/quanta-v3/top/standcollar-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-standcollar-sky",
+                        "name": "Stand-collar jacket · Sky",
+                        "url": "resources/characters/quanta-v3/top/standcollar-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-standcollar-teal",
+                        "name": "Stand-collar jacket · Teal",
+                        "url": "resources/characters/quanta-v3/top/standcollar-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-standcollar-green",
+                        "name": "Stand-collar jacket · Green",
+                        "url": "resources/characters/quanta-v3/top/standcollar-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-standcollar-olive",
+                        "name": "Stand-collar jacket · Olive",
+                        "url": "resources/characters/quanta-v3/top/standcollar-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-standcollar-mustard",
+                        "name": "Stand-collar jacket · Mustard",
+                        "url": "resources/characters/quanta-v3/top/standcollar-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-standcollar-orange",
+                        "name": "Stand-collar jacket · Orange",
+                        "url": "resources/characters/quanta-v3/top/standcollar-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-standcollar-red",
+                        "name": "Stand-collar jacket · Red",
+                        "url": "resources/characters/quanta-v3/top/standcollar-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-standcollar-burgundy",
+                        "name": "Stand-collar jacket · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/standcollar-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-standcollar-pink",
+                        "name": "Stand-collar jacket · Pink",
+                        "url": "resources/characters/quanta-v3/top/standcollar-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-standcollar-lavender",
+                        "name": "Stand-collar jacket · Lavender",
+                        "url": "resources/characters/quanta-v3/top/standcollar-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-standcollar-white",
+                        "name": "Stand-collar jacket · White",
+                        "url": "resources/characters/quanta-v3/top/standcollar-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-standcollar-charcoal",
+                        "name": "Stand-collar jacket · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/standcollar-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-standcollar-denim",
+                        "name": "Stand-collar jacket · Denim",
+                        "url": "resources/characters/quanta-v3/top/standcollar-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-standcollar-grey",
+                        "name": "Stand-collar jacket · Grey",
+                        "url": "resources/characters/quanta-v3/top/standcollar-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-standcollar-cream",
+                        "name": "Stand-collar jacket · Cream",
+                        "url": "resources/characters/quanta-v3/top/standcollar-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-standcollar-khaki",
+                        "name": "Stand-collar jacket · Khaki",
+                        "url": "resources/characters/quanta-v3/top/standcollar-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-standcollar-brown",
+                        "name": "Stand-collar jacket · Brown",
+                        "url": "resources/characters/quanta-v3/top/standcollar-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-standcollar-forest",
+                        "name": "Stand-collar jacket · Forest green",
+                        "url": "resources/characters/quanta-v3/top/standcollar-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-standcollar-plum",
+                        "name": "Stand-collar jacket · Plum",
+                        "url": "resources/characters/quanta-v3/top/standcollar-plum.png",
+                        "position": 20
+                    }
+                ]
+            },
+            {
+                "name": "pinafore",
+                "position": 12,
+                "textures": [
+                    {
+                        "id": "q3-top-pinafore-navy",
+                        "name": "Pinafore · Navy",
+                        "url": "resources/characters/quanta-v3/top/pinafore-navy.png",
+                        "position": 0
+                    },
+                    {
+                        "id": "q3-top-pinafore-royal",
+                        "name": "Pinafore · Blue",
+                        "url": "resources/characters/quanta-v3/top/pinafore-royal.png",
+                        "position": 1
+                    },
+                    {
+                        "id": "q3-top-pinafore-sky",
+                        "name": "Pinafore · Sky",
+                        "url": "resources/characters/quanta-v3/top/pinafore-sky.png",
+                        "position": 2
+                    },
+                    {
+                        "id": "q3-top-pinafore-teal",
+                        "name": "Pinafore · Teal",
+                        "url": "resources/characters/quanta-v3/top/pinafore-teal.png",
+                        "position": 3
+                    },
+                    {
+                        "id": "q3-top-pinafore-green",
+                        "name": "Pinafore · Green",
+                        "url": "resources/characters/quanta-v3/top/pinafore-green.png",
+                        "position": 4
+                    },
+                    {
+                        "id": "q3-top-pinafore-olive",
+                        "name": "Pinafore · Olive",
+                        "url": "resources/characters/quanta-v3/top/pinafore-olive.png",
+                        "position": 5
+                    },
+                    {
+                        "id": "q3-top-pinafore-mustard",
+                        "name": "Pinafore · Mustard",
+                        "url": "resources/characters/quanta-v3/top/pinafore-mustard.png",
+                        "position": 6
+                    },
+                    {
+                        "id": "q3-top-pinafore-orange",
+                        "name": "Pinafore · Orange",
+                        "url": "resources/characters/quanta-v3/top/pinafore-orange.png",
+                        "position": 7
+                    },
+                    {
+                        "id": "q3-top-pinafore-red",
+                        "name": "Pinafore · Red",
+                        "url": "resources/characters/quanta-v3/top/pinafore-red.png",
+                        "position": 8
+                    },
+                    {
+                        "id": "q3-top-pinafore-burgundy",
+                        "name": "Pinafore · Burgundy",
+                        "url": "resources/characters/quanta-v3/top/pinafore-burgundy.png",
+                        "position": 9
+                    },
+                    {
+                        "id": "q3-top-pinafore-pink",
+                        "name": "Pinafore · Pink",
+                        "url": "resources/characters/quanta-v3/top/pinafore-pink.png",
+                        "position": 10
+                    },
+                    {
+                        "id": "q3-top-pinafore-lavender",
+                        "name": "Pinafore · Lavender",
+                        "url": "resources/characters/quanta-v3/top/pinafore-lavender.png",
+                        "position": 11
+                    },
+                    {
+                        "id": "q3-top-pinafore-white",
+                        "name": "Pinafore · White",
+                        "url": "resources/characters/quanta-v3/top/pinafore-white.png",
+                        "position": 12
+                    },
+                    {
+                        "id": "q3-top-pinafore-charcoal",
+                        "name": "Pinafore · Charcoal",
+                        "url": "resources/characters/quanta-v3/top/pinafore-charcoal.png",
+                        "position": 13
+                    },
+                    {
+                        "id": "q3-top-pinafore-denim",
+                        "name": "Pinafore · Denim",
+                        "url": "resources/characters/quanta-v3/top/pinafore-denim.png",
+                        "position": 14
+                    },
+                    {
+                        "id": "q3-top-pinafore-grey",
+                        "name": "Pinafore · Grey",
+                        "url": "resources/characters/quanta-v3/top/pinafore-grey.png",
+                        "position": 15
+                    },
+                    {
+                        "id": "q3-top-pinafore-cream",
+                        "name": "Pinafore · Cream",
+                        "url": "resources/characters/quanta-v3/top/pinafore-cream.png",
+                        "position": 16
+                    },
+                    {
+                        "id": "q3-top-pinafore-khaki",
+                        "name": "Pinafore · Khaki",
+                        "url": "resources/characters/quanta-v3/top/pinafore-khaki.png",
+                        "position": 17
+                    },
+                    {
+                        "id": "q3-top-pinafore-brown",
+                        "name": "Pinafore · Brown",
+                        "url": "resources/characters/quanta-v3/top/pinafore-brown.png",
+                        "position": 18
+                    },
+                    {
+                        "id": "q3-top-pinafore-forest",
+                        "name": "Pinafore · Forest green",
+                        "url": "resources/characters/quanta-v3/top/pinafore-forest.png",
+                        "position": 19
+                    },
+                    {
+                        "id": "q3-top-pinafore-plum",
+                        "name": "Pinafore · Plum",
+                        "url": "resources/characters/quanta-v3/top/pinafore-plum.png",
+                        "position": 20
                     }
                 ]
             }

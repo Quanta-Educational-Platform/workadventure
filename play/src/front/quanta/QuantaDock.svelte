@@ -81,6 +81,7 @@
     import { cameraHeldStore } from "./moderationBridge";
     import { screenSharingLocalStreamStore } from "../Stores/ScreenSharingStore";
     import { dismissWeakLinkNotice, turnCameraBackOn, weakLinkNoticeStore } from "../Livekit/WeakLinkNotice";
+    import { presentBoardAvailableStore, presentBoardInstead } from "./presentBoardBridge";
     import DeviceSelect from "./DeviceSelect.svelte";
     import { dockGuttersStore, dockSizeStore } from "./dockBar";
     import { DOCK_FOLDS, PHONE_FOLDS, dockFoldedStore, type DockFold, type FoldedAction } from "./dockFold";
@@ -475,13 +476,13 @@
                 root.setProperty("--quanta-room-x", `${Math.round(dockBox.left + dockBox.width / 2)}px`);
                 root.setProperty("--quanta-room-w", `${Math.round(roomWidth)}px`);
             }
-            // The zoom pill (ZoomPill.svelte) stands above a notice that would cover it, which a narrow room's notices
-            // reach across to; elsewhere it keeps its corner.
+            // The zoom pill (ZoomPill.svelte) stands above a notice or a popup (the Say box) that would cover it, which
+            // a narrow room's reach across to; elsewhere it keeps its corner.
             const zoom = document.querySelector<HTMLElement>(".quanta-zoom-pill")?.getBoundingClientRect();
             let lift = 0;
             if (zoom && zoom.width > 0) {
                 for (const el of document.querySelectorAll<HTMLElement>(
-                    '[data-testid="quanta-on-air-strip"] > *, [data-quanta-notices] > *',
+                    '[data-testid="quanta-on-air-strip"] > *, [data-quanta-notices] > *, .quanta-popups .popupwrapper',
                 )) {
                     const box = el.getBoundingClientRect();
                     if (!box.width || !box.height || getComputedStyle(el).visibility === "hidden") continue;
@@ -503,6 +504,15 @@
         // The room's notices come and go outside the dock: the zoom pill's lift depends on them too.
         const notices = document.querySelector("[data-quanta-notices]");
         if (notices) changed.observe(notices, { subtree: true, childList: true });
+        // So do WA's popups, which fly up into place: measured again once they have landed.
+        let landed: ReturnType<typeof setTimeout> | undefined;
+        const popups = document.querySelector(".quanta-popups");
+        const popupsChanged = new MutationObserver(() => {
+            schedule();
+            clearTimeout(landed);
+            landed = setTimeout(schedule, 600);
+        });
+        if (popups) popupsChanged.observe(popups, { subtree: true, childList: true });
         window.addEventListener("resize", schedule);
         // The menu and the emoji panel place themselves a moment after they open.
         const settled = setTimeout(schedule, 150);
@@ -512,6 +522,8 @@
             clearTimeout(settled);
             resized.disconnect();
             changed.disconnect();
+            popupsChanged.disconnect();
+            clearTimeout(landed);
             window.removeEventListener("resize", schedule);
         };
     });
@@ -953,6 +965,11 @@
                 weakLink={$weakLinkNoticeStore}
                 oncameraon={turnCameraBackOn}
                 ondismissweaklink={dismissWeakLinkNotice}
+                presentBoard={$presentBoardAvailableStore}
+                onpresentboard={() => {
+                    presentBoardInstead();
+                    dismissWeakLinkNotice();
+                }}
             />
 
             <div class="qd-tray-wrap">

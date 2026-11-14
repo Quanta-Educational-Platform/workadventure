@@ -1060,7 +1060,10 @@ export class GameMapFrontWrapper {
         if (yIndex >= height || yIndex < 0 || xIndex >= width || xIndex < 0) {
             return false;
         }
-        if (this.collisionGrid[yIndex][xIndex] !== 0) {
+        // quanta: a meeting or desk area only weighs its walkable tiles for pathfinding (applyPathfindingAreaWeights),
+        // and a class's listening area covers the whole room: those tiles stay free for furniture.
+        const tile = this.collisionGrid[yIndex][xIndex];
+        if (tile !== PathTileType.Walkable && tile !== PathTileType.MeetingRoom && tile !== PathTileType.PersonalDesk) {
             return false;
         }
         return true;

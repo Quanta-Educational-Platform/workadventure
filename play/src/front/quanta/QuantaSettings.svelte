@@ -65,6 +65,7 @@
     import { LL } from "../../i18n/i18n-svelte";
     import { sendMenuClickedEvent } from "../Api/Iframe/Ui/MenuItem";
     import { QL } from "./i18n";
+    import { runConnectionCheck, type ConnectionCheckResult } from "./connectionCheck";
     import Icon from "./Icon.svelte";
     import type { IconName } from "./icons";
     import Dropdown from "./settings/Dropdown.svelte";
@@ -79,6 +80,45 @@
     }
 
     let { initialTab }: Props = $props();
+
+    let connectionCheck = $state<"running" | ConnectionCheckResult | undefined>(undefined);
+    async function checkConnection() {
+        if (connectionCheck === "running") return;
+        connectionCheck = "running";
+        let result: ConnectionCheckResult;
+        try {
+            result = await runConnectionCheck();
+        } catch {
+            result = { verdict: "failed" };
+        }
+        connectionCheck = result;
+        if (result.verdict === "hidden") return;
+        analyticsClient.trackAdminEvent("media.connection_check.finished", {
+            reason: result.verdict,
+            ...(result.uploadKbps !== undefined ? { availableOutgoingBitrate: result.uploadKbps * 1000 } : {}),
+            ...(result.rttMs !== undefined ? { rttMs: result.rttMs } : {}),
+            ...(result.lossPct !== undefined ? { upLossPct: result.lossPct } : {}),
+        });
+    }
+    let connectionCheckText = $derived.by(() => {
+        if (connectionCheck === "running") return $QL.connectionCheckRunning();
+        if (connectionCheck === undefined) return $QL.connectionCheckHint();
+        const kbps = connectionCheck.uploadKbps ?? 0;
+        switch (connectionCheck.verdict) {
+            case "share":
+                return $QL.connectionCheckShare({ kbps });
+            case "voice":
+                return $QL.connectionCheckVoice({ kbps });
+            case "slow":
+                return $QL.connectionCheckSlow({ ms: connectionCheck.rttMs ?? 0 });
+            case "weak":
+                return $QL.connectionCheckWeak({ kbps });
+            case "hidden":
+                return $QL.connectionCheckHidden();
+            default:
+                return $QL.connectionCheckFailed();
+        }
+    });
 
     // The dock's trays ask for their own tab; anything else opens on Audio.
     let tab = $state<QuantaSettingsTab>(untrack(() => initialTab) ?? get(quantaSettingsTabStore));
@@ -621,6 +661,23 @@
                                 />
                             </div>
                         {:else if tab === "video"}
+                            <div class="qs-row">
+                                <div>
+                                    <span>{$QL.connectionCheckTitle()}</span>
+                                    <small
+                                        class:warn={connectionCheck !== undefined &&
+                                            connectionCheck !== "running" &&
+                                            connectionCheck.verdict !== "share"}
+                                        aria-live="polite">{connectionCheckText}</small
+                                    >
+                                </div>
+                                <button
+                                    type="button"
+                                    class="qs-check"
+                                    disabled={connectionCheck === "running"}
+                                    onclick={checkConnection}>{$QL.connectionCheckRun()}</button
+                                >
+                            </div>
                             <h3>{$LL.actionbar.subtitle.camera()}</h3>
                             {#if $cameraListStore && $cameraListStore.length > 0}
                                 <div class="qs-block">
@@ -1120,6 +1177,28 @@
 
     .qs-row small.warn {
         color: #f2b8b5;
+    }
+
+    .qs-check {
+        flex-shrink: 0;
+        height: 36px;
+        padding: 0 16px;
+        border: 1px solid var(--qs-line);
+        border-radius: 18px;
+        background: transparent;
+        color: var(--qs-text);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .qs-check:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .qs-check:disabled {
+        opacity: 0.5;
+        cursor: default;
     }
 
     .qs-lead {

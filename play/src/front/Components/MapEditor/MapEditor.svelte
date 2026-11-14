@@ -15,6 +15,7 @@
     import ConfigureMyRoom from "./WAMSettingsEditor.svelte";
     import MapEditorResizeHandle from "./MapEditorResizeHandle.svelte";
     import { mapEditorSideBarWidthStore } from "./MapEditorSideBarWidthStore";
+    import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
 
     let mapEditor: HTMLElement;
 
@@ -36,12 +37,32 @@
         const width = Math.min($windowSize.width / 2, Math.max(200, $mapEditorSideBarWidthStore));
         mapEditor.style.width = `${width}px`;
     });
+
+    // quanta: a room opened on its own draws WA's chat over its right side (inside the platform it is a column the
+    // room is fitted beside, quanta-ui.css): the editor stands beside it, not under it. Measured while the editor is
+    // open, as the chat comes, goes and is resized.
+    let container: HTMLDivElement;
+    onMount(() => {
+        if (!QUANTA_UI) return;
+        const place = () => {
+            const box = document.querySelector<HTMLElement>("#chat.chatWindow")?.getBoundingClientRect();
+            const over =
+                box && box.width > 0 && !document.documentElement.classList.contains("quanta-platform-panel")
+                    ? Math.max(0, window.innerWidth - box.left)
+                    : 0;
+            container.style.setProperty("--quanta-chat-over", `${Math.round(over)}px`);
+        };
+        place();
+        const timer = setInterval(place, 400);
+        return () => clearInterval(timer);
+    });
 </script>
 
 {#if $mapEditorSelectedToolStore === EditorToolName.WAMSettingsEditor}
     <ConfigureMyRoom />
 {/if}
 <div
+    bind:this={container}
     id="map-editor-container"
     class="z-[500] flex flex-row items-start justify-end gap-4 absolute h-full max-w-full md:max-w-[calc(100%-18px)] top-0 end-0 pointer-events-none"
 >

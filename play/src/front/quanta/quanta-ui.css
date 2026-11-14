@@ -367,7 +367,8 @@ html.quanta-ui .toast-container .buttons-wrapper {
     justify-content: safe flex-end;
     flex-wrap: wrap;
     gap: 4px;
-    padding: 8px 10px 8px 0;
+    /* The last button as far from the card's end as from its top and bottom. */
+    padding: 8px 8px 8px 0;
     background: transparent;
 }
 
@@ -487,7 +488,12 @@ html.quanta-ui #chat [data-testid="messageInput"] {
 }
 
 html.quanta-ui #chat [data-testid="messageInput"]:empty::before {
+    /* One line, cut short in a narrow column: wrapped, it made the box taller and the messages above jump. */
+    display: block;
+    overflow: hidden;
     color: #a7adb7;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* The box keeps saying who reads the message until something is typed, focus or not (WA blanks it on focus, which
@@ -562,7 +568,8 @@ html.quanta-ui #chat.quanta-side-chat li > #message > div > div {
 }
 
 /* A row keeps a gutter beside its bubble narrower than WorkAdventure's 50 px, wide enough for the folded actions. In
-   a narrow column the avatar is smaller too, so others' bubbles don't wrap a word a line. */
+   a column narrower than the platform lets anyone drag it (280 px, side-panel-width.ts) the avatar is smaller too, so
+   others' bubbles don't wrap a word a line; at 300 px a drag crossed it and the whole chat reflowed under the pointer. */
 html.quanta-ui #chat.quanta-side-chat {
     container: quanta-chat / inline-size;
 }
@@ -571,7 +578,7 @@ html.quanta-ui #chat.quanta-side-chat li > #message > div {
     max-width: calc(100% - 34px) !important;
 }
 
-@container quanta-chat (max-width: 300px) {
+@container quanta-chat (max-width: 279px) {
     html.quanta-ui #chat.quanta-side-chat li > #message:not(.self-end) > div {
         gap: 6px;
         padding-left: 4px;
@@ -679,8 +686,10 @@ html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions > button {
     padding: 4px;
 }
 
+/* Kept up for keyboard focus only: a button pressed and then slid off keeps the focus, and with :focus-within its bar
+   stayed up beside the one now hovered. */
 html.quanta-ui #chat.quanta-side-chat li:hover .quanta-chat-actions,
-html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions:focus-within {
+html.quanta-ui #chat.quanta-side-chat .quanta-chat-actions:has(:focus-visible) {
     opacity: 1;
     pointer-events: auto;
 }
@@ -1632,7 +1641,7 @@ html.quanta-ui #map-editor-right {
     /* WA sets the width once, from its own resize: a room made narrower around it (beside a lesson) would end up
        all panel. The window's insets, the tool column and its gap, and 200px of map (enough for a notice) stay in
        sight. MainLayout.svelte reserves the same width. */
-    max-width: max(200px, calc(100vw - 328px));
+    max-width: max(200px, calc(100vw - 328px - var(--quanta-chat-map, 0px) - var(--quanta-chat-over, 0px)));
 }
 
 html.quanta-ui #map-editor-right .sidebar {
@@ -1677,7 +1686,10 @@ html.quanta-ui #map-editor-container:not(:has(#map-editor-right .sidebar)) .side
     margin-right: 24px;
 }
 
+/* Beside an open chat, not under it, where its panel was cut off: the platform's column (sidePanel.ts), or WA's own
+   chat over a room opened on its own (MapEditor.svelte measures it). */
 html.quanta-ui #map-editor-container {
+    right: calc(var(--quanta-chat-map, 0px) + var(--quanta-chat-over, 0px));
     max-height: calc(100dvh - 96px);
 }
 

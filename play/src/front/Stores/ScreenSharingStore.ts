@@ -221,11 +221,15 @@ export const screenSharingLocalStreamStore = derived<Readable<MediaStreamConstra
                 // advisory in some browsers, and the Electron capture path does not go through them.
                 const videoTrack = stream.getVideoTracks()[0];
                 if (videoTrack) {
+                    const limits = screenShareMaxResolution[get(screenShareQualityStore)];
                     try {
-                        await videoTrack.applyConstraints(screenShareMaxResolution[get(screenShareQualityStore)]);
+                        await videoTrack.applyConstraints(limits);
                     } catch (e) {
-                        // Not fatal: we simply keep the native resolution.
-                        console.warn("Could not cap the screen sharing resolution", e);
+                        // quanta: a browser refusing the frame rate cap fails the whole call: keep the size cap at least.
+                        await videoTrack.applyConstraints({ width: limits.width, height: limits.height }).catch(() => {
+                            // Not fatal: we simply keep the native resolution.
+                        });
+                        console.warn("Could not cap the screen sharing resolution or frame rate", e);
                     }
                 }
 

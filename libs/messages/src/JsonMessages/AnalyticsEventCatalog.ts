@@ -1416,9 +1416,28 @@ export const ANALYTICS_EVENTS = {
         .describe(
           "true: LiveKit has rated this client's own link Poor or Lost for a few seconds, so incoming cameras drop to their lowest layer and its own camera sends at most 180p. false: the link has been good again for a while and video is back.",
         ),
+      reason: z
+        .enum(["livekit_quality", "sender_rtt", "sender_loss"])
+        .optional()
+        .describe(
+          "What judged the link: LiveKit's rating, or this browser's own sender stats (a long round trip, or loss the server reports).",
+        ),
     }),
     description:
       "Quanta: the call stepped video down to keep audio on a weak link of this client's own, or back up once it recovered.",
+  }),
+
+  "media.connection_check.finished": event({
+    properties: z.object({
+      reason: z
+        .enum(["share", "voice", "slow", "weak", "failed"])
+        .describe("What the link is good for: a clear screen share, voice only, too slow (a second or more of delay), too weak, or the check could not run."),
+      availableOutgoingBitrate: z.number().optional().describe("Upload the check reached, in bit/s."),
+      rttMs: z.number().optional().describe("Median round trip through the relay."),
+      upLossPct: z.number().optional().describe("Share of the test's packets lost on the way up."),
+    }),
+    description:
+      "Quanta: someone ran Check connection in the room's settings (a 12 s test picture through the TURN relay).",
   }),
 
   "media.remote_audio.missing": event({

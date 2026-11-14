@@ -1,6 +1,6 @@
 // quanta: what someone whose own link is weak (WeakConnection.ts) is told, and how often, in the blue notice above the
 // dock (OnAirStrip). A presenter sharing their screen hears about the share (it is what suffers most, and teachers are
-// pointed at the whiteboard, which sends drawings rather than video); anyone else, once as the link turns weak and at
+// pointed at Present board, which sends drawings rather than video); anyone else, once as the link turns weak and at
 // most every five minutes, even across reloads, which weak links bring plenty of.
 // A link that stays weak turns a student's camera off to keep their sound (a screen share stays on), once a page: the
 // notice offers it back, and whoever turns it back on, there or in the dock, keeps it. Never staff's, nor anyone's on

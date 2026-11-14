@@ -7,13 +7,15 @@
 // Each sample also says what limited the own camera (CPU or bandwidth), the upload the browser estimates, how long
 // incoming audio waits in the jitter buffer (delay that stays), UDP or TCP, how much of the time the page's main
 // thread was blocked, and once per page the device (cores, memory, a software GPU), so a slow computer can be told
-// from a bad link.
+// from a bad link. A screen share being sent adds what it sends: bitrate, frame rate, its largest layer's size, what
+// limits it, and how much of the 20 s the weak-link cap held it (ScreenShareCap.ts).
 import type { Unsubscriber } from "svelte/store";
 import { toastStore } from "../Stores/ToastStoreSingleton";
 import { diagnosticSessionId } from "./diagnosticContext";
 import { peerConnections } from "./peerConnections";
 import { isVideoExpected } from "./videoExpectations";
 import { pageLeaving, watchPageLeave } from "./pageLeave";
+import { isShareTrack, takeShareCappedMs } from "../Livekit/ShareStats";
 
 const SAMPLE_MS = 20_000;
 /** ConnectionManager's id for the "Connection lost" toast. */
@@ -30,6 +32,9 @@ interface OutboundCounters {
 
 /** Outgoing video streams' limitation counters at the last sample, by stats id. */
 type PreviousOutbound = WeakMap<RTCPeerConnection, Map<string, OutboundCounters>>;
+
+/** An outgoing screen share layer's bytes at the last sample, by stats id. */
+type PreviousShare = WeakMap<RTCPeerConnection, Map<string, { at: number; bytes: number }>>;
 
 interface Counters {
     identity: string;
@@ -55,6 +60,7 @@ export async function sampleCallStats(
     connections: Set<RTCPeerConnection>,
     previous: Previous,
     previousOutbound: PreviousOutbound = new WeakMap(),
+    previousShare: PreviousShare = new WeakMap(),
 ) {
     let upLoss = 0;
     let media = false;
@@ -74,6 +80,10 @@ export async function sampleCallStats(
     let limitedTotal = 0;
     let outgoingBitrate: number | undefined;
     let protocol: "udp" | "tcp" | undefined;
+    // This browser's screen share as sent: all its layers' bits, and its largest layer's size, rate and limit.
+    let shareBits = 0;
+    let shareSeconds = 0;
+    let shareTop: { width: number; height: number; fps?: number; limitation?: string } | undefined;
     for (const pc of connections) if (pc.connectionState === "closed") connections.delete(pc);
     const live = [...connections].filter((pc) => pc.connectionState === "connected");
     const all = await Promise.allSettled(live.map(async (pc) => [pc, await pc.getStats()] as const));
@@ -84,9 +94,33 @@ export async function sampleCallStats(
         const now = new Map<string, Counters>();
         const outboundBefore = previousOutbound.get(pc);
         const outboundNow = new Map<string, OutboundCounters>();
+        const shareBefore = previousShare.get(pc);
+        const shareNow = new Map<string, { at: number; bytes: number }>();
         let pairId: string | undefined;
         stats.forEach((report: RTCStats & Record<string, unknown>) => {
             if (report.type === "outbound-rtp" || report.type === "inbound-rtp") media = true;
+            if (report.type === "outbound-rtp" && report.kind === "video" && typeof report.mediaSourceId === "string") {
+                const source = stats.get(report.mediaSourceId) as Record<string, unknown> | undefined;
+                if (isShareTrack(source?.trackIdentifier) && finite(report.bytesSent) && finite(report.timestamp)) {
+                    shareNow.set(report.id, { at: report.timestamp, bytes: report.bytesSent });
+                    const last = shareBefore?.get(report.id);
+                    if (last && report.timestamp > last.at && report.bytesSent >= last.bytes) {
+                        shareBits += (report.bytesSent - last.bytes) * 8;
+                        shareSeconds = Math.max(shareSeconds, (report.timestamp - last.at) / 1000);
+                    }
+                    const width = finite(report.frameWidth) ? report.frameWidth : 0;
+                    if (report.active !== false && width > 0 && width > (shareTop?.width ?? 0))
+                        shareTop = {
+                            width,
+                            height: finite(report.frameHeight) ? report.frameHeight : 0,
+                            fps: finite(report.framesPerSecond) ? report.framesPerSecond : undefined,
+                            limitation:
+                                typeof report.qualityLimitationReason === "string"
+                                    ? report.qualityLimitationReason
+                                    : undefined,
+                        };
+                }
+            }
             if (report.type === "outbound-rtp" && report.kind === "video") {
                 const durations = report.qualityLimitationDurations as Record<string, unknown> | undefined;
                 if (durations && typeof durations === "object") {
@@ -197,6 +231,7 @@ export async function sampleCallStats(
         });
         previous.set(pc, now);
         previousOutbound.set(pc, outboundNow);
+        previousShare.set(pc, shareNow);
         const pair = (pairId ? stats.get(pairId) : undefined) as (RTCStats & Record<string, unknown>) | undefined;
         if (pair && finite(pair.currentRoundTripTime) && pair.currentRoundTripTime >= 0)
             rtts.push(pair.currentRoundTripTime * 1000);
@@ -232,6 +267,17 @@ export async function sampleCallStats(
         bandwidthLimitedRatio: limitedTotal > 0 ? round3(limitedBandwidth / limitedTotal) : undefined,
         availableOutgoingBitrate: outgoingBitrate !== undefined ? Math.round(outgoingBitrate) : undefined,
         candidateProtocol: protocol,
+        ...(shareTop
+            ? {
+                  shareKbps: shareSeconds > 0 ? Math.round(shareBits / shareSeconds / 1000) : undefined,
+                  shareFps: shareTop.fps,
+                  shareWidth: shareTop.width,
+                  shareHeight: shareTop.height,
+                  shareLimitation: ["none", "cpu", "bandwidth", "other"].includes(shareTop.limitation ?? "")
+                      ? shareTop.limitation
+                      : undefined,
+              }
+            : {}),
     };
 }
 
@@ -314,22 +360,29 @@ export function startCallStats(post: Post): Unsubscriber {
     watchPageLeave();
     const previous: Previous = new WeakMap();
     const previousOutbound: PreviousOutbound = new WeakMap();
+    const previousShare: PreviousShare = new WeakMap();
     const longTasks = watchLongTasks();
     let sampling = false;
     let stopped = false;
     const timer = window.setInterval(() => {
         if (sampling || stopped) return;
         sampling = true;
-        sampleCallStats(peerConnections, previous, previousOutbound)
+        sampleCallStats(peerConnections, previous, previousOutbound, previousShare)
             .then((call) => {
                 // Read every interval, in a call or not, so a sample covers only its own 20 s.
                 const longTaskRatio = longTasks.read();
+                const shared = takeShareCappedMs();
+                // A skipped or late sample covers more than 20 s.
+                const shareCappedRatio = Math.min(1, shared.cappedMs / Math.max(SAMPLE_MS, shared.elapsedMs ?? SAMPLE_MS));
                 if (call && !stopped)
                     post({
                         type: "quanta_wa_call",
                         ...call,
                         ...deviceInfo(),
                         ...(longTaskRatio !== undefined ? { longTaskRatio } : {}),
+                        ...(call.shareWidth !== undefined
+                            ? { shareCappedRatio: round3(shareCappedRatio) }
+                            : {}),
                     });
             })
             .catch(() => undefined)

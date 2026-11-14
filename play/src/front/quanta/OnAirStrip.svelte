@@ -38,6 +38,9 @@
         weakLink?: WeakLinkNotice;
         oncameraon?: () => void;
         ondismissweaklink?: () => void;
+        /** The page can present a board now: a weak share's notice to staff offers it (presentBoardBridge.ts). */
+        presentBoard?: boolean;
+        onpresentboard?: () => void;
         noticesHidden?: boolean;
         /** Free ground beside the dock (QuantaDock.svelte): the notices stand there when they fit it, above the dock if not. */
         ground?: { side: "left" | "right"; width: number; maxHeight: number };
@@ -61,6 +64,8 @@
         weakLink = undefined,
         oncameraon = () => {},
         ondismissweaklink = () => {},
+        presentBoard = false,
+        onpresentboard = () => {},
         noticesHidden = false,
         ground = undefined,
     }: Props = $props();
@@ -136,8 +141,12 @@
                 tone={weakLink?.kind === "cameraOff" && weakLink.better ? "action" : "problem"}
                 icon={weakLink?.kind === "cameraOff" && weakLink.better ? "videocam" : "wifiOff"}
                 text={weakLinkText}
-                action={weakLink?.kind === "cameraOff" ? $QL.cameraOn() : undefined}
-                onaction={oncameraon}
+                action={weakLink?.kind === "cameraOff"
+                    ? $QL.cameraOn()
+                    : weakLink?.kind === "share" && staff && presentBoard
+                      ? $QL.presentBoardInstead()
+                      : undefined}
+                onaction={weakLink?.kind === "cameraOff" ? oncameraon : onpresentboard}
                 ondismiss={ondismissweaklink}
                 testid="quanta-weak-link"
             />

@@ -259,7 +259,9 @@
                 restoreScrollAnchor();
                 return;
             }
-            if (autoScroll) scrollToMessageListBottom();
+            // quanta: at once, or the "invisible" repositioning animates, and a chat being resized trails its
+            // own bottom on every step of the drag.
+            if (autoScroll) scrollToMessageListBottom(QUANTA_UI ? "instant" : "smooth");
         });
         syncContentResizeObservations();
 

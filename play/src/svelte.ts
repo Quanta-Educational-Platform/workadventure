@@ -21,6 +21,7 @@ import { startRoomBridge } from "./front/quanta/roomBridge";
 import { startEmojiCentre } from "./front/quanta/emojiCentre";
 import { startStagingOverlay } from "./front/quanta/stagingOverlay";
 import { startPageMenu } from "./front/quanta/pageMenu";
+import { startPresentBoardBridge } from "./front/quanta/presentBoardBridge";
 
 // Initialize E2E hooks
 declare global {
@@ -37,6 +38,7 @@ if (QUANTA_UI) {
     startEmojiCentre();
     startStagingOverlay();
     startPageMenu();
+    startPresentBoardBridge();
 }
 
 const app = mount(App, {

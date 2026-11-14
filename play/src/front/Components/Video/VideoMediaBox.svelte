@@ -28,6 +28,8 @@
     import { fullNamesStore, shownName } from "../../quanta/fullNames";
     import { tileName, tileNamesStore } from "../../quanta/layout";
     import { QL } from "../../quanta/i18n";
+    import { weakConnectionStore as ownWeakConnectionStore } from "../../Livekit/WeakConnection";
+    import { LOCAL_SCREEN_SHARING_STREAM_ID } from "../../Space/Streamable";
     import ActionMediaBox from "./ActionMediaBox.svelte";
     import RaisedHandBadge from "./RaisedHandBadge.svelte";
     import UserName from "./UserName.svelte";
@@ -73,7 +75,6 @@
     let volumeMeterStore = $derived(streamable?.volumeStore);
     let showVoiceIndicatorStore = $derived(streamable?.showVoiceIndicator);
     let weakConnectionStore = $derived(streamable?.weakConnection);
-    let weakConnection = $derived(weakConnectionStore ? $weakConnectionStore : false);
     let isBlockedStore = $derived(streamable?.media?.isBlocked);
     let mediaStreamStore = $derived(
         streamable?.media.type === "webrtc" || streamable?.media.type === "livekit"
@@ -100,6 +101,12 @@
 
     // Check if this is the local user's video box
     let isLocalUser = $derived(videoBox.uniqueId === "-1" || extendedSpaceUser?.spaceUserId === "local");
+    // quanta: one's own camera and screen share carry one's own link, so a teacher sees what students see by their name.
+    // (The megaphone listener box and map videos are "local" too, but they are not one's own picture.)
+    let isOwnPicture = $derived(videoBox.uniqueId === "-1" || videoBox.uniqueId === LOCAL_SCREEN_SHARING_STREAM_ID);
+    let weakConnection = $derived(
+        isOwnPicture ? $ownWeakConnectionStore : weakConnectionStore ? $weakConnectionStore : false,
+    );
     // The local tile's space user is a placeholder ("local"): its raised hand is queued under our real spaceUserId.
     let raisedHandSpaceUserId = $derived(
         isLocalUser ? (gameManager.getCurrentGameScene().connection?.getSpaceUserId() ?? "") : videoBox.uniqueId,
@@ -477,8 +484,8 @@
                                     <span
                                         class="flex shrink-0 text-amber-300"
                                         role="img"
-                                        title={$QL.weakConnectionTile()}
-                                        aria-label={$QL.weakConnectionTile()}
+                                        title={isOwnPicture ? $QL.weakConnectionSelf() : $QL.weakConnectionTile()}
+                                        aria-label={isOwnPicture ? $QL.weakConnectionSelf() : $QL.weakConnectionTile()}
                                         data-testid="weakConnectionBadge"
                                     >
                                         <IconAntennaBarsLow font-size={16} />

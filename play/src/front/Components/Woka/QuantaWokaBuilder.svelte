@@ -105,7 +105,9 @@
             {/each}
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto pr-1">
+        <!-- The ring round the chosen colour reaches 4px past its swatch: the scroller keeps that much room on every side
+             (taken back by its margins), or it cut the ring off at its left and top edges. -->
+        <div class="flex-1 min-h-0 overflow-y-auto -mx-1 -mt-1 pl-1 pt-1 pr-2">
             {#if part !== "skin"}
                 <div role="radiogroup" class="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-2 mb-4">
                     {#if layer.optional}

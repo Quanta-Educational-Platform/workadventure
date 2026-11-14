@@ -22,6 +22,7 @@
     import { enableCameraSceneVisibilityStore } from "../../../Stores/MediaStore";
     import type { RightMenuItem } from "../../../Stores/MenuStore";
     import {
+        mapEditorMenuVisibleStore,
         openedMenuStore,
         rightActionBarMenuItems,
         showMenuItem,
@@ -38,6 +39,9 @@
     import { canViewAsStudentStore, setStudentView, studentViewStore } from "../../../quanta/studentView";
     import { stopSpeakingToClass } from "../../../quanta/speakingToClass";
     import { QL } from "../../../quanta/i18n";
+    import { mapEditorModeStore } from "../../../Stores/MapEditorStore";
+    import { EditorToolName } from "../../../Phaser/Game/MapEditor/MapEditorModeManager";
+    import { IconMapEditor } from "@wa-icons";
     import { dockFoldedStore } from "../../../quanta/dockFold";
     import { pageMenuStore } from "../../../quanta/pageMenu";
     import DockFoldedItems from "../../../quanta/DockFoldedItems.svelte";
@@ -301,6 +305,22 @@
                 }}
             >
                 <MegaphoneIcon />
+            </ActionBarButton>
+        {/if}
+
+        <!-- quanta: the map editor for whoever may edit this room; its usual places (the right bar, Explore) are not in a class -->
+        {#if QUANTA_UI && $mapEditorMenuVisibleStore}
+            <ActionBarButton
+                label={$LL.actionbar.mapEditor()}
+                dataTestId="quanta-map-editor"
+                onclick={() => {
+                    analyticsClient.trackAdminEvent("map_editor.opened");
+                    mapEditorModeStore.switchMode(true);
+                    gameManager.getCurrentGameScene().getMapEditorModeManager()?.equipTool(EditorToolName.EntityEditor);
+                    openedMenuStore.close("profileMenu");
+                }}
+            >
+                <IconMapEditor font-size="22" />
             </ActionBarButton>
         {/if}
 

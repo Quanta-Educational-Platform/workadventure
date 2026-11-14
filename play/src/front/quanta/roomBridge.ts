@@ -2,7 +2,7 @@
 // cover up until then, over the sign-in redirects) and when WA shows an error screen; the platform times joins with
 // both. And the microphone's and camera's state, which the platform's minimized room can turn on and off; whether
 // they are on as the user enters, from their settings; and keeps the camera on while alone; and whether something is
-// open over the map (roomOverlay.ts); and hears that the platform's header shows the recording (recordingIndicator.ts).
+// open over the map (roomOverlay.ts), and whether the map is on screen at all; and hears that the platform's header shows the recording (recordingIndicator.ts).
 // Only inside the platform's frame.
 import { AvailabilityStatus } from "@workadventure/messages";
 import { derived, get } from "svelte/store";
@@ -32,6 +32,7 @@ import { startCallStats } from "./callStats";
 import { pageLeaving, watchPageLeave } from "./pageLeave";
 import { quantaCameraAwakeStore } from "./cameraAwake";
 import { roomOverlayStore } from "./roomOverlay";
+import { roomControlsVisibleStore } from "./roomControlsVisible";
 import { dockGuttersStore, dockSizeStore } from "./dockBar";
 import { startPhoneShareFullScreen } from "./phoneShare";
 import { platformShowsRecording, roomRecordingStateStore } from "./recordingIndicator";
@@ -140,6 +141,10 @@ export function startRoomBridge(): void {
     mediaStore.subscribe((media) => post({ type: "quanta_wa_media", ...media }));
     // eslint-disable-next-line svelte/no-ignored-unsubscribe
     roomOverlayStore.subscribe((open) => post({ type: "quanta_wa_overlay", open }));
+    // Whether the map is on screen at all, not a screen of the room's own over it (the avatar or camera screen, an
+    // error): the platform's handle at the edge of a chat column the room draws is not left over such a screen.
+    // eslint-disable-next-line svelte/no-ignored-unsubscribe
+    roomControlsVisibleStore.subscribe((room) => post({ type: "quanta_wa_screen", room }));
     // eslint-disable-next-line svelte/no-ignored-unsubscribe
     dockSizeStore.subscribe((size) => {
         if (size) post({ type: "quanta_wa_dock", ...size });

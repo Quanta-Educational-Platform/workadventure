@@ -15,13 +15,20 @@ import type { GameScene } from "../Game/GameScene";
 import { Companion } from "../Companion/Companion";
 import { CharacterTextureError } from "../../Exception/CharacterTextureError";
 import { getPlayerAnimations, PlayerAnimationTypes } from "../Player/Animation";
-import { getSheetAnimations, isSheetFrameCount, sheetAnimationKey } from "../Player/WokaSheet";
+import {
+    getSheetAnimations,
+    isSheetFrameCount,
+    seatedColumnsOf,
+    seatedFrame,
+    sheetAnimationKey,
+    stillFrame,
+} from "../Player/WokaSheet";
 import { directionOfFacing, FacingTracker } from "../../quanta/wokaFacing";
 import { ProtobufClientUtils } from "../../Network/ProtobufClientUtils";
 import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
 
 import { UsernameDisplay } from "../Components/UsernameDisplay";
-import type { SeatPose } from "../../quanta/seats";
+import { SIT_MS, STAND_MS, type SeatPlacement } from "../../quanta/seats";
 import { lazyLoadPlayerCharacterTextures } from "./PlayerTexturesLoadingManager";
 import { SpeechBubble } from "./SpeechBubble";
 import { SpeechDomElement } from "./SpeechDomElement";
@@ -54,6 +61,18 @@ export type PathFollowResult = {
      * mid-walk); the character stopped just before the blocking tile.
      */
     blocked?: boolean;
+};
+
+/** quanta: how a seated woka's sprites are moved from its position and cut at the legs. */
+type SeatOffsets = { x: number; y: number; crop: number };
+/** quanta: and which frame they show, mirrored or not. */
+type SeatLook = SeatOffsets & { frame: number; flip: boolean };
+/** quanta: an old (3 x 4) sheet's standing stills: rows down, left, right, up. */
+const OLD_STILL_FRAME: Partial<Record<PositionMessage_Direction, number>> = {
+    [PositionMessage_Direction.DOWN]: 1,
+    [PositionMessage_Direction.LEFT]: 4,
+    [PositionMessage_Direction.RIGHT]: 7,
+    [PositionMessage_Direction.UP]: 10,
 };
 
 /** quanta: a path walked at `cruise` pixels a second, reaching it and stopping from it over `ramp` seconds. */
@@ -107,8 +126,11 @@ export abstract class Character extends Container implements OutlineableInterfac
     private pathEase?: PathEase & { length: number; elapsed: number };
     private currentPathSegmentDistanceFromStart = 0;
     private pathFollowingResolve?: (result: PathFollowResult) => void;
-    // quanta: the seat it is on (quanta/seats.ts) and how it is drawn there.
-    private seat: { id: string; pose: SeatPose } | undefined;
+    // quanta: the seat it is on (quanta/seats.ts), and how far its sprites are moved and cut at the legs there:
+    // eased in on sitting down and out on standing up.
+    private seat: SeatPlacement | undefined;
+    private seatDrawn: SeatOffsets = { x: 0, y: 0, crop: 0 };
+    private seatMotion: Tween | undefined;
     // quanta: true when every layer is a new sheet, with eight facings and seated frames.
     private eightWay = false;
     protected readonly facing = new FacingTracker(PositionMessage_Direction.DOWN);
@@ -421,45 +443,121 @@ export abstract class Character extends Container implements OutlineableInterfac
         this.eightWay = [...this.sprites.values()].every((sprite) =>
             isSheetFrameCount(sprite.texture.getFrameNames().length),
         );
-        this.applySeatPose();
+        if (this.seat) {
+            // Seated before its sheets arrived: straight into the pose its sheets give.
+            const look = this.seatLook(this.seat);
+            this.showSeatFrame(look);
+            this.seatMotion?.stop();
+            this.seatMotion = undefined;
+            this.setPosition(this.seat.x, this.seat.y);
+            this.seatDrawn = { x: look.x, y: look.y, crop: look.crop };
+        }
+        this.drawSeatOffsets();
     }
 
     public get seatId(): string | undefined {
         return this.seat?.id;
     }
 
-    /** quanta: drawn on a seat, facing its way: on its seated frames, or, without any, legless and lowered onto it. */
-    public sitOn(id: string, x: number, y: number, direction: PositionMessage_Direction, pose: SeatPose): void {
-        this.seat = { id, pose };
+    /** quanta: still sliding onto its seat. */
+    public get seatSettling(): boolean {
+        return this.seat !== undefined && this.seatMotion !== undefined;
+    }
+
+    /**
+     * quanta: sits on a seat, facing its way: on its own seated frame, or, without one, its standing frame cut at the
+     * legs. It slides onto the seat's spot and settles into the pose in one short ease.
+     */
+    public sitOn(seat: SeatPlacement, animate = true): void {
+        if (this.isFollowingPath()) this.finishFollowingPath(true);
+        this.seat = seat;
         this.getBody().setVelocity(0, 0);
-        this._lastDirection = direction;
-        this.facing.reset(direction);
-        this.setPosition(x, y);
-        this.playAnimation(direction, false);
-        this.applySeatPose();
+        this._lastDirection = directionOfFacing(seat.facing);
+        this.facing.reset(this._lastDirection, seat.facing);
+        const look = this.seatLook(seat);
+        this.showSeatFrame(look);
+        this.easeSeatDrawing({ x: seat.x, y: seat.y }, look, animate ? SIT_MS : 0);
     }
 
     public standUp(): void {
         if (!this.seat) return;
         this.seat = undefined;
-        if (this.eightWay) this.playAnimation(this._lastDirection, false);
-        this.applySeatPose();
-        this.updateUsernameDisplayPosition();
+        for (const sprite of this.sprites.values()) sprite.setFlipX(false);
+        this.playAnimation(this._lastDirection, false);
+        this.easeSeatDrawing(undefined, { x: 0, y: 0, crop: 0 }, STAND_MS);
     }
 
-    private get seatDrawing(): { offsetX: number; offsetY: number; cropBottom: number } | undefined {
-        const pose = this.seat?.pose;
-        if (!pose) return undefined;
-        return this.eightWay ? pose.sheet : { offsetX: 0, offsetY: pose.offsetY, cropBottom: pose.cropBottom };
+    private seatLook(seat: SeatPlacement): SeatLook {
+        const { frame, standing } = seat.pose;
+        if (this.eightWay) {
+            const bottom = this.sprites.values().next().value;
+            if (bottom && seatedColumnsOf(this.scene.textures, bottom.texture.key) & (1 << frame.column)) {
+                return { frame: seatedFrame(frame.column), flip: frame.flip, x: frame.x, y: frame.y, crop: 0 };
+            }
+            const still = stillFrame(seat.facing);
+            return { frame: still, flip: false, x: standing.x, y: standing.y, crop: standing.cropBottom };
+        }
+        const still = OLD_STILL_FRAME[standing.direction] ?? 1;
+        return { frame: still, flip: false, x: standing.x, y: standing.y, crop: standing.cropBottom };
     }
 
-    private applySeatPose(): void {
-        const drawing = this.seatDrawing;
+    private showSeatFrame(look: SeatLook): void {
         for (const sprite of this.sprites.values()) {
-            sprite.setX(drawing?.offsetX ?? 0);
-            sprite.setY(drawing?.offsetY ?? 0);
-            if (drawing?.cropBottom) sprite.setCrop(0, 0, sprite.width, sprite.height - drawing.cropBottom);
-            else sprite.setCrop();
+            sprite.anims?.stop();
+            sprite.setFrame(look.frame);
+            sprite.setFlipX(look.flip);
+        }
+    }
+
+    /** The slide onto a seat (`to`) and the sprites' move and cut, eased from where they are now. */
+    private easeSeatDrawing(to: { x: number; y: number } | undefined, target: SeatOffsets, duration: number): void {
+        this.seatMotion?.stop();
+        this.seatMotion = undefined;
+        const from = { ...this.seatDrawn };
+        const start = { x: this.x, y: this.y };
+        const finish = () => {
+            this.seatMotion = undefined;
+            if (to) this.setPosition(to.x, to.y);
+            this.seatDrawn = { x: target.x, y: target.y, crop: target.crop };
+            this.drawSeatOffsets();
+            // The room draws a frame only while something moves or tweens, and the finished ease has already left the
+            // tween list: without this, the last step stays undrawn (on a slow device, the whole slide).
+            this.scene.markDirty();
+        };
+        if (duration <= 0 || this.destroyed) {
+            finish();
+            return;
+        }
+        const motion = this.scene.tweens.addCounter({
+            from: 0,
+            to: 1,
+            duration,
+            ease: "Cubic.easeOut",
+            onUpdate: (tween) => {
+                const k = tween.getValue() ?? 1;
+                if (to) this.setPosition(start.x + (to.x - start.x) * k, start.y + (to.y - start.y) * k);
+                this.seatDrawn = {
+                    x: from.x + (target.x - from.x) * k,
+                    y: from.y + (target.y - from.y) * k,
+                    crop: from.crop + (target.crop - from.crop) * k,
+                };
+                this.drawSeatOffsets();
+            },
+            onComplete: () => {
+                if (this.seatMotion === motion) finish();
+            },
+        });
+        this.seatMotion = motion;
+    }
+
+    private drawSeatOffsets(): void {
+        const x = Math.round(this.seatDrawn.x);
+        const y = Math.round(this.seatDrawn.y);
+        const crop = Math.round(this.seatDrawn.crop);
+        for (const sprite of this.sprites.values()) {
+            sprite.setPosition(x, y);
+            if (crop > 0) sprite.setCrop(0, 0, sprite.width, sprite.height - crop);
+            else if (sprite.isCropped) sprite.setCrop();
         }
         this.updateUsernameDisplayPosition();
     }
@@ -471,18 +569,16 @@ export abstract class Character extends Container implements OutlineableInterfac
 
     protected playAnimation(direction: PositionMessage_Direction, moving: boolean): void {
         if (this.invisible) return;
+        if (this.seat) {
+            this.showSeatFrame(this.seatLook(this.seat));
+            return;
+        }
         for (const [texture, sprite] of this.sprites.entries()) {
             if (!sprite.anims) {
                 console.error("ANIMS IS NOT DEFINED!!!");
                 return;
             }
             if (this.eightWay) {
-                const frame = this.seat?.pose.sheet.frame;
-                if (frame !== undefined) {
-                    sprite.anims.stop();
-                    sprite.setFrame(frame);
-                    continue;
-                }
                 const facing = this.facing.shown(direction, moving, this.scene.time.now);
                 const type = moving ? PlayerAnimationTypes.Walk : PlayerAnimationTypes.Idle;
                 sprite.play(sheetAnimationKey(texture, facing, type), true);
@@ -506,7 +602,7 @@ export abstract class Character extends Container implements OutlineableInterfac
     }
 
     protected updateUsernameDisplayPosition(x = this.x, y = this.y): void {
-        this.usernameDisplay?.setPosition(x, y + playerNameY + (this.seatDrawing?.offsetY ?? 0));
+        this.usernameDisplay?.setPosition(x, y + playerNameY + Math.round(this.seatDrawn.y));
     }
 
     setPosition(x: number, y: number): this {
@@ -703,6 +799,8 @@ export abstract class Character extends Container implements OutlineableInterfac
 
     destroy(): void {
         this.usernameDisplay?.destroy();
+        this.seatMotion?.stop();
+        this.seatMotion = undefined;
         if (this.scene) {
             this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncDisplayPositionWithPhysics);
             for (const sprite of this.sprites.values()) {

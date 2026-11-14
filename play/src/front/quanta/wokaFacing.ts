@@ -144,10 +144,10 @@ export class FacingTracker {
         return this.current;
     }
 
-    /** Placed facing a given way, as on a seat. */
-    reset(direction: PositionMessage_Direction): void {
+    /** Placed facing a given way, as on a seat (which can face one of the eight). */
+    reset(direction: PositionMessage_Direction, facing: Facing = facingOfDirection(direction)): void {
         this.lastDirection = direction;
-        this.current = facingOfDirection(direction);
+        this.current = facing;
         this.lastSampleAt = -Infinity;
         this.blockedSince = undefined;
     }

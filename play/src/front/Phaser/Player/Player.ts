@@ -16,8 +16,8 @@ import { WOKA_SPEED } from "../../Enum/EnvironmentVariable";
 import { visibilityStore } from "../../Stores/VisibilityStore";
 import { passStatusToOnline } from "../../Rules/StatusRules/statusChangerFunctions";
 import { localUserStore } from "../../Connection/LocalUserStore";
-import type { SeatPose } from "../../quanta/seats";
-import { KEYS_SMOOTHING_MS } from "../../quanta/wokaFacing";
+import type { SeatPlacement } from "../../quanta/seats";
+import { directionOfFacing, KEYS_SMOOTHING_MS } from "../../quanta/wokaFacing";
 
 export const hasMovedEventName = "hasMoved";
 export const startMovingEventName = "startMoving";
@@ -28,6 +28,9 @@ export class Player extends Character {
     private isMoving = false;
     // quanta: where it was on the last step of walking, to see how far it really got.
     private lastStepAt: { x: number; y: number } | undefined;
+    // quanta: the moving keys (and joystick) held, a bit each; seated, those held when it sat do nothing until let go.
+    private heldMoves = 0;
+    private seatHold = 0;
 
     constructor(
         Scene: GameScene,
@@ -55,6 +58,18 @@ export class Player extends Character {
         const state = get(followStateStore);
         const role = get(followRoleStore);
 
+        // quanta: the key that walked it into a seat keeps it there; a new key, the joystick's new way, a click or
+        // following someone walks it off (the seat manager stands it up).
+        const held = heldMoves(activeUserInputEvents);
+        this.heldMoves = held;
+        if (this.seatId && !this.pathToFollow && !((state === "active" || state === "ending") && role === "follower")) {
+            this.seatHold &= held;
+            if ((held & ~this.seatHold) === 0) {
+                if (get(userMovingStore)) userMovingStore.set(false);
+                return;
+            }
+        }
+
         if (this.pathToFollow && activeUserInputEvents.anyExcept(UserInputEvent.SpeedUp)) {
             this.finishFollowingPath(true);
         }
@@ -76,11 +91,21 @@ export class Player extends Character {
         return this.isMoving;
     }
 
+    /** quanta: walking along a path (a click, a go-to), not by keys. */
+    public get walkingByPath(): boolean {
+        return this.pathToFollow !== undefined;
+    }
+
     /** quanta: sits and tells the room where, facing the seat's way. */
-    public sitOnSeat(id: string, x: number, y: number, direction: PositionMessage_Direction, pose: SeatPose): void {
-        this.sitOn(id, x, y, direction, pose);
-        this.companion?.setTarget(x, y, direction);
-        this.emit(hasMovedEventName, { moving: false, direction, x, y });
+    public sitOnSeat(seat: SeatPlacement): void {
+        const direction = directionOfFacing(seat.facing);
+        this.seatHold = this.heldMoves;
+        this.isMoving = false;
+        this.lastStepAt = undefined;
+        userMovingStore.set(false);
+        this.sitOn(seat);
+        this.companion?.setTarget(seat.x, seat.y, direction);
+        this.emit(hasMovedEventName, { moving: false, direction, x: seat.x, y: seat.y });
     }
 
     public rotate(): void {
@@ -331,4 +356,19 @@ export class Player extends Character {
         this.unsubscribeVisibilityStore();
         super.destroy();
     }
+}
+
+const MOVES = [
+    UserInputEvent.MoveUp,
+    UserInputEvent.MoveDown,
+    UserInputEvent.MoveLeft,
+    UserInputEvent.MoveRight,
+    UserInputEvent.JoystickMove,
+];
+
+/** quanta: the moving keys (and the joystick) held this tick, a bit each. */
+function heldMoves(events: ActiveEventList): number {
+    let held = 0;
+    for (let i = 0; i < MOVES.length; i++) if (events.get(MOVES[i])) held |= 1 << i;
+    return held;
 }
