@@ -100,6 +100,7 @@ import { estimateProximityFileTransferRemainingSeconds } from "./ProximityFileTr
 import { ProximityFileStorage } from "./ProximityFileStorage";
 import { normalizeChatImage } from "./ProximityImageNormalizer";
 import { directEntriesStore, type DirectEntry } from "../../../quanta/directEntries";
+import { conversationOf, groupMembers, isGroupConversation } from "../../../quanta/conversationKey";
 import { mentionIdsIn, type Mention } from "../../../quanta/mentions";
 import { announceMention } from "../../../quanta/mentionAlert";
 import { pinnedMessagesStore } from "../../../quanta/pinnedMessages";
@@ -256,6 +257,8 @@ export class ProximityChatRoom implements ChatRoom {
     private roomChatOutbox: RoomChatOutbox | undefined;
     /** quanta: the room's server sent its chat history at least once since this page opened. */
     private roomChatHistoryLoaded = false;
+    /** quanta: this account as the room's server knows it, from its last snapshot: a group's own member. */
+    private roomChatSelf: string | undefined;
     readonly chatMutedByTeacher = writable(false);
     /** quanta: the room server's word on what was just sent (too fast, refused), shown by the composer. */
     readonly chatNotice = writable<string | undefined>(undefined);
@@ -421,9 +424,14 @@ export class ProximityChatRoom implements ChatRoom {
         });
     }
 
-    /** quanta: a direct message to one person, through the class chat (quanta/directMessages.ts). */
+    /** quanta: a private message, through the class chat (quanta/directMessages.ts): to one person, or to a group's
+     *  people when the conversation is a group's (quanta/conversationKey.ts). */
     public sendDirectMessage(peerId: string, body: string): Promise<void> {
         if (!this.roomWide) return Promise.reject(new Error("Not the room's chat."));
+        if (isGroupConversation(peerId)) {
+            const group = groupMembers(peerId).filter((id) => id !== this.roomChatSelf);
+            return this.sendRoomChatCommand({ op: "send", body, group, mentions: mentionIdsIn(body, peerId) });
+        }
         return this.sendRoomChatCommand({ op: "send", body, to: peerId, mentions: mentionIdsIn(body, peerId) });
     }
 
@@ -440,8 +448,9 @@ export class ProximityChatRoom implements ChatRoom {
             newestId = Math.max(newestId, Number(entry.id) || 0);
             // quanta: blank bodies a pusher accepted before it checked for them.
             if (isBlankChatBody(entry.body)) continue;
+            const conversation = conversationOf(entry, snapshot.self);
             // A teacher's mute is the class chat's: a muted student still writes and reacts to a teacher directly.
-            const silenced = muted && entry.to === undefined;
+            const silenced = muted && conversation === undefined;
             const message = new ProximityChatMessage(
                 entry.id,
                 {
@@ -461,7 +470,7 @@ export class ProximityChatRoom implements ChatRoom {
             message.canReact.set(!silenced);
             message.onReact = (emoji) => this.sendRoomCommand({ op: "react", id: entry.id, emoji });
             message.mentions.set(entry.mentions ?? []);
-            if (entry.to === undefined) {
+            if (conversation === undefined) {
                 message.isPinned.set(pinned.has(entry.id));
                 message.canPin.set(snapshot.canModerate);
                 message.onPin = (on) => this.pinRoomMessage(entry.id, on);
@@ -477,15 +486,18 @@ export class ProximityChatRoom implements ChatRoom {
                 message.canEdit.set(true);
                 message.onEdit = (input) => this.editRoomMessage(entry, input);
             }
-            if (entry.to !== undefined) {
+            if (conversation !== undefined) {
                 const mine = entry.sender === snapshot.self;
-                direct.push({
-                    id: entry.id,
-                    peerId: mine ? entry.to : entry.sender,
-                    peerName: mine ? (entry.toName ?? "") : entry.name,
-                    mine,
-                    message,
-                });
+                // A group's name: its other people, as the server last named them.
+                const peerName = entry.group
+                    ? [{ id: entry.sender, name: entry.name }, ...entry.group]
+                          .filter((member) => member.id !== snapshot.self)
+                          .map((member) => member.name)
+                          .join(", ")
+                    : mine
+                      ? (entry.toName ?? "")
+                      : entry.name;
+                direct.push({ id: entry.id, peerId: conversation, peerName, mine, message });
                 continue;
             }
             classCount++;
@@ -493,7 +505,12 @@ export class ProximityChatRoom implements ChatRoom {
         }
         for (const message of attachments) this.messages.push(message);
         // A state-only update renders before the history arrives: its empty list is no baseline for what is news.
-        directEntriesStore.set({ entries: direct, newestId: this.roomChatHistoryLoaded ? newestId : undefined });
+        this.roomChatSelf = snapshot.self;
+        directEntriesStore.set({
+            entries: direct,
+            newestId: this.roomChatHistoryLoaded ? newestId : undefined,
+            self: snapshot.self,
+        });
         pinnedMessagesStore.set({
             pins: snapshot.pins ?? [],
             canPin: snapshot.canModerate,
@@ -580,13 +597,16 @@ export class ProximityChatRoom implements ChatRoom {
 
     /** quanta: the room chat's own messages are edited on the room's server, which checks the author again. */
     private editRoomMessage(
-        entry: { id: string; body: string; sender: string; to?: string },
+        entry: { id: string; body: string; sender: string; to?: string; group?: { id: string }[] },
         input: string,
     ): Promise<void> {
         const body = chatBodyFromInput(input);
         if (isBlankChatBody(body) || body.length > 4000) return Promise.reject(new Error("Blank or too long."));
         // Our own message: in a direct one, the other person is its recipient.
-        const mentions = mentionIdsIn(body, entry.to);
+        const mentions = mentionIdsIn(
+            body,
+            entry.group ? conversationOf(entry, this.roomChatSelf ?? entry.sender) : entry.to,
+        );
         // Done once the room's server took it: a refused edit keeps the editor open with the failure.
         return body !== entry.body
             ? this.sendRoomChatCommand({ op: "edit", id: entry.id, body, mentions })
@@ -1607,7 +1627,7 @@ export class ProximityChatRoom implements ChatRoom {
                     // Direct messages count in their own conversation (quanta/directMessages.ts), not the class's.
                     let newest: (typeof snapshot.messages)[number] | undefined;
                     for (let i = snapshot.messages.length - 1; i >= 0 && !newest; i--)
-                        if (snapshot.messages[i].to === undefined) newest = snapshot.messages[i];
+                        if (conversationOf(snapshot.messages[i], snapshot.self) === undefined) newest = snapshot.messages[i];
                     if (
                         lastRoomMessageId !== undefined &&
                         newest &&
@@ -1632,7 +1652,7 @@ export class ProximityChatRoom implements ChatRoom {
                             appended.sender !== snapshot.self &&
                             appended.mentions?.some((mention) => mention.id === snapshot.self)
                         )
-                            announceMention(appended, this);
+                            announceMention(appended, this, snapshot.self);
                     }
                     lastRoomMessageId = newest?.id ?? lastRoomMessageId ?? "0";
                     this.renderRoomChat(snapshot);

@@ -11,6 +11,8 @@ export interface TableChat {
     room: ProximityChatRoom;
     /** The others at the table, by name. */
     names: string[];
+    /** Their accounts, as the room's server knows them: whose conversation the table's chat is kept in. */
+    ids: string[];
     unread: boolean;
 }
 
@@ -52,8 +54,10 @@ export const tableChatStore: Readable<TableChat | undefined> = derived<typeof ga
         return derived([table.isJoined, table.spaceUsersStore, table.hasUnreadMessages], ([joined, users, unread]) => {
             if (!joined) return undefined;
             const me = table.getCurrentSpace()?.mySpaceUserId;
-            const names = [...users.values()].filter((user) => user.spaceUserId !== me).map((user) => user.name);
-            return names.length > 0 ? { room: table, names, unread } : undefined;
+            const others = [...users.values()].filter((user) => user.spaceUserId !== me);
+            const names = others.map((user) => user.name);
+            const ids = others.map((user) => user.uuid).filter(Boolean);
+            return names.length > 0 ? { room: table, names, ids, unread } : undefined;
         }).subscribe(set);
     },
     undefined,

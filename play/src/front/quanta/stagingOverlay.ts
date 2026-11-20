@@ -2,7 +2,7 @@
 // seconds, so a look fix can be tried on staging in seconds before it is built in. Any other host never fetches it.
 const STAGING_HOST = "wa-dev.qed.world";
 const OVERLAY_URL =
-    "https://orykysqfwqaetkusqhys.supabase.co/storage/v1/object/public/quanta-public/wa-staging/overlay.css";
+    "https://devdb.qed.world/storage/v1/object/public/quanta-public/wa-staging/overlay.css";
 const EVERY_MS = 3000;
 
 export function startStagingOverlay(): void {

@@ -9,6 +9,8 @@ import {
     type RoomPerson,
     type RoomSession,
     type SavedModeration,
+    GROUP_MEMBERS_LIMIT,
+    isPrivateMessage,
     messageVisibleTo,
 } from "../../common/quanta/RoomSession";
 import { mentionText, namesMention } from "../../common/quanta/chatBody";
@@ -405,7 +407,9 @@ function recipient(room: string, id: unknown, asker: RoomPerson): RoomPerson | u
     let name: string | undefined;
     let staff = false;
     for (const entry of roomSessions.get(room).messages) {
-        if (entry.to === undefined || !messageVisibleTo(entry, asker.id)) continue;
+        if (!isPrivateMessage(entry) || !messageVisibleTo(entry, asker.id)) continue;
+        const member = entry.group?.find((candidate) => candidate.id === id);
+        if (member) name = member.name;
         if (entry.sender === id) {
             name = entry.name;
             staff ||= entry.fromStaff === true;
@@ -415,6 +419,35 @@ function recipient(room: string, id: unknown, asker: RoomPerson): RoomPerson | u
         }
     }
     return name === undefined ? undefined : { id, name, staff };
+}
+// A proximity bubble's space, as the back names it (Group.spaceName: room, group id, when it formed) behind the world.
+const BUBBLE_SPACE = /#\d+#\d+$/;
+/**
+ * Whether the sender talks with every one of these people in one bubble now, as their sockets' joined spaces say:
+ * what lets students keep what a bubble says as their own conversation without a teacher starting it.
+ */
+function together(room: string, sender: PusherWebSocket, ids: string[]): boolean {
+    if (ids.length === 0) return false;
+    const members = [...(connections.get(room) ?? [])];
+    for (const bubble of sender.getUserData().spaces) {
+        if (!BUBBLE_SPACE.test(bubble)) continue;
+        if (ids.every((id) => members.some((member) => person(member).id === id && member.getUserData().spaces.has(bubble))))
+            return true;
+    }
+    return false;
+}
+/** A group message's people besides the sender, each as recipient() finds them; undefined when there is no group. */
+function groupOf(room: string, ids: unknown, asker: RoomPerson): RoomPerson[] | undefined {
+    if (ids === undefined) return undefined;
+    if (!Array.isArray(ids) || ids.length > GROUP_MEMBERS_LIMIT) throw new Error("That group can't be written to.");
+    const people: RoomPerson[] = [];
+    for (const id of new Set(ids)) {
+        if (id === asker.id) continue;
+        const member = recipient(room, id, asker);
+        if (!member) throw new Error("That person is not in the room.");
+        people.push(member);
+    }
+    return people;
 }
 function publishRoom(room: string): void {
     const members = [...(connections.get(room) ?? [])];
@@ -613,11 +646,15 @@ export function handleRoomChat(socket: PusherWebSocket, event: PublicEventFrontT
         } else if (input.op === "send") {
             const to = input.to === undefined ? undefined : recipient(roomOf(socket), input.to, person(socket));
             if (input.to !== undefined && !to) throw new Error("That person is not in the room.");
+            const group = groupOf(roomOf(socket), input.group, person(socket));
+            const readers = to ? [to.id] : (group?.map((member) => member.id) ?? []);
+            const named = mentioned(roomOf(socket), input.mentions, input.body, person(socket), to);
             const message = session.send(
                 person(socket),
                 input.body,
                 to,
-                mentioned(roomOf(socket), input.mentions, input.body, person(socket), to),
+                group ? named.filter((member) => readers.includes(member.id)) : named,
+                { group, together: together(roomOf(socket), socket, readers) },
             );
             broadcast(socket, { append: message }, ref, message);
             appendRoomChat(roomOf(socket), message, CHAT_OCCUPIED_TTL_MS, session.startedAt);
@@ -636,11 +673,14 @@ export function handleRoomChat(socket: PusherWebSocket, event: PublicEventFrontT
                           saved.sender === person(socket).id ? saved.to : saved.sender,
                           person(socket),
                       );
+            const named = saved ? mentioned(roomOf(socket), input.mentions, input.body, person(socket), to) : [];
             const edited = session.edit(
                 person(socket),
                 input.id,
                 input.body,
-                saved ? mentioned(roomOf(socket), input.mentions, input.body, person(socket), to) : [],
+                saved?.group
+                    ? named.filter((member) => member.id === saved.sender || saved.group?.some((reader) => reader.id === member.id))
+                    : named,
             );
             if (edited && before) {
                 broadcast(socket, { edited }, ref, edited);

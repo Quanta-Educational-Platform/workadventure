@@ -11,8 +11,16 @@ import { isClassChat } from "./chatAudience";
 import { activeDirectStore, openDirect } from "./directMessages";
 import { fullNamesStore, shownName } from "./fullNames";
 import { clearMentioned, markMentioned } from "./mentions";
+import { conversationOf } from "./conversationKey";
 
-type Entry = { id: string; sender: string; name: string; body: string; to?: string };
+type Entry = {
+    id: string;
+    sender: string;
+    name: string;
+    body: string;
+    to?: string;
+    group?: { id: string; name: string }[];
+};
 
 const announced = new Set<string>();
 const PREVIEW = 80;
@@ -35,10 +43,11 @@ readingStore.subscribe((chat) => {
     if (chat !== undefined) clearMentioned(chat);
 });
 
-export function announceMention(entry: Entry, room: ChatRoom): void {
+export function announceMention(entry: Entry, room: ChatRoom, self = ""): void {
     if (announced.has(entry.id)) return;
     announced.add(entry.id);
-    const chat = entry.to === undefined ? "class" : entry.sender;
+    const conversation = conversationOf(entry, self);
+    const chat = conversation ?? "class";
     if (get(readingStore) === chat) return;
     markMentioned(chat);
     const now = Date.now();
@@ -49,10 +58,21 @@ export function announceMention(entry: Entry, room: ChatRoom): void {
     const preview = text.length > PREVIEW ? `${text.slice(0, PREVIEW)}…` : text;
     chatNotificationStore.addNotification(name, preview, room, entry.id, true, undefined, {
         mention: true,
-        ...(entry.to !== undefined && { onOpen: () => openDirect(entry.sender, entry.name) }),
+        ...(conversation !== undefined && {
+            onOpen: () =>
+                openDirect(
+                    conversation,
+                    entry.group
+                        ? [{ id: entry.sender, name: entry.name }, ...entry.group]
+                              .filter((member) => member.id !== self)
+                              .map((member) => member.name)
+                              .join(", ")
+                        : entry.name,
+                ),
+        }),
     });
     // A direct message rings already (directMessages.ts).
-    if (entry.to !== undefined) return;
+    if (conversation !== undefined) return;
     try {
         gameManager.getCurrentGameScene().playSound("new-message", 0.35);
     } catch {

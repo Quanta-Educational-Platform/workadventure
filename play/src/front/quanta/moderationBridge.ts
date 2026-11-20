@@ -21,6 +21,12 @@ const message = z.object({
     // A direct message: its other person. Kept apart from the class chat (directMessages.ts).
     to: z.string().optional(),
     toName: z.string().optional(),
+    // A group's message (a bubble of three or more): its readers besides the sender. Never the class's.
+    group: z
+        .array(z.object({ id: z.string(), name: z.string() }))
+        .min(2)
+        .max(20)
+        .optional(),
 });
 const roomState = z.object({
     self: z.string(),
@@ -84,7 +90,7 @@ function keepRecent(messages: RoomSnapshot["messages"]): RoomSnapshot["messages"
     let directLeft = 200;
     const kept: RoomSnapshot["messages"] = [];
     for (let i = messages.length - 1; i >= 0; i--) {
-        const direct = messages[i].to !== undefined;
+        const direct = messages[i].to !== undefined || messages[i].group !== undefined;
         if (direct ? directLeft-- > 0 : classLeft-- > 0) kept.push(messages[i]);
     }
     return kept.reverse();

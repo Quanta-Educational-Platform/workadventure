@@ -3,6 +3,7 @@ import {
     ROOM_CHAT_TTL,
     ROOM_DIRECT_LIMIT,
     ROOM_HISTORY_LIMIT,
+    isPrivateMessage,
     type RoomMessage,
     type RoomPerson,
     type SavedModeration,
@@ -116,6 +117,20 @@ function isMessage(value: unknown): value is RoomMessage {
         (message.toName === undefined || typeof message.toName === "string") &&
         (message.fromStaff === undefined || message.fromStaff === true) &&
         (message.toStaff === undefined || message.toStaff === true) &&
+        // A group's readers: without them the message would read as the class's, to everyone.
+        (message.group === undefined ||
+            (Array.isArray(message.group) &&
+                message.group.length >= 2 &&
+                message.group.length <= 20 &&
+                message.group.every(
+                    (member: unknown) =>
+                        !!member &&
+                        typeof member === "object" &&
+                        typeof (member as { id?: unknown }).id === "string" &&
+                        (member as { id: string }).id.length > 0 &&
+                        typeof (member as { name?: unknown }).name === "string",
+                ))) &&
+        !(message.to !== undefined && message.group !== undefined) &&
         (message.mentions === undefined ||
             (Array.isArray(message.mentions) &&
                 message.mentions.length <= 20 &&
@@ -152,7 +167,7 @@ export async function loadRoomChat(world: string): Promise<RoomMessage[]> {
                         try {
                             const message: unknown = JSON.parse(entry);
                             // A message in the other kind's list is never shown: a direct one there would be the class's.
-                            return isMessage(message) && (message.to !== undefined) === direct ? [message] : [];
+                            return isMessage(message) && isPrivateMessage(message) === direct ? [message] : [];
                         } catch {
                             return [];
                         }
@@ -184,6 +199,7 @@ const serialize = (message: RoomMessage) =>
         ...(message.reactions ? { reactions: message.reactions } : {}),
         ...(message.mentions ? { mentions: message.mentions } : {}),
         ...(message.to !== undefined ? { to: message.to, toName: message.toName ?? "" } : {}),
+        ...(message.group !== undefined ? { group: message.group } : {}),
         ...(message.fromStaff ? { fromStaff: true } : {}),
         ...(message.toStaff ? { toStaff: true } : {}),
     });
@@ -262,7 +278,7 @@ type ChatWrite = {
  *  renewed together, in one script, so neither outlives the other. */
 function chatWrite(world: string, write: ChatWrite): Promise<boolean> {
     const message = write.append ?? write.deleted ?? write.edited?.before;
-    return listWrite(world, write, message?.to !== undefined);
+    return listWrite(world, write, message !== undefined && isPrivateMessage(message));
 }
 
 function listWrite(
@@ -393,7 +409,7 @@ export async function loadRoomPins(world: string): Promise<RoomMessage[]> {
     if (!raw || !occupiedAt || Date.now() - Number(occupiedAt) > ROOM_CHAT_TTL) return [];
     try {
         const value: unknown = JSON.parse(raw);
-        return Array.isArray(value) ? value.filter(isMessage).filter((pin) => pin.to === undefined) : [];
+        return Array.isArray(value) ? value.filter(isMessage).filter((pin) => !isPrivateMessage(pin)) : [];
     } catch {
         return [];
     }

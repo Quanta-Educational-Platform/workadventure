@@ -9,6 +9,9 @@ import { gameManager } from "../Phaser/Game/GameManager";
 import { classChatRoom } from "./chatAudience";
 import { chatBodyFromText } from "../../common/quanta/chatBody";
 import { directEntriesStore, type DirectEntry } from "./directEntries";
+import { chatFileBody, isServerChatFile, uploadChatFile } from "./chatFiles";
+import { normalizeChatImage } from "../Chat/Connection/Proximity/ProximityImageNormalizer";
+import { QL } from "./i18n";
 
 export interface DirectConversation {
     /** The other person's account. */
@@ -137,6 +140,27 @@ export function sendDirect(peerId: string, text: string): Promise<void> | undefi
         });
     });
     return sending;
+}
+
+/** Pictures and PDFs, kept on Quanta (chatFiles.ts) and sent into the conversation one message each, as the class
+ *  chat sends them. Anything else can't be kept, so it isn't sent: the reason comes back to show. */
+export async function sendDirectFiles(peerId: string, files: Iterable<File>): Promise<string | undefined> {
+    const room = classChatRoom();
+    if (!room) return undefined;
+    let refused: string | undefined;
+    for (const picked of files) {
+        const file = await normalizeChatImage(picked).catch(() => picked);
+        if (!isServerChatFile(file)) {
+            refused = get(QL).chatFileNotKept();
+            continue;
+        }
+        try {
+            await room.sendDirectMessage(peerId, chatFileBody(await uploadChatFile(file)));
+        } catch (error) {
+            refused = error instanceof Error ? error.message : String(error);
+        }
+    }
+    return refused;
 }
 
 directEntriesStore.subscribe(setDirectMessages);

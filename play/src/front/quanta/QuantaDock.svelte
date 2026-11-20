@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { directConversationsStore } from "./directMessages";
     // quanta: the call controls docked at the bottom like Google Meet's, with the device trays that open above
     // them. Drives the same stores as WA's action bar (ActionBar.svelte), which QUANTA_UI replaces.
     import { AvailabilityStatus } from "@workadventure/messages";
@@ -807,7 +808,9 @@
         0,
     );
     const proximityUnread = proximityChatRoomManager.unreadMessagesCount;
-    let unread = $derived($unreadChatMessages + $proximityUnread);
+    // Private conversations in the room (direct ones, and what a bubble said): one each that has news.
+    const privateUnread = derived(directConversationsStore, (all) => all.filter((entry) => entry.unread).length);
+    let unread = $derived($unreadChatMessages + $proximityUnread + $privateUnread);
 
     // Inside Quanta's room panel, leaving closes the panel (Quanta's VirtualRoom listens); alone, there is
     // nothing to leave to.

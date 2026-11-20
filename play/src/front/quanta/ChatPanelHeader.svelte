@@ -9,6 +9,8 @@
     import { showPeople } from "./sidePanel";
     import { classChatRoom, isClassChat, namesList, tableChatStore } from "./chatAudience";
     import { activeDirectStore, closeDirect, directConversationsStore, openDirect } from "./directMessages";
+    import { directEntriesStore } from "./directEntries";
+    import { bubbleConversation } from "./conversationKey";
     import { fullNamesStore, shownName } from "./fullNames";
     import { mentionMarksStore } from "./mentions";
     import RoomRecordingIndicator from "./RoomRecordingIndicator.svelte";
@@ -43,9 +45,30 @@
         return () => fonts?.removeEventListener("loadingdone", measure);
     });
 
-    // Which chat is on screen (the class's, the table's or a private conversation) and who reads it.
+    // Which chat is on screen (the class's, the table's or a private conversation) and who reads it. What a table says
+    // is kept as its people's conversation (a direct one for two, a group's for more): it is there when they meet
+    // again, after a reload, and once the table breaks up. Without the room server's word on who this is yet, the
+    // table's live chat stands in.
+    let tableKey = $derived(
+        $tableChatStore && $directEntriesStore?.self
+            ? bubbleConversation($directEntriesStore.self, $tableChatStore.ids)
+            : undefined,
+    );
     let direct = $derived($directConversationsStore.find((entry) => entry.peerId === $activeDirectStore));
-    let atTable = $derived(!direct && $selectedRoomStore !== undefined && $selectedRoomStore === $tableChatStore?.room);
+    let tableConversation = $derived($directConversationsStore.find((entry) => entry.peerId === tableKey));
+    let atTable = $derived(
+        tableKey !== undefined
+            ? $activeDirectStore === tableKey
+            : !direct && $selectedRoomStore !== undefined && $selectedRoomStore === $tableChatStore?.room,
+    );
+
+    // Someone joins or leaves the table while its chat is on screen: the chat follows to the new set of people.
+    let shownTableKey: string | undefined;
+    $effect(() => {
+        const key = tableKey;
+        if (key && shownTableKey && $activeDirectStore === shownTableKey && key !== shownTableKey) showTable();
+        shownTableKey = key;
+    });
 
     // Opening the chat in a bubble is most often to write to those in it; a DM being opened keeps its place.
     let wasOpen = false;
@@ -64,6 +87,11 @@
     function showTable(): void {
         const table = $tableChatStore;
         if (!table) return;
+        if (tableKey) {
+            openDirect(tableKey, namesList(table.names));
+            table.room.hasUnreadMessages.set(false);
+            return;
+        }
         closeDirect();
         selectedRoomStore.set(table.room);
         table.room.hasUnreadMessages.set(false);
@@ -104,10 +132,13 @@
         {#if $tableChatStore}
             <button type="button" role="tab" aria-selected={atTable} onclick={showTable}>
                 {namesList($tableChatStore.names.map(nameTag))}
-                {#if !atTable && $tableChatStore.unread}<span class="unread" aria-hidden="true"></span>{/if}
+                {#if !atTable && (tableKey ? tableConversation?.unread : $tableChatStore.unread)}<span
+                        class="unread"
+                        aria-hidden="true"
+                    ></span>{/if}
             </button>
         {/if}
-        {#each $directConversationsStore as conversation (conversation.peerId)}
+        {#each $directConversationsStore.filter((entry) => entry.peerId !== tableKey) as conversation (conversation.peerId)}
             <button
                 type="button"
                 role="tab"
@@ -126,7 +157,7 @@
         {/each}
     </div>
 {/if}
-{#if direct}
+{#if direct && !atTable}
     <p class="quanta-chat-audience">
         {$QL.onlyYouAnd({ names: shownName($fullNamesStore, direct.peerId, direct.name) })}
     </p>

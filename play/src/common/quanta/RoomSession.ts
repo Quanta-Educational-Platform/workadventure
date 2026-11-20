@@ -24,6 +24,9 @@ export type RoomMessage = {
     mentions?: RoomMention[];
     /** quanta: a direct message, seen only by its sender and this account (and kept apart from the class's). */
     to?: string;
+    /** quanta: a group's message (a bubble of three or more): seen by its sender and these people alone, kept with the
+     *  direct messages. */
+    group?: RoomMention[];
     toName?: string;
     /** Whether each of a direct message's two people was staff when it was sent, as the server knew from their
      *  sockets: who counts as staff while they are away. */
@@ -41,10 +44,23 @@ export const ROOM_DIRECT_LIMIT = 200;
 /** Messages staff may pin at the top of the class chat at once. */
 export const ROOM_PINS_LIMIT = 5;
 
-/** Whether this account may see the message: the class's are everyone's, a direct one its two people's. */
-export function messageVisibleTo(message: RoomMessage, id: string): boolean {
-    return message.to === undefined || message.sender === id || message.to === id;
+/** A direct or group message: its own people's alone, kept apart from the class chat. */
+export function isPrivateMessage(message: RoomMessage): boolean {
+    return message.to !== undefined || message.group !== undefined;
 }
+/** Whether this account may see the message: the class's are everyone's, a direct one its two people's, a group's
+ *  its members'. */
+export function messageVisibleTo(message: RoomMessage, id: string): boolean {
+    if (message.sender === id) return true;
+    if (message.group !== undefined) return message.group.some((member) => member.id === id);
+    return message.to === undefined || message.to === id;
+}
+/** Everyone a group message belongs to, sender included, as one key: the same people make the same conversation. */
+export function groupKey(ids: Iterable<string>): string {
+    return [...new Set(ids)].sort().join(",");
+}
+/** People in one private conversation at most: a bubble holds a table's worth, not a class. */
+export const GROUP_MEMBERS_LIMIT = 12;
 /** How long a room's class chat outlives the last person in it, across play restarts. */
 export const ROOM_CHAT_TTL = 12 * 60 * 60 * 1000;
 /** A message's encoded size: CJK text at the 4000-character limit is 12 KB; escapes can't inflate past this. */
@@ -144,16 +160,40 @@ export class RoomSession {
     }
 
     /**
-     * A class message, or with `to` a direct one. Staff write to anyone and anyone to staff; a student writes to
-     * another student only in reply, where that person wrote first (they were staff then: a teacher's thread).
+     * A class message, with `to` a direct one, or with `group` a group's. Staff write to anyone and anyone to staff.
+     * Students write to each other privately while they talk in one bubble (`together`, which the server tells from
+     * the bubbles their sockets are in): what a bubble says is kept as its people's conversation, a direct one for
+     * two and a group's for more, and they may carry on in it after the bubble ends, as in any reply.
      */
-    send(sender: RoomPerson, input: unknown, to?: RoomPerson, mentions: RoomPerson[] = []): RoomMessage {
+    send(
+        sender: RoomPerson,
+        input: unknown,
+        to?: RoomPerson,
+        mentions: RoomPerson[] = [],
+        options: { group?: RoomPerson[]; together?: boolean } = {},
+    ): RoomMessage {
+        const group = options.group;
+        if (to && group) throw new Error("A message goes to one person or one group.");
         if (to) {
             if (to.id === sender.id) throw new Error("You can't write to yourself.");
             const replying = this.messages.some((entry) => entry.sender === to.id && entry.to === sender.id);
-            if (!sender.staff && !to.staff && !replying) throw new Error("Only a teacher can start a private chat.");
+            if (!sender.staff && !to.staff && !replying && !options.together)
+                throw new Error("Only a teacher can start a private chat.");
         }
-        const body = this.checkBody(sender, input, to !== undefined);
+        if (group) {
+            const others = group.filter((member) => member.id !== sender.id);
+            if (others.length < 2 || others.length >= GROUP_MEMBERS_LIMIT) throw new Error("That group can't be written to.");
+            const key = groupKey([sender.id, ...others.map((member) => member.id)]);
+            const continuing = this.messages.some(
+                (entry) =>
+                    entry.group !== undefined &&
+                    entry.sender !== sender.id &&
+                    groupKey([entry.sender, ...entry.group.map((member) => member.id)]) === key,
+            );
+            if (!sender.staff && !options.together && !continuing)
+                throw new Error("Only people talking together can start a group chat.");
+        }
+        const body = this.checkBody(sender, input, to !== undefined || group !== undefined);
         // Ids keep increasing across play restarts, so a restored history and new messages never share one.
         this.sequence = Math.max(this.sequence + 1, Date.now());
         const message: RoomMessage = {
@@ -163,6 +203,7 @@ export class RoomSession {
             body,
             at: Date.now(),
             ...(mentions.length > 0 && { mentions: mentionsOf(mentions) }),
+            ...(group && { group: mentionsOf(group.filter((member) => member.id !== sender.id)) }),
             ...(to && {
                 to: to.id,
                 toName: to.name.slice(0, 64),
@@ -177,13 +218,13 @@ export class RoomSession {
 
     /** 100 class messages and 200 direct ones at 4000 UTF-16 characters bound text to 2.4 MB per active room. */
     private trim(): void {
-        let classMessages = this.messages.filter((entry) => entry.to === undefined).length;
+        let classMessages = this.messages.filter((entry) => !isPrivateMessage(entry)).length;
         let direct = this.messages.length - classMessages;
         for (
             let i = 0;
             i < this.messages.length && (classMessages > ROOM_HISTORY_LIMIT || direct > ROOM_DIRECT_LIMIT);
         ) {
-            const isDirect = this.messages[i].to !== undefined;
+            const isDirect = isPrivateMessage(this.messages[i]);
             if (isDirect ? direct > ROOM_DIRECT_LIMIT : classMessages > ROOM_HISTORY_LIMIT) {
                 this.messages.splice(i, 1);
                 if (isDirect) direct--;
@@ -197,7 +238,7 @@ export class RoomSession {
         // A message this account can't see answers as one that doesn't exist: nobody learns a direct message is there.
         const message = this.messages.find((entry) => entry.id === id && messageVisibleTo(entry, sender.id));
         if (!message) return undefined;
-        const body = this.checkBody(sender, input, message.to !== undefined);
+        const body = this.checkBody(sender, input, isPrivateMessage(message));
         if (message.sender !== sender.id) throw new Error("Only the author can edit a message.");
         if (message.body === body) return undefined;
         message.body = body;
@@ -215,7 +256,7 @@ export class RoomSession {
         const message = this.messages.find((entry) => entry.id === id && messageVisibleTo(entry, sender.id));
         if (!message) return undefined;
         // The class chat's mute leaves a direct conversation with a teacher open; a removal closes everything.
-        if (this.removed.has(sender.id) || (message.to === undefined && this.muted.has(sender.id)))
+        if (this.removed.has(sender.id) || (!isPrivateMessage(message) && this.muted.has(sender.id)))
             throw new Error("Your chat is muted by the teacher.");
         const people = message.reactions?.[emoji] ?? [];
         const taken = people.some((person) => person.id === sender.id);
@@ -256,7 +297,7 @@ export class RoomSession {
             const message = this.messages[i];
             if (!messageVisibleTo(message, forId)) continue;
             // Each kind on its own budget, so a long private conversation never takes the class chat's place.
-            if (message.to === undefined) {
+            if (!isPrivateMessage(message)) {
                 classBytes += encodedSize(message);
                 if (classBytes > SNAPSHOT_HISTORY_BYTES) continue;
             } else {
@@ -303,7 +344,7 @@ export class RoomSession {
             if (this.unpinnedIds.size < 1000) this.unpinnedIds.add(String(id));
             return true;
         }
-        const message = this.messages.find((entry) => entry.id === id && entry.to === undefined);
+        const message = this.messages.find((entry) => entry.id === id && !isPrivateMessage(entry));
         if (!message) throw new Error("This message can no longer be pinned.");
         if (index >= 0) return false;
         this.pins.unshift(pinCopy(message));
@@ -326,7 +367,7 @@ export class RoomSession {
         const known = new Set(this.pins.map((pin) => pin.id));
         const kept = saved.filter(
             (pin) =>
-                pin.to === undefined &&
+                !isPrivateMessage(pin) &&
                 !known.has(pin.id) &&
                 !this.deletedIds.has(pin.id) &&
                 !this.unpinnedIds.has(pin.id),

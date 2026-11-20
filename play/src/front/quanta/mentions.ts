@@ -5,6 +5,7 @@ import { get, writable } from "svelte/store";
 import { mentionText, namesMention } from "../../common/quanta/chatBody";
 import { roomModerationStore } from "./moderationBridge";
 import { fullNamesStore, shownName } from "./fullNames";
+import { groupMembers, isGroupConversation } from "./conversationKey";
 
 export interface MentionPerson {
     id: string;
@@ -22,8 +23,10 @@ export function mentionPeople(peerId?: string): MentionPerson[] {
     const room = get(roomModerationStore);
     const names = get(fullNamesStore);
     const people = (room?.people ?? []).filter((person) => person.id !== room?.self);
+    // In a group's conversation, its people; in a direct one, its other person.
+    const members = peerId !== undefined && isGroupConversation(peerId) ? new Set(groupMembers(peerId)) : undefined;
     return people
-        .filter((person) => peerId === undefined || person.id === peerId)
+        .filter((person) => peerId === undefined || (members ? members.has(person.id) : person.id === peerId))
         .map((person) => ({
             id: person.id,
             shown: shownName(names, person.id, person.name),

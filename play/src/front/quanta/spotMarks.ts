@@ -1,50 +1,42 @@
 // quanta: every megaphone spot is marked on the floor the same way on every map, as a dashed square on the one tile a
 // person stands on to speak from it (as Gather marks its spotlight tiles), not as an object one might take for
-// furniture. The spot the player speaks from turns green, the dock's on-air colour.
+// furniture. The square darkens whatever floor it sits on, so it reads as a shade of that rug rather than a sticker;
+// the spot the player speaks from turns green, the dock's on-air colour.
 import type { AreaData } from "@workadventure/map-editor";
 import type * as Phaser from "phaser";
 import { standTilesOf } from "./goToTile";
 import { isMegaphoneSpot } from "./megaphoneSpots";
 
-const DASH = 6;
-const GAP = 4;
-const LINE = 2;
-/** Inside the tile, so the square stays on the rug a table's spot sits on. */
-const INSET = 3;
-const IDLE = { color: 0xffffff, alpha: 0.95 };
-const LIVE = { color: 0x80da88, alpha: 1 };
-const SHADOW = { color: 0x1f2937, alpha: 0.45 };
+const DASH = 4;
+const GAP = 3;
+const LINE = 1.5;
+/** Inside the tile, so the square stays clear of the desk and chairs beside it. */
+const INSET = 4;
+const RADIUS = 3;
+const IDLE = { line: 0x000000, lineAlpha: 0.3, fill: 0x000000, fillAlpha: 0.07 };
+const LIVE = { line: 0x80da88, lineAlpha: 1, fill: 0x80da88, fillAlpha: 0.18 };
 /** Over the floor and rugs, under every character (whose depth is its y). */
 const DEPTH = 1;
 
-/** The dashes of a rectangle's outline, walked clockwise from the top-left corner so the corners stay drawn. */
-export function dashSegments(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    dash = DASH,
-    gap = GAP,
-): [number, number, number, number][] {
-    const corners = [
-        [x, y],
-        [x + width, y],
-        [x + width, y + height],
-        [x, y + height],
-        [x, y],
+/** The dashes along each side of a rounded rectangle, between its corner arcs. */
+function sideDashes(x: number, y: number, w: number, h: number, r: number): [number, number, number, number][] {
+    const out: [number, number, number, number][] = [];
+    const sides: [number, number, number, number][] = [
+        [x + r, y, x + w - r, y],
+        [x + w, y + r, x + w, y + h - r],
+        [x + w - r, y + h, x + r, y + h],
+        [x, y + h - r, x, y + r],
     ];
-    const segments: [number, number, number, number][] = [];
-    for (let i = 0; i < 4; i++) {
-        const [ax, ay] = corners[i];
-        const [bx, by] = corners[i + 1];
+    for (const [ax, ay, bx, by] of sides) {
         const length = Math.hypot(bx - ax, by - ay);
-        // Spread the gaps so each side starts and ends on a dash.
-        const count = Math.max(1, Math.round((length + gap) / (dash + gap)));
-        const step = count > 1 ? (length - dash) / (count - 1) : 0;
+        // A gap next to each corner, dashes evenly between.
+        const count = Math.max(1, Math.floor((length - GAP) / (DASH + GAP)));
+        const used = count * DASH + (count - 1) * GAP;
+        const start = (length - used) / 2;
         for (let k = 0; k < count; k++) {
-            const from = k * step;
-            const to = Math.min(length, from + (count > 1 ? dash : length));
-            segments.push([
+            const from = start + k * (DASH + GAP);
+            const to = from + DASH;
+            out.push([
                 ax + ((bx - ax) * from) / length,
                 ay + ((by - ay) * from) / length,
                 ax + ((bx - ax) * to) / length,
@@ -52,7 +44,7 @@ export function dashSegments(
             ]);
         }
     }
-    return segments;
+    return out;
 }
 
 export class SpotMarks {
@@ -109,17 +101,28 @@ export class SpotMarks {
         const tile = standTilesOf(area, width, height)[0];
         graphics.clear();
         if (!tile) return;
-        const segments = dashSegments(
-            tile.x * width + INSET,
-            tile.y * height + INSET,
-            width - 2 * INSET,
-            height - 2 * INSET,
-        );
-        const line = live ? LIVE : IDLE;
-        // A dark edge under each dash keeps it readable on light floors as well as on rugs.
-        graphics.lineStyle(LINE, SHADOW.color, SHADOW.alpha);
-        for (const [x1, y1, x2, y2] of segments) graphics.lineBetween(x1 + 1, y1 + 1, x2 + 1, y2 + 1);
-        graphics.lineStyle(LINE, line.color, line.alpha);
-        for (const [x1, y1, x2, y2] of segments) graphics.lineBetween(x1, y1, x2, y2);
+        const x = tile.x * width + INSET;
+        const y = tile.y * height + INSET;
+        const w = width - 2 * INSET;
+        const h = height - 2 * INSET;
+        const look = live ? LIVE : IDLE;
+        graphics.fillStyle(look.fill, look.fillAlpha);
+        graphics.fillRoundedRect(x, y, w, h, RADIUS);
+        graphics.lineStyle(LINE, look.line, look.lineAlpha);
+        // Solid rounded corners, dashed sides between them.
+        const r = RADIUS;
+        graphics.beginPath();
+        graphics.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
+        graphics.strokePath();
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + r, r, Math.PI * 1.5, Math.PI * 2);
+        graphics.strokePath();
+        graphics.beginPath();
+        graphics.arc(x + w - r, y + h - r, r, 0, Math.PI * 0.5);
+        graphics.strokePath();
+        graphics.beginPath();
+        graphics.arc(x + r, y + h - r, r, Math.PI * 0.5, Math.PI);
+        graphics.strokePath();
+        for (const [x1, y1, x2, y2] of sideDashes(x, y, w, h, r)) graphics.lineBetween(x1, y1, x2, y2);
     }
 }

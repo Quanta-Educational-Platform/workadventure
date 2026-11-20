@@ -3,7 +3,7 @@
     // reads, copies, links, reacts, edits and deletes the same way.
     import { onDestroy, tick, untrack } from "svelte";
     import { get } from "svelte/store";
-    import { IconPencil, IconX } from "@wa-icons";
+    import { IconPaperclip, IconPencil, IconX } from "@wa-icons";
     import { LL } from "../../i18n/i18n-svelte";
     import Message from "../Chat/Components/Room/Message.svelte";
     import { selectedChatMessageToEdit } from "../Chat/Stores/ChatStore";
@@ -15,6 +15,7 @@
         directFailuresStore,
         directSendErrors,
         sendDirect,
+        sendDirectFiles,
         takeDirectFailure,
     } from "./directMessages";
     import { fullNamesStore, shownName } from "./fullNames";
@@ -123,6 +124,27 @@
             shownPeer = next;
         });
     });
+
+    // Pictures and PDFs, from the paperclip or pasted: kept on Quanta and sent one message each.
+    let fileInput: HTMLInputElement | undefined = $state();
+    let sendingFiles = $state(false);
+    function sendFiles(files: FileList | File[] | null | undefined): void {
+        const picked = [...(files ?? [])];
+        if (picked.length === 0 || sendingFiles) return;
+        sendingFiles = true;
+        sendError = undefined;
+        sendDirectFiles(peerId, picked)
+            .then((refused) => {
+                if (refused) sendError = refused;
+            })
+            .finally(() => (sendingFiles = false));
+    }
+    function onpaste(event: ClipboardEvent): void {
+        const files = [...(event.clipboardData?.files ?? [])];
+        if (files.length === 0) return;
+        event.preventDefault();
+        sendFiles(files);
+    }
 
     function send(): void {
         // What is in the box while editing is an edit, never a new message (even if the message just went away).
@@ -282,7 +304,29 @@
             placeholder={$QL.messageTo({ name: peerName })}
             aria-label={$QL.messageTo({ name: peerName })}
             data-testid="directMessageInput"
+            {onpaste}
         ></textarea>
+        <input
+            bind:this={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+            multiple
+            hidden
+            data-testid="directFileInput"
+            onchange={(event) => {
+                sendFiles(event.currentTarget.files);
+                event.currentTarget.value = "";
+            }}
+        />
+        <button
+            type="button"
+            class="attach"
+            disabled={sendingFiles}
+            aria-label={$QL.attachFile()}
+            title={$QL.attachFile()}
+            data-testid="directAttachButton"
+            onclick={() => fileInput?.click()}><IconPaperclip font-size={20} /></button
+        >
     </form>
 </div>
 
@@ -324,7 +368,7 @@
         width: 100%;
         min-height: 44px;
         max-height: 144px;
-        padding: 12px 14px;
+        padding: 12px 48px 12px 14px;
         border: 0;
         border-radius: 14px;
         background: #2b3038;
@@ -334,6 +378,32 @@
         color: #eceef1;
         resize: none;
         field-sizing: content;
+    }
+
+    /* Inside the box's right end, on its first line: the class chat's attach, as one quiet button. */
+    .attach {
+        position: absolute;
+        right: 4px;
+        bottom: 4px;
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: #a7adb7;
+        cursor: pointer;
+    }
+
+    .attach:hover {
+        background: rgb(255 255 255 / 0.08);
+        color: #eceef1;
+    }
+
+    .attach:disabled {
+        opacity: 0.5;
+        cursor: default;
     }
 
     textarea::placeholder {

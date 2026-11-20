@@ -147,8 +147,11 @@ const NONE: readonly Seat[] = [];
 
 /** The room editor's furniture catalogue: its seating pieces are seats wherever the editor places them. */
 export const FURNITURE_COLLECTION = "Quanta furniture";
-const SEAT_PIECE = /^quanta:(chair|office-chair|stool|bean-bag|armchair|sofa):[^:]+:(Down|Up|Left|Right)$/;
+const SEAT_PIECE = /^quanta:(chair|chair-angled|office-chair|stool|bean-bag|armchair|sofa):[^:]+:(Down|Up|Left|Right)$/;
 const PIECE_FACING: Record<string, SeatFacing> = { Down: "down", Up: "up", Left: "left", Right: "right" };
+// An angled chair's four directions are the diagonals (Down faces down-right, Right up-right, Up up-left, Left
+// down-left); a person sits facing down on the two that face the room and up on the two that face away.
+const ANGLED_FACING: Record<string, SeatFacing> = { Down: "down", Right: "up", Up: "up", Left: "down" };
 
 /** An object placed in the room (map editor), as the scene holds it: its top-left corner and size. */
 export interface PlacedPiece {
@@ -173,7 +176,7 @@ export function furnitureSeatAreas(pieces: Iterable<PlacedPiece>): Pick<AreaData
         if (piece.collectionName !== FURNITURE_COLLECTION) continue;
         const match = SEAT_PIECE.exec(piece.prefabId);
         if (!match) continue;
-        const facing = PIECE_FACING[match[2]];
+        const facing = (match[1] === "chair-angled" ? ANGLED_FACING : PIECE_FACING)[match[2]];
         const sideways = facing === "left" || facing === "right";
         const count = match[1] === "sofa" ? 2 : 1;
         for (let k = 0; k < count; k++) {
