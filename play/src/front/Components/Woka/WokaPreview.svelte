@@ -15,7 +15,8 @@
     const directionsMapping = [0, 1, 3, 2];
 
     let direction: number = $state(0);
-    const canvasSize = 130;
+    // quanta: four room pixels a frame pixel (two a 2x texel), so every texel is a whole number of pixels
+    const canvasSize = 128;
 </script>
 
 <div class="woka-preview flex items-center justify-center relative">

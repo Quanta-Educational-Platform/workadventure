@@ -28,6 +28,7 @@ import { globalErrorHandler } from "./services/GlobalErrorHandler";
 import { jwtTokenManager } from "./services/JWTTokenManager";
 import { CompanionService } from "./services/CompanionService";
 import { WokaService } from "./services/WokaService";
+import { QuantaChatFileController } from "./controllers/QuantaChatFileController";
 import { UserController } from "./controllers/UserController";
 import { MatrixRoomAreaController } from "./controllers/MatrixRoomAreaController";
 import { LocalScriptController } from "./controllers/LocalScriptController";
@@ -99,6 +100,7 @@ class App {
         }
         new FrontController(this.app, frontAssets);
         new UserController(this.app);
+        new QuantaChatFileController(this.app);
         new MatrixRoomAreaController(this.app);
 
         frontAssets.registerStaticRoutes(this.app);

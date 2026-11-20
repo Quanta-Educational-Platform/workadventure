@@ -82,6 +82,7 @@
     import { screenSharingLocalStreamStore } from "../Stores/ScreenSharingStore";
     import { dismissWeakLinkNotice, turnCameraBackOn, weakLinkNoticeStore } from "../Livekit/WeakLinkNotice";
     import { presentBoardAvailableStore, presentBoardInstead } from "./presentBoardBridge";
+    import { dismissPresenterWeakNotice, presenterWeakNoticeStore, startPresenterLinkWatch } from "./presenterLink";
     import DeviceSelect from "./DeviceSelect.svelte";
     import { dockGuttersStore, dockSizeStore } from "./dockBar";
     import { DOCK_FOLDS, PHONE_FOLDS, dockFoldedStore, type DockFold, type FoldedAction } from "./dockFold";
@@ -90,7 +91,8 @@
     import Icon from "./Icon.svelte";
     import { watchMediaStates } from "./mediaStateEvents";
     import { handsStateStore, startHandsBridge } from "./handsBridge";
-    import { spotStandingStore } from "./megaphoneSpots";
+    import { onSpotStore, spotStandingStore, spotsAvailableStore } from "./megaphoneSpots";
+    import { comeBackFromSpot, goToNearestSpot, spotTripStore } from "./spotTrip";
     import { startAwayBridge } from "./awayBridge";
     import { fullNamesStore } from "./fullNames";
     import ActivityFeed from "./ActivityFeed.svelte";
@@ -102,7 +104,8 @@
     import { RECORDING_BUTTON } from "./recordingIndicator";
     import RoomRecordingIndicator from "./RoomRecordingIndicator.svelte";
     import { micLevels, onAirPrompt, quietFor, sounding } from "./onAir";
-    import { dismissHint, dockHintStore, hintDone } from "./dockHints";
+    import { dismissHint, dockHintStore, hintDone, offerHint } from "./dockHints";
+    import { pageMenuStore } from "./pageMenu";
     import {
         classLectureAvailableStore,
         selfOnAirMutedStore,
@@ -237,6 +240,16 @@
                 ($sidePanelLayoutStore.cover && $chatVisibilityStore),
         );
     });
+    // On a phone the page's Present board and Record wait in ⋮ (pageMenu.ts): staff are shown where, once.
+    let staffMenuItems = $derived($pageMenuStore.some((item) => item.icon === "board" || item.icon === "record"));
+    $effect(() => {
+        if (!$phoneLayoutStore || !$userIsAdminStore || !staffMenuItems || !$gameSceneIsLoadedStore) return;
+        const timer = setTimeout(() => offerHint("staffMenu"), 3000);
+        return () => clearTimeout(timer);
+    });
+    $effect(() => {
+        if ($phoneLayoutStore && $openedMenuStore === "profileMenu") hintDone("staffMenu");
+    });
     let camOn = $derived($requestedCameraState && !camDisabled);
     // While a device is off, the one the trays show is the one it comes back with, not the last one it used.
     let selectedMicrophoneId = $derived(
@@ -275,6 +288,35 @@
         if (!$requestedMicrophoneState && !micDisabled) requestedMicrophoneState.enableMicrophone();
         speakToClass();
     }
+
+    // Students reach the nearest megaphone spot from here and come back with the same button (spotTrip.ts), also from
+    // the board or a share, without finding a spot on the map.
+    let onSpotTrip = $derived($spotTripStore !== undefined);
+    let canGoToSpot = $derived(
+        !$userIsAdminStore && $spotsAvailableStore && !$givenFloorSpaceStore && !$onSpotStore && !onSpotTrip,
+    );
+
+    function goToSpot(): void {
+        if (!$requestedMicrophoneState && !micDisabled) requestedMicrophoneState.enableMicrophone();
+        goToNearestSpot();
+    }
+
+    function onMegaphoneClick(): void {
+        if (onSpotTrip) comeBackFromSpot();
+        else if (onAir) stopSpeakingToClass();
+        else if (canSpeakToClass) startSpeakingToClass();
+        else if (canGoToSpot) goToSpot();
+    }
+
+    let megaphoneLabel = $derived(
+        onSpotTrip
+            ? $QL.backFromSpot()
+            : onAir
+              ? $QL.stopSpeakingToClass()
+              : canSpeakToClass
+                ? $QL.speakToClass()
+                : $QL.goToSpot(),
+    );
 
     // Three bars from WA's seven volume bands, like the level Meet shows in place of the arrow.
     let levels = $derived(micLevels($localVolumeStore));
@@ -380,7 +422,7 @@
     let foldLevel = $state(0);
     let dockRoom = $derived(roomWidth - $dockGuttersStore.left - $dockGuttersStore.right - 16);
     const folded = (key: DockFold) =>
-        ($phoneLayoutStore && PHONE_FOLDS.includes(key) && (key !== "megaphone" || !onAir)) ||
+        ($phoneLayoutStore && PHONE_FOLDS.includes(key) && (key !== "megaphone" || !(onAir || onSpotTrip))) ||
         (key !== "megaphone" && DOCK_FOLDS.indexOf(key) < foldLevel);
     let fitRun = 0;
 
@@ -642,6 +684,8 @@
         const items: FoldedAction[] = [];
         if (folded("megaphone") && canSpeakToClass)
             items.push({ key: "megaphone", label: $QL.speakToClass(), icon: "campaign", run: startSpeakingToClass });
+        else if (folded("megaphone") && canGoToSpot)
+            items.push({ key: "megaphone", label: $QL.goToSpot(), icon: "campaign", run: goToSpot });
         if (folded("reactions"))
             items.push({ key: "reactions", label: $QL.reactions(), icon: "addReaction", run: () => undefined });
         if (folded("hand") && !$inExternalServiceStore) {
@@ -785,6 +829,7 @@
     const stopHandsBridge = startHandsBridge();
     const stopAwayBridge = startAwayBridge();
     const stopSidePanel = startSidePanel();
+    const stopPresenterLinkWatch = startPresenterLinkWatch();
     const stopMediaStates = watchMediaStates(
         gameSceneIsLoadedStore,
         {
@@ -830,6 +875,7 @@
         stopHandsBridge();
         stopAwayBridge();
         stopSidePanel();
+        stopPresenterLinkWatch();
         closeHandPicker?.();
         closeMoreMenu?.();
     });
@@ -970,6 +1016,13 @@
                     presentBoardInstead();
                     dismissWeakLinkNotice();
                 }}
+                presenterWeak={$presenterWeakNoticeStore}
+                canTakeOver={canSpeakToClass && !onAir}
+                ontakeover={() => {
+                    startSpeakingToClass();
+                    dismissPresenterWeakNotice();
+                }}
+                ondismisspresenterweak={dismissPresenterWeakNotice}
             />
 
             <div class="qd-tray-wrap">
@@ -1088,7 +1141,7 @@
                 <span class="qd-rec-inline"><RoomRecordingIndicator size="cell" /></span>
                 <!-- On air to the whole class (podium or a megaphone spot): a floor given is handed back with the hand.
                      Staff have it at all times, to speak to the class from anywhere. -->
-                {#if onAir || canSpeakToClass}
+                {#if onAir || canSpeakToClass || canGoToSpot || onSpotTrip}
                     <div class="qd-on-air" data-fold="megaphone" transition:grow>
                         <!-- With the microphone off nothing reaches the class: not lit as on air, and the tip says why. -->
                         <button
@@ -1096,15 +1149,17 @@
                             class="qd-button"
                             class:live={onAir}
                             class:muted={onAir && $selfOnAirMutedStore}
-                            aria-pressed={canSpeakToClass ? onAir : undefined}
-                            aria-label={onAir ? $QL.stopSpeakingToClass() : $QL.speakToClass()}
-                            data-tip={onAir
-                                ? $selfOnAirMutedStore
-                                    ? $QL.onAirMicOff()
-                                    : $QL.stopSpeakingToClass()
-                                : $QL.speakToClass()}
-                            data-testid={onAir ? "stop-speaking-button" : "speak-to-class-button"}
-                            onclick={onAir ? stopSpeakingToClass : startSpeakingToClass}
+                            aria-pressed={canSpeakToClass ? onAir : onSpotTrip || canGoToSpot ? onSpotTrip : undefined}
+                            aria-label={megaphoneLabel}
+                            data-tip={onAir && !onSpotTrip && $selfOnAirMutedStore ? $QL.onAirMicOff() : megaphoneLabel}
+                            data-testid={onSpotTrip
+                                ? "back-from-spot-button"
+                                : onAir
+                                  ? "stop-speaking-button"
+                                  : canSpeakToClass
+                                    ? "speak-to-class-button"
+                                    : "go-to-spot-button"}
+                            onclick={onMegaphoneClick}
                         >
                             <Icon name="campaign" />
                         </button>
@@ -1276,20 +1331,35 @@
                     </button>
                 {/if}
 
-                <button
-                    type="button"
-                    class="qd-button narrow"
-                    class:on={$openedMenuStore === "profileMenu"}
-                    aria-haspopup="menu"
-                    aria-expanded={$openedMenuStore === "profileMenu"}
-                    aria-label={$QL.moreOptions()}
-                    data-tip={$QL.moreOptions()}
-                    data-testid="action-user"
-                    bind:this={moreButton}
-                    onclick={() => openedMenuStore.toggle("profileMenu")}
-                >
-                    <Icon name="more" />
-                </button>
+                <span class="qd-anchor">
+                    <button
+                        type="button"
+                        class="qd-button narrow"
+                        class:on={$openedMenuStore === "profileMenu"}
+                        aria-haspopup="menu"
+                        aria-expanded={$openedMenuStore === "profileMenu"}
+                        aria-label={$QL.moreOptions()}
+                        data-tip={$QL.moreOptions()}
+                        data-testid="action-user"
+                        bind:this={moreButton}
+                        onclick={() => openedMenuStore.toggle("profileMenu")}
+                    >
+                        <Icon name="more" />
+                    </button>
+                    {#if $dockHintStore === "staffMenu" && $openedMenuStore !== "profileMenu"}
+                        <span class="qd-hint end" role="status" data-testid="quanta-staff-menu-hint">
+                            <span>{$QL.staffMenuHint()}</span>
+                            <button
+                                type="button"
+                                class="qd-hint-close"
+                                aria-label={$QL.closeHint()}
+                                onclick={() => dismissHint("staffMenu")}
+                            >
+                                <Icon name="close" size={16} />
+                            </button>
+                        </span>
+                    {/if}
+                </span>
                 {#if embedded}
                     <span class="qd-divider" aria-hidden="true"></span>
                     <button
@@ -1967,6 +2037,22 @@
         margin-left: -7px;
         border: 7px solid transparent;
         border-top-color: var(--qd-on);
+    }
+
+    /* At the row's end (⋮): it opens towards the dock, its arrow still on the 40px button. */
+    .qd-hint.end {
+        left: auto;
+        right: 0;
+        transform: none;
+        width: max-content;
+        max-width: min(260px, calc(100vw - 32px));
+        white-space: normal;
+    }
+
+    .qd-hint.end::after {
+        left: auto;
+        right: 13px;
+        margin-left: 0;
     }
 
     .qd-hint-close {

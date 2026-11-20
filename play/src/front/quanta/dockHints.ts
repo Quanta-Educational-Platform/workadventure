@@ -1,14 +1,16 @@
 // quanta: short first-time hints over the dock, each shown a couple of times at most, and never again once the person
-// has used what it points at: the megaphone spots at the tables, and the reactions.
+// has used what it points at: the megaphone spots at the tables, the reactions, and for staff on a phone, ⋮ holding the
+// page's Present board and Record (pageMenu.ts), that one once.
 import { get, writable } from "svelte/store";
 import type { AreaData } from "@workadventure/map-editor";
 import { userIsAdminStore } from "../Stores/GameStore";
 import { isMegaphoneSpot } from "./megaphoneSpots";
 import { selfOnAirStore } from "./speakingToClass";
 
-export type DockHint = "megaphone" | "reactions";
+export type DockHint = "megaphone" | "reactions" | "staffMenu";
 
 export const MAX_HINT_SHOWS = 2;
+const SHOWN_ONCE: ReadonlySet<DockHint> = new Set<DockHint>(["staffMenu"]);
 export const HINT_MS = 8000;
 const STORAGE_KEY = "quanta.dockHints";
 
@@ -44,7 +46,7 @@ export class HintBudget {
     public canShow(hint: DockHint): boolean {
         if (this.shownThisPage.has(hint)) return false;
         const count = this.read()[hint];
-        return (typeof count === "number" ? count : 0) < this.max;
+        return (typeof count === "number" ? count : 0) < (SHOWN_ONCE.has(hint) ? Math.min(1, this.max) : this.max);
     }
 
     public shown(hint: DockHint): void {

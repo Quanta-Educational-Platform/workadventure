@@ -47,6 +47,7 @@ export const SENTRY_ENVIRONMENT = env.SENTRY_ENVIRONMENT;
 export const SENTRY_RELEASE = env.SENTRY_RELEASE;
 export const SENTRY_TRACES_SAMPLE_RATE = env.SENTRY_TRACES_SAMPLE_RATE;
 export const WOKA_SPEED = env.WOKA_SPEED;
+export const WOKA_BAKE = env.WOKA_BAKE ?? "auto";
 
 export const KLAXOON_ENABLED = env.KLAXOON_ENABLED;
 export const KLAXOON_CLIENT_ID = env.KLAXOON_CLIENT_ID;

@@ -24,7 +24,7 @@ import { registerAudioQualitySource } from "../WebRtc/AudioQualityAnalytics";
 import type { Streamable } from "../Space/Streamable";
 import { analyticsClient } from "../Administration/AnalyticsClient";
 import { SCRIPTING_AUDIO_TRACK_NAME } from "./LivekitConstants";
-import { createWeakConnectionTracker, weakConnectionStore } from "./WeakConnection";
+import { createWeakConnectionTracker, setPeerWeak, weakConnectionStore } from "./WeakConnection";
 
 // Maximize/minimize can briefly mount 2 video components for the same participant.
 // Delaying the final unsubscribe avoids sending a false->true bounce to LiveKit during that handoff.
@@ -71,9 +71,15 @@ export class LiveKitParticipant {
     );
     private _muteAudioStore: Writable<boolean> = writable<boolean>(false);
     // quanta: this person's own link, as LiveKit rates it, held for a while like our own (WeakConnection.ts): their tile
-    // says so, so a lagging voice or board is put down to the right person.
+    // says so, so a lagging voice or board is put down to the right person, and staff hear of a colleague on air.
     private _weakConnection = writable<boolean>(false);
-    private readonly weakLink = createWeakConnectionTracker((weak) => this._weakConnection.set(weak), { own: false });
+    private readonly weakLink = createWeakConnectionTracker(
+        (weak) => {
+            this._weakConnection.set(weak);
+            setPeerWeak(this, this._spaceUser.spaceUserId, weak);
+        },
+        { own: false },
+    );
     private readonly boundHandleConnectionQualityChanged = (quality: ConnectionQuality) =>
         this.weakLink.update(quality);
     private _cameraVideoSubscriptions = new Set<symbol>();

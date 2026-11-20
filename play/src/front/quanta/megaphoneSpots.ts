@@ -8,6 +8,10 @@ export const MEGAPHONE_SPOT_PREFIX = "quanta:megaphone:";
 /** What standing on a spot means for this player when they are not on air, for the dock to tell them. */
 export type SpotStanding = "none" | "micOff" | "stepAgain";
 export const spotStandingStore = writable<SpotStanding>("none");
+/** Whether the player stands on a megaphone spot at all, on air or not. */
+export const onSpotStore = writable(false);
+/** Whether this map has megaphone spots one can speak to the class from. */
+export const spotsAvailableStore = writable(false);
 
 export const isMegaphoneSpot = (area: { name?: string }) => (area.name ?? "").startsWith(MEGAPHONE_SPOT_PREFIX);
 
@@ -168,12 +172,14 @@ export class SpotStands<Lecture> {
     public enter(spotId: string, lecture: Lecture): void {
         if (this.stands.has(spotId)) return;
         this.stands.set(spotId, { lecture, stepAgain: false, stopped: false });
+        onSpotStore.set(true);
         this.update();
     }
 
     public leave(spotId: string): void {
         this.stands.delete(spotId);
         this.lectures.leave(spotId);
+        onSpotStore.set(this.stands.size > 0);
         this.update();
     }
 
@@ -192,6 +198,7 @@ export class SpotStands<Lecture> {
     public clear(): void {
         this.stands.clear();
         this.lectures.clear();
+        onSpotStore.set(false);
         spotStandingStore.set("none");
     }
 

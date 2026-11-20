@@ -4,7 +4,9 @@ import type { GameScene } from "../Game/GameScene";
 import { TexturesHelper } from "../Helpers/TexturesHelper";
 import { CharacterTextureError } from "../../Exception/CharacterTextureError";
 import { gameManager } from "../Game/GameManager";
+import { sliceWokaSheet } from "../Player/WokaSheet";
 import { lazyLoadPlayerCharacterTextures } from "./PlayerTexturesLoadingManager";
+import { wokaBaker, wokaPicture } from "./WokaBaker";
 
 import Sprite = Phaser.GameObjects.Sprite;
 
@@ -13,6 +15,10 @@ import Sprite = Phaser.GameObjects.Sprite;
  */
 export class CharacterLayerManager {
     static wokaBase64(characterTextures: CharacterTextureMessage[]): Promise<string> {
+        // quanta: drawn on a canvas from the layers' files, so a person in a list loads nothing into the GPU.
+        if (wokaBaker.mode !== "off") {
+            return wokaPicture(characterTextures.map((texture) => ({ id: texture.id, url: texture.url })));
+        }
         const scene = gameManager.getCurrentGameScene();
         return lazyLoadPlayerCharacterTextures(
             scene.superLoad,
@@ -75,6 +81,8 @@ export class CharacterLayerManager {
             if (scene && !scene.textures.exists(texture)) {
                 throw new CharacterTextureError("texture not found");
             }
+            // quanta: a 2x sheet cut into its own frames first (the snapshot draws it at its own size)
+            sliceWokaSheet(scene.textures.get(texture));
             const sprite = new Sprite(scene, 0, 0, texture, frame);
 
             sprites.set(texture, sprite);

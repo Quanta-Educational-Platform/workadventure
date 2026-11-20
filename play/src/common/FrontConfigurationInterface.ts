@@ -41,6 +41,7 @@ export interface FrontConfigurationInterface {
     SENTRY_RELEASE: string | undefined;
     SENTRY_TRACES_SAMPLE_RATE: number | undefined;
     WOKA_SPEED: number;
+    WOKA_BAKE: "auto" | "2x" | "1x" | "off";
     KLAXOON_ENABLED: boolean;
     KLAXOON_CLIENT_ID: string | undefined;
     YOUTUBE_ENABLED: boolean;

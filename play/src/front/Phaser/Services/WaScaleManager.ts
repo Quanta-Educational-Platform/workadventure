@@ -2,6 +2,8 @@ import * as Phaser from "phaser";
 import { coWebsiteManager } from "../../Stores/CoWebsiteStore";
 import type { Game } from "../Game/Game";
 import { ResizableScene } from "../Login/ResizableScene";
+import { setWokaTexturesZoom } from "../Player/WokaSheet";
+import { wokaBaker } from "../Entity/WokaBaker";
 import { HdpiManager } from "./HdpiManager";
 
 import ScaleManager = Phaser.Scale.ScaleManager;
@@ -122,6 +124,8 @@ export class WaScaleManager {
             // (Game.ts) and their camera bounds read both; set after, the frame is drawn with bounds made from the
             // new width and the old zoom, the room off by up to a hundred pixels until the next frame.
             camera?.setZoom(drawnZoom);
+            setWokaTexturesZoom(drawnZoom);
+            wokaBaker.setDrawnZoom(drawnZoom);
             this.scaleManager.resize(
                 Math.ceil((realSize.width * drawnZoom) / exactZoom),
                 Math.ceil((realSize.height * drawnZoom) / exactZoom),
@@ -136,6 +140,7 @@ export class WaScaleManager {
             const zoom =
                 this.hdpiManager.zoomModifier * this.hdpiManager.getOptimalZoomLevel(realSize.width * realSize.height);
             camera?.setZoom(zoom);
+            setWokaTexturesZoom(zoom);
             if (this.scaleManager.width !== realSize.width || this.scaleManager.height !== realSize.height) {
                 this.scaleManager.resize(realSize.width, realSize.height);
             }

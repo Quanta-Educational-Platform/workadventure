@@ -21,6 +21,7 @@ const woka: BaseTranslation = {
         noGlasses: "No glasses",
         skinTone: "Skin tone {n:number}",
         turn: "Turn around",
+        readyMadeRetired: "Ready-made avatars are gone, so here is a new one to start from: change anything you like, then Finish.",
         names: {
             classic: "Classic",
             lashes: "Lashes",

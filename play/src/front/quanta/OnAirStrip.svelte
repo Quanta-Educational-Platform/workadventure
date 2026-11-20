@@ -1,7 +1,8 @@
 <script lang="ts">
-    // quanta: above the dock, whether the class hears the person on air, who staff have on air and in what state, and
-    // the first-time hint about the tables' megaphone spots.
+    // quanta: above the dock, whether the class hears the person on air, who staff have on air and in what state, a
+    // colleague on air with a weak link (staff), and the first-time hint about the tables' megaphone spots.
     import type { WeakLinkNotice } from "../Livekit/WeakLinkNotice";
+    import type { PresenterWeakNotice } from "./presenterLink";
     import Notice from "./Notice.svelte";
     import { QL } from "./i18n";
     import { nameTag } from "./nameTag";
@@ -41,6 +42,12 @@
         /** The page can present a board now: a weak share's notice to staff offers it (presentBoardBridge.ts). */
         presentBoard?: boolean;
         onpresentboard?: () => void;
+        /** Staff: a colleague on air to the class has a weak link (presenterLink.ts). */
+        presenterWeak?: PresenterWeakNotice;
+        /** This person can go on air to the class now: the notice offers it. */
+        canTakeOver?: boolean;
+        ontakeover?: () => void;
+        ondismisspresenterweak?: () => void;
         noticesHidden?: boolean;
         /** Free ground beside the dock (QuantaDock.svelte): the notices stand there when they fit it, above the dock if not. */
         ground?: { side: "left" | "right"; width: number; maxHeight: number };
@@ -66,6 +73,10 @@
         ondismissweaklink = () => {},
         presentBoard = false,
         onpresentboard = () => {},
+        presenterWeak = undefined,
+        canTakeOver = false,
+        ontakeover = () => {},
+        ondismisspresenterweak = () => {},
         noticesHidden = false,
         ground = undefined,
     }: Props = $props();
@@ -85,6 +96,8 @@
         }
     });
 
+    let presenterWeakText = $derived(presenterWeak ? $QL.presenterWeakLink({ name: presenterWeak.name }) : undefined);
+
     let audible = $derived(audibleSpeakers(speakers));
     let list = $derived(visibleSpeakers(audible));
     let speakerLine = $derived.by(() => {
@@ -100,7 +113,17 @@
     // into its stacked form a frame after it appears (Notice.svelte).
     let height = $state(0);
     let shownKey = $derived(
-        [weakLinkText, prompt, speakerLine, stepAgain, megaphoneHint, notHeard, ground?.side, ground?.width].join("|"),
+        [
+            weakLinkText,
+            presenterWeakText,
+            prompt,
+            speakerLine,
+            stepAgain,
+            megaphoneHint,
+            notHeard,
+            ground?.side,
+            ground?.width,
+        ].join("|"),
     );
     let tooTallFor: string | undefined = $state();
     let fitsFor: string | undefined = $state();
@@ -125,7 +148,7 @@
     });
 </script>
 
-{#if !noticesHidden && (prompt || speakerLine || stepAgain || megaphoneHint || notHeard || weakLinkText)}
+{#if !noticesHidden && (prompt || speakerLine || stepAgain || megaphoneHint || notHeard || weakLinkText || presenterWeakText)}
     <!-- Clear of the zoom column, which stands level with it at the map's right edge, except on a phone's full width. -->
     <div
         class="qs"
@@ -149,6 +172,19 @@
                 onaction={weakLink?.kind === "cameraOff" ? oncameraon : onpresentboard}
                 ondismiss={ondismissweaklink}
                 testid="quanta-weak-link"
+            />
+        {/if}
+
+        {#if presenterWeakText}
+            <Notice
+                tone="problem"
+                icon="wifiOff"
+                text={presenterWeakText}
+                action={canTakeOver ? $QL.speakToClass() : undefined}
+                actionIcon="campaign"
+                onaction={ontakeover}
+                ondismiss={ondismisspresenterweak}
+                testid="quanta-presenter-weak-link"
             />
         {/if}
 
@@ -233,12 +269,15 @@
 {/if}
 
 <style>
-    /* Above the dock, centred on it, in the room's notice shape (Notice.svelte); they wrap rather than cut off. Clear
-       of the room window's lower edge, which runs just above the dock. */
+    /* Above the dock, centred on it, in the room's notice shape (Notice.svelte); they wrap rather than cut off. Inside
+       the room window, as far above its lower edge as the zoom pill (12px): the window ends 96px above the screen's
+       bottom (84px on a phone, quanta-ui.css) and the dock 12px (8px in a narrow room), whatever the dock's height. */
     .qs {
+        --qs-window: 96px;
+        --qs-dock: 12px;
         position: absolute;
         left: 50%;
-        bottom: calc(100% + 22px);
+        bottom: calc(var(--qs-window) + 12px - var(--qs-dock) + var(--quanta-chat-below, 0px));
         transform: translateX(-50%);
         display: flex;
         flex-direction: column;
@@ -246,6 +285,16 @@
         gap: 8px;
         container-type: inline-size;
         pointer-events: none;
+    }
+
+    :global(.quanta-dock.room-740) .qs {
+        --qs-dock: 8px;
+    }
+
+    @media (max-width: 480px), (max-height: 480px) {
+        .qs {
+            --qs-window: 84px;
+        }
     }
 
     /* Still read out by screen readers while it settles. */

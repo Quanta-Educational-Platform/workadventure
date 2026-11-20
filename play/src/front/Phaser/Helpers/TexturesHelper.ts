@@ -18,13 +18,20 @@ export class TexturesHelper {
             // TODO: send a correct PNG????
             return "";
         }
-        const rt = scene.make.renderTexture({}, false);
+        // quanta: as big as the densest layer (a 2x woka sheet's frames are 64 x 64, drawn at 32 in the room): every
+        // layer is drawn at that size for the picture, then put back as it was.
+        const size = Math.max(32, ...sprites.map(({ sprite }) => sprite.frame.width));
+        const rt = scene.make.renderTexture({ width: size, height: size }, false);
         try {
             for (const { sprite, frame } of sprites) {
                 if (frame) {
                     sprite.setFrame(frame);
                 }
+                const scaleX = sprite.scaleX;
+                const scaleY = sprite.scaleY;
+                sprite.setScale(size / sprite.frame.width);
                 rt.draw(sprite, sprite.displayWidth * 0.5, sprite.displayHeight * 0.5);
+                sprite.setScale(scaleX, scaleY);
             }
             rt.render();
             return new Promise<string>((resolve, reject) => {

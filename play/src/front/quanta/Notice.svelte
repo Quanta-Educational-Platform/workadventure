@@ -9,6 +9,9 @@
     import type { NoticeTone } from "./noticeLook";
     import { QL } from "./i18n";
 
+    // A one-line card is 44px tall, a two-line one 64px.
+    const WRAPPED_HEIGHT = 52;
+
     interface Props {
         tone?: NoticeTone;
         /** An icon, "busy" for a spinner (reconnecting), "rec" or "paused" for the recording dot. */
@@ -49,6 +52,8 @@
     // one line, never on the form it is in, so the two forms can't flip each other.
     let card: HTMLDivElement | undefined = $state();
     let stacked = $state(false);
+    // Text that wraps makes the card taller: what ends it then stands in from the edge as far as the icon does.
+    let wrapped = $state(false);
 
     $effect(() => {
         const node = card;
@@ -67,6 +72,8 @@
             node.classList.remove("measuring");
             if (was) node.classList.add("stacked");
             stacked = room > 0 && oneLine > Math.min(room, 760);
+            // The stacked form (a grid, only in a narrow room) puts the button in its own corner row instead.
+            wrapped = getComputedStyle(node).display !== "grid" && node.offsetHeight > WRAPPED_HEIGHT;
         };
         const observer = new ResizeObserver(fit);
         if (box) observer.observe(box);
@@ -80,6 +87,7 @@
     bind:this={card}
     class="qn tone-{tone}"
     class:stacked
+    class:wrapped
     role={live === "assertive" ? "alert" : live === "polite" ? "status" : undefined}
     data-testid={testid}
 >
@@ -145,6 +153,13 @@
         padding-right: 6px;
     }
 
+    /* Two lines or more: the button or cross is centred with more room above and below it than 6px, so it stands in
+       from the end as the icon does from the start, which is about as far as from the top and bottom. */
+    .qn.wrapped:has(> .qn-close),
+    .qn.wrapped:has(.qn-body > .qn-action:last-child) {
+        padding-right: 14px;
+    }
+
     .qn-icon {
         flex: none;
         display: grid;
@@ -182,7 +197,8 @@
         flex: 1 1 auto;
         min-width: 0;
         margin: 0;
-        padding: 5px 0;
+        /* Fira Sans leaves more of its line below the baseline than above the capitals: 1px lower reads as centred. */
+        padding: 6px 0 4px;
         overflow-wrap: break-word;
         hyphens: manual;
     }
@@ -244,7 +260,6 @@
         cursor: pointer;
     }
 
-
     .qn.measuring {
         position: absolute;
         max-width: none;
@@ -278,12 +293,12 @@
 
         .qn.stacked .qn-icon {
             grid-area: 1 / 1;
-            margin-top: 5px;
+            margin-top: 6px;
         }
 
         .qn.stacked .qn-text {
             grid-area: 1 / 2;
-            padding: 5px 0;
+            padding: 6px 0 4px;
         }
 
         .qn.stacked .qn-close {

@@ -467,6 +467,14 @@ export const EnvironmentVariables = z.object({
     WOKA_SPEED: PositiveIntAsString.optional()
         .transform((val) => toNumber(val, 9))
         .describe("Avatar (WOKA) movement speed. Defaults to 9"),
+    // quanta: baked woka sheets (Phaser/Entity/WokaBaker.ts)
+    WOKA_BAKE: z
+        .enum(["auto", "2x", "1x", "off", ""])
+        .optional()
+        .transform((val) => val || "auto")
+        .describe(
+            "How the room draws avatars: `auto` bakes each look's layers into one sheet at the density the room is drawn at (1x at zoom 1, 2x at zoom 2 and more), `2x` or `1x` bakes at that density always, `off` draws every layer as its own sprite. Defaults to auto",
+        ),
 
     KLAXOON_ENABLED: BoolAsString.optional()
         .transform((val) => toBool(val, false))

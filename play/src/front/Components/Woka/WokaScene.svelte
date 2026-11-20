@@ -9,7 +9,8 @@
     import WokaSelectScene from "./WokaSelectScene.svelte";
     import WokaCustomizeScene from "./WokaCustomizeScene.svelte";
 
-    let buildOwnWoka = $state(false);
+    // quanta: the builder, always: the ready-made wokas are retired (a pick of one opens the builder on a new woka)
+    let buildOwnWoka = $state(true);
     let error: string | null = $state(null);
 
     async function saveAndContinue(texturesId: string[]) {
@@ -44,12 +45,6 @@
 
     onMount(() => {
         mounted = true;
-        // Get the current textures
-        const currentTextures = gameManager.getCharacterTextureIds();
-        // quanta: someone new builds their own (it starts from a random one); a ready-made pick opens the list
-        if (!currentTextures || currentTextures.length !== 1) {
-            buildOwnWoka = true;
-        }
         // Add keyboard navigation listener
         window.addEventListener("keydown", useKeyboardNavigation);
     });

@@ -18,7 +18,7 @@
     import { getItemsPerRow } from "./ItemsPerRow";
     import WokaImage from "./WokaImage.svelte";
     import QuantaWokaBuilder from "./QuantaWokaBuilder.svelte";
-    import { idsToLook, lookToIds, presetLook, randomLook, type WokaV3Look } from "../../quanta/wokaV3";
+    import { idsToLook, lookToIds, randomLook, type WokaV3Look } from "../../quanta/wokaV3";
 
     interface Props {
         back: () => void;
@@ -43,6 +43,8 @@
     // quanta: with Quanta's own parts in the catalogue, the builder offers only those (no hats, props or
     // underwear); WA's stock parts stay for picks made before.
     let quantaLook: WokaV3Look | null = $state(null);
+    // quanta: the saved pick was a ready-made woka, which is retired: the builder starts on a new one and says why
+    let readyMadeRetired = $state(false);
     const quanta = $derived(!!(wokaData as WokaData | null)?.["quantaSkin"]);
 
     const bodyPartOrder: WokaBodyPart[] = ["body", "eyes", "hair", "clothes", "hat", "accessory"];
@@ -71,8 +73,8 @@
 
             if (wokaData.quantaSkin) {
                 const saved = savedTextureIds ?? [];
-                quantaLook =
-                    idsToLook(saved) ?? (saved.length === 1 ? presetLook(saved[0]) : null) ?? randomLook();
+                quantaLook = idsToLook(saved) ?? randomLook();
+                readyMadeRetired = saved.length === 1 && !idsToLook(saved);
                 return;
             }
 
@@ -302,6 +304,11 @@
                 </button>
             </div>
         {:else if quanta && quantaLook && wokaData}
+            {#if readyMadeRetired}
+                <p class="quanta-woka-retired m-0 px-4 pt-4 sm:px-6 sm:pt-5 text-sm text-white/80">
+                    {$LL.woka.customWoka.readyMadeRetired()}
+                </p>
+            {/if}
             <QuantaWokaBuilder
                 look={quantaLook}
                 {wokaData}
@@ -314,9 +321,6 @@
                 class="w-full p-3 flex flex-row items-center gap-2 border-t-2 border-t-white/10"
                 style="border-top-style: solid;"
             >
-                <button class="w-full px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded" onclick={back}>
-                    {$LL.woka.customWoka.navigation.backToDefaultWoka()}
-                </button>
                 <button
                     class="selectCharacterSceneFormSubmit w-full px-4 py-3 bg-secondary text-white rounded hover:bg-secondary-600"
                     onclick={handlerSaveAndContinue}

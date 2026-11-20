@@ -120,18 +120,6 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
                 {
                     "id": "gentle",
                     "label": "Gentle"
-                },
-                {
-                    "id": "shiny",
-                    "label": "Shiny"
-                },
-                {
-                    "id": "dot",
-                    "label": "Dots"
-                },
-                {
-                    "id": "iris",
-                    "label": "Big iris"
                 }
             ],
             "colours": [
@@ -856,7 +844,7 @@ export const WOKA_V3_MANIFEST: WokaV3Manifest = {
             "q3-shoes-boots-brown",
             "q3-bottoms-trousers-black",
             "q3-top-jacket-charcoal",
-            "q3-hair-sidepart-silver",
+            "q3-hair-sidepart-espresso",
             "q3-glasses-browline-tortoise"
         ],
         "quanta12": [

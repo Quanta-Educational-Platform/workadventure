@@ -94,7 +94,10 @@ import {
     type OutgoingProximityFileTransferUpdate,
     type ProximityFileTransferUpdate,
 } from "./ProximityFileTransferService";
+import { isAxiosError } from "axios";
+import { chatFileBody, chatFileFromBody, isServerChatFile, uploadChatFile } from "../../../quanta/chatFiles";
 import { estimateProximityFileTransferRemainingSeconds } from "./ProximityFileTransferEta";
+import { ProximityFileStorage } from "./ProximityFileStorage";
 import { normalizeChatImage } from "./ProximityImageNormalizer";
 import { directEntriesStore, type DirectEntry } from "../../../quanta/directEntries";
 import { mentionIdsIn, type Mention } from "../../../quanta/mentions";
@@ -328,6 +331,8 @@ export class ProximityChatRoom implements ChatRoom {
     // For each file we sent, how each recipient's copy is doing.
     private outgoingFileTransfers = new Map<string, Writable<ChatAttachmentRecipient[]>>();
     private fileTransferObjectUrls = new Set<string>();
+    // Lives as long as the room, so photos received in one bubble still show after leaving it.
+    private fileStorage: ProximityFileStorage | undefined;
     private screenWakeRelease: undefined | (() => Promise<void>);
 
     constructor(
@@ -445,10 +450,10 @@ export class ProximityChatRoom implements ChatRoom {
                     spaceUserId: entry.sender,
                     uuid: entry.sender,
                 },
-                writable({ body: entry.body, url: undefined }),
+                writable(chatFileContent(entry.body).content),
                 new Date(entry.at),
                 entry.sender === snapshot.self,
-                "proximity",
+                chatFileContent(entry.body).type ?? "proximity",
             );
             message.canDelete.set(snapshot.canModerate || message.isMyMessage);
             message.onRemove = () => this.sendRoomCommand({ op: "delete", id: entry.id });
@@ -599,11 +604,7 @@ export class ProximityChatRoom implements ChatRoom {
                 void this.sendRoomChatCommand({ op: "send", body: message, mentions: mentionIdsIn(message) });
             return;
         }
-        // Create content message
-        const newChatMessageContent = {
-            body: message,
-            url: undefined,
-        };
+        const shown = chatFileContent(message);
 
         const spaceUser = this.users?.get(this._spaceUserId);
         let chatUser: AnyKindOfUser = this.unknownUser;
@@ -615,10 +616,10 @@ export class ProximityChatRoom implements ChatRoom {
         const newMessage = new ProximityChatMessage(
             uuidv4(),
             chatUser,
-            writable(newChatMessageContent),
+            writable(shown.content),
             new Date(),
             true,
-            action,
+            action === "proximity" ? (shown.type ?? action) : action,
         );
         if (action === "proximity") this.makeNearbyMessage(newMessage, this._spaceUserId);
 
@@ -694,11 +695,7 @@ export class ProximityChatRoom implements ChatRoom {
             return;
         }
 
-        // Create content message
-        const newChatMessageContent = {
-            body: message,
-            url: undefined,
-        };
+        const shown = chatFileContent(message);
 
         const spaceUser = this.users?.get(senderUserId);
         let chatUser: AnyKindOfUser = { ...this.unknownUser, spaceUserId: senderUserId };
@@ -727,10 +724,10 @@ export class ProximityChatRoom implements ChatRoom {
         const newMessage = new ProximityChatMessage(
             id || uuidv4(),
             chatUser,
-            writable(newChatMessageContent),
+            writable(shown.content),
             new Date(),
             false,
-            "proximity",
+            shown.type ?? "proximity",
         );
         this.makeNearbyMessage(newMessage, senderUserId);
 
@@ -755,6 +752,28 @@ export class ProximityChatRoom implements ChatRoom {
     }
 
     async sendFiles(files: FileList): Promise<void> {
+        // quanta: pictures and PDFs go to Quanta and into the chat as a message; anything else still travels
+        // browser to browser below.
+        const prepared = await Promise.all(Array.from(files).map((file) => normalizeChatImage(file)));
+        const kept = prepared.filter((file) => isServerChatFile(file));
+        const direct = prepared.filter((file) => !isServerChatFile(file));
+        let failed: unknown;
+        for (const file of kept) {
+            try {
+                const ref = await uploadChatFile(file);
+                this.sendMessage(chatFileBody(ref));
+                analyticsClient.trackAdminEvent("chat.proximity_file.sent", { sizeBytes: file.size, recipientCount: 0 });
+            } catch (error) {
+                // A room server without the upload route (an older image) still gets the file across directly.
+                if (isAxiosError(error) && error.response?.status === 404) direct.push(file);
+                else failed = error;
+            }
+        }
+        if (direct.length > 0) await this.sendFilesDirectly(direct);
+        if (failed) throw failed instanceof Error ? failed : new Error("Could not send the file.");
+    }
+
+    private async sendFilesDirectly(files: File[]): Promise<void> {
         if (!this.fileTransferService) {
             return Promise.reject(new Error("Proximity file transfer service is not initialized"));
         }
@@ -769,7 +788,7 @@ export class ProximityChatRoom implements ChatRoom {
         const spaceUser = this.users?.get(this._spaceUserId);
         const chatUser = spaceUser ? mapExtendedSpaceUserToChatUser(spaceUser) : this.unknownUser;
         const offers = this.fileTransferService.createOutgoingOffers(
-            await Promise.all(Array.from(files).map((file) => normalizeChatImage(file))),
+            files,
             recipients.map((user) => user.spaceUserId),
         );
         for (const offer of offers) {
@@ -805,7 +824,11 @@ export class ProximityChatRoom implements ChatRoom {
                 },
             );
             message.canDelete.set(true);
-            message.onRemove = () => this.fileTransferService?.deleteOutgoing(offer.transferId);
+            message.onRemove = () => {
+                if (!this.fileTransferService?.deleteOutgoing(offer.transferId)) {
+                    this.markFileMessageDeleted(offer.transferId);
+                }
+            };
             this.messages.push(message);
             this.lastMessageTimestamp = message.date.getTime();
         }
@@ -1100,26 +1123,16 @@ export class ProximityChatRoom implements ChatRoom {
         this.fileTransferService?.destroy();
         this.fileTransferSubscriptions.unsubscribe();
         this.fileTransferSubscriptions = new Subscription();
+        this.fileStorage ??= new ProximityFileStorage();
         this.fileTransferService = new ProximityFileTransferService({
             localSpaceUserId: this._spaceUserId,
             space,
             getIceServers: () => iceServersManager.getIceServersConfig(),
             canExchangeWith: (spaceUserId) => !this.isBlackListedSpaceUser(spaceUserId),
+            storage: this.fileStorage,
         });
         this.fileTransferSubscriptions.add(
-            this.fileTransferService.deletions.subscribe((transferId) => {
-                const message = [...this.messages].find((entry) => entry.id === transferId && entry.attachment);
-                if (!(message instanceof ProximityChatMessage)) return;
-                const url = get(message.content).url;
-                if (url) {
-                    URL.revokeObjectURL(url);
-                    this.fileTransferObjectUrls.delete(url);
-                }
-                this.fileTransfers.get(transferId)?.content.update((content) => ({ ...content, url: undefined }));
-                this.outgoingFileTransfers.delete(transferId);
-                message.isDeleted.set(true);
-                message.canDelete.set(false);
-            }),
+            this.fileTransferService.deletions.subscribe((transferId) => this.markFileMessageDeleted(transferId)),
         );
         this.fileTransferSubscriptions.add(
             this.fileTransferService.incomingOffers.subscribe((offer) => {
@@ -2301,7 +2314,7 @@ export class ProximityChatRoom implements ChatRoom {
         this.spaceStateUnsubscriber?.();
         this.roomSidePanelUnsubscriber();
         this.selectedRoomUnsubscriber();
-        this.cleanupFileTransferService();
+        this.cleanupFileTransferService(true);
 
         this.scriptingOutputAudioStreamManager?.close();
         this.scriptingInputAudioStreamManager?.close();
@@ -2314,14 +2327,31 @@ export class ProximityChatRoom implements ChatRoom {
         }
     }
 
-    private cleanupFileTransferService(): void {
+    private markFileMessageDeleted(transferId: string): void {
+        const message = [...this.messages].find((entry) => entry.id === transferId && entry.attachment);
+        if (!(message instanceof ProximityChatMessage)) return;
+        const url = get(message.content).url;
+        if (url) {
+            URL.revokeObjectURL(url);
+            this.fileTransferObjectUrls.delete(url);
+        }
+        this.fileTransfers.get(transferId)?.content.update((content) => ({ ...content, url: undefined }));
+        this.outgoingFileTransfers.delete(transferId);
+        message.isDeleted.set(true);
+        message.canDelete.set(false);
+    }
+
+    /**
+     * Leaving a bubble ends the transfers still under way: say so on each card, instead of leaving an
+     * Accept button or a progress bar that no longer lead anywhere. Files already sent or received
+     * stay on their cards until deleted or the room is destroyed.
+     */
+    private cleanupFileTransferService(destroyFiles = false): void {
         this.fileTransferSubscriptions.unsubscribe();
         this.fileTransferService?.destroy();
         this.fileTransferService = undefined;
-        // Leaving ends every transfer and frees the files received: say so on each card, instead of
-        // leaving an Accept button, a progress bar or a save link that no longer lead anywhere.
         for (const { content, status, decision } of this.fileTransfers.values()) {
-            if (get(decision) !== "declined") {
+            if (get(decision) !== "declined" && (destroyFiles || get(content).url === undefined)) {
                 content.update((currentContent) => ({ ...currentContent, url: undefined }));
                 status.set({ state: "error", error: "unavailable" });
             }
@@ -2329,13 +2359,23 @@ export class ProximityChatRoom implements ChatRoom {
         this.fileTransfers.clear();
         this.failUnfinishedOutgoingRecipients();
         this.outgoingFileTransfers.clear();
+        if (!destroyFiles) return;
         for (const objectUrl of this.fileTransferObjectUrls) {
             URL.revokeObjectURL(objectUrl);
         }
         this.fileTransferObjectUrls.clear();
+        this.fileStorage?.destroy().catch((error) => console.warn("Unable to clean up proximity file storage", error));
+        this.fileStorage = undefined;
     }
 }
 
 function attachmentErrorFor(failure: string): "download" | "unavailable" | "connection" | "interrupted" {
     return failure === "unavailable" || failure === "connection" || failure === "interrupted" ? failure : "download";
+}
+
+/** quanta: a message that carries a file kept on Quanta shows as that file; any other shows its text. */
+function chatFileContent(body: string): { content: ChatMessageContent; type: ChatMessageType | undefined } {
+    const file = chatFileFromBody(body);
+    if (!file) return { content: { body, url: undefined }, type: undefined };
+    return { content: { body: file.name, url: file.url }, type: getMessageTypeFromMimeType(file.mime) };
 }

@@ -6,6 +6,7 @@ import type { AvailabilityStatus as AvailabilityStatusType } from "@workadventur
 import { SayMessageType, AvailabilityStatus, PositionMessage_Direction } from "@workadventure/messages";
 import { defaultWoka, Deferred, type Movable, type PositionInterface } from "@workadventure/shared-utils";
 import { Subject } from "rxjs";
+import { asError } from "catch-unknown";
 import { currentPlayerWokaStore } from "../../Stores/CurrentPlayerWokaStore";
 import type { OutlineableInterface } from "../Game/OutlineableInterface";
 import { createColorStore } from "../../Stores/OutlineColorStore";
@@ -21,6 +22,7 @@ import {
     seatedColumnsOf,
     seatedFrame,
     sheetAnimationKey,
+    sliceWokaSheet,
     stillFrame,
 } from "../Player/WokaSheet";
 import { directionOfFacing, FacingTracker } from "../../quanta/wokaFacing";
@@ -33,6 +35,8 @@ import { lazyLoadPlayerCharacterTextures } from "./PlayerTexturesLoadingManager"
 import { SpeechBubble } from "./SpeechBubble";
 import { SpeechDomElement } from "./SpeechDomElement";
 import { ThinkingCloud } from "./ThinkingCloud";
+import { adoptWokaLease } from "./WokaBaker";
+import type { WokaLease, WokaLeaseHolder } from "./WokaBaker";
 
 import Container = Phaser.GameObjects.Container;
 import RenderTexture = Phaser.GameObjects.RenderTexture;
@@ -93,7 +97,7 @@ function easedDistance({ cruise, ramp, length }: PathEase & { length: number }, 
     return length - (acceleration * (total - t) * (total - t)) / 2;
 }
 
-export abstract class Character extends Container implements OutlineableInterface, Movable {
+export abstract class Character extends Container implements OutlineableInterface, Movable, WokaLeaseHolder {
     private readonly movedSubject = new Subject<PositionInterface>();
     public readonly moved$ = this.movedSubject.asObservable();
 
@@ -133,6 +137,8 @@ export abstract class Character extends Container implements OutlineableInterfac
     private seatMotion: Tween | undefined;
     // quanta: true when every layer is a new sheet, with eight facings and seated frames.
     private eightWay = false;
+    // quanta: the baked look it shows (WokaBaker.ts), let go when it goes.
+    private wokaLease: WokaLease | undefined;
     protected readonly facing = new FacingTracker(PositionMessage_Direction.DOWN);
     private readonly syncDisplayPositionWithPhysics = (): void => {
         this.setDepthIfNeeded(this.y + 16);
@@ -366,6 +372,9 @@ export abstract class Character extends Container implements OutlineableInterfac
     }
 
     private async getSnapshot(): Promise<string> {
+        // quanta: a baked look comes with its picture, drawn without the GPU.
+        const picture = this.wokaLease?.picture();
+        if (picture) return picture;
         const sprites = Array.from(this.sprites.values()).map((sprite) => {
             return { sprite, frame: 1 };
         });
@@ -416,24 +425,20 @@ export abstract class Character extends Container implements OutlineableInterfac
         if (textures.length < 1) {
             throw new CharacterTextureError("No texture given");
         }
+        // quanta: a baked look is held from here until this woka is destroyed.
+        const lease = adoptWokaLease(textures, this);
+        if (lease) this.wokaLease = lease;
 
         for (const texture of textures) {
             if (this.scene && !this.scene.textures.exists(texture)) {
                 throw new CharacterTextureError(`Texture "${texture}" not found`);
             }
+            // quanta: a 2x sheet's 64 x 64 frames are drawn at the room's 32 x 32, like every other sheet's.
+            const frameSize = sliceWokaSheet(this.scene.textures.get(texture));
             const sprite = new Sprite(this.scene, 0, 0, texture, frame);
+            if (frameSize !== 32) sprite.setScale(32 / frameSize);
             this.add(sprite);
-            const sheet = isSheetFrameCount(sprite.texture.getFrameNames().length);
-            [...getPlayerAnimations(texture), ...(sheet ? getSheetAnimations(texture) : [])].forEach((d) => {
-                if (!this.scene.anims.exists(d.key)) {
-                    this.scene.anims.create({
-                        key: d.key,
-                        frames: this.scene.anims.generateFrameNumbers(d.frameModel, { frames: d.frames }),
-                        frameRate: d.frameRate,
-                        repeat: d.repeat,
-                    });
-                }
-            });
+            this.createAnimations(texture, sprite);
             // Needed, otherwise, animations are not handled correctly.
             if (this.scene) {
                 this.scene.sys.updateList.add(sprite);
@@ -453,6 +458,52 @@ export abstract class Character extends Container implements OutlineableInterfac
             this.seatDrawn = { x: look.x, y: look.y, crop: look.crop };
         }
         this.drawSeatOffsets();
+    }
+
+    private createAnimations(texture: string, sprite: Sprite): void {
+        const sheet = isSheetFrameCount(sprite.texture.getFrameNames().length);
+        [...getPlayerAnimations(texture), ...(sheet ? getSheetAnimations(texture) : [])].forEach((d) => {
+            if (!this.scene.anims.exists(d.key)) {
+                this.scene.anims.create({
+                    key: d.key,
+                    frames: this.scene.anims.generateFrameNumbers(d.frameModel, { frames: d.frames }),
+                    frameRate: d.frameRate,
+                    repeat: d.repeat,
+                });
+            }
+        });
+    }
+
+    /**
+     * quanta: the same look baked at the room's new density: the sprite keeps its frame, mirror, seat cut and
+     * animation, on the new sheet. Everything is checked before the sprite is touched; once it shows `to`, `to` is
+     * this woka's and true is returned, even if its animation could not follow.
+     */
+    public swapWokaLease(from: WokaLease, to: WokaLease): boolean {
+        const sprite = this.sprites.get(from.key);
+        if (this.destroyed || !this.scene || this.wokaLease !== from || !sprite) return false;
+        if (!to.key || to.key === from.key || !this.scene.textures.exists(to.key)) return false;
+        const texture = this.scene.textures.get(to.key);
+        const frame = sprite.frame.name;
+        if (!texture.has(frame)) return false;
+        const playing = sprite.anims.isPlaying ? sprite.anims.currentAnim?.key : undefined;
+
+        this.wokaLease = to;
+        this.sprites.delete(from.key);
+        this.sprites.set(to.key, sprite);
+        // A playing animation would put its own (old) texture back on the next step.
+        sprite.anims.stop();
+        sprite.setTexture(to.key, frame);
+        try {
+            sprite.setScale(32 / sliceWokaSheet(texture));
+            this.createAnimations(to.key, sprite);
+            if (playing?.startsWith(from.key + "-")) sprite.play(to.key + playing.slice(from.key.length));
+            this.drawSeatOffsets();
+        } catch (e) {
+            console.warn("quanta: woka look swapped, its animation not", asError(e));
+        }
+        this.scene.markDirty();
+        return true;
     }
 
     public get seatId(): string | undefined {
@@ -556,7 +607,8 @@ export abstract class Character extends Container implements OutlineableInterfac
         const crop = Math.round(this.seatDrawn.crop);
         for (const sprite of this.sprites.values()) {
             sprite.setPosition(x, y);
-            if (crop > 0) sprite.setCrop(0, 0, sprite.width, sprite.height - crop);
+            // The cut is in room pixels; the crop is in the sheet's own (two of them a room pixel on a 2x sheet).
+            if (crop > 0) sprite.setCrop(0, 0, sprite.width, sprite.height - (crop * sprite.width) / 32);
             else if (sprite.isCropped) sprite.setCrop();
         }
         this.updateUsernameDisplayPosition();
@@ -809,6 +861,9 @@ export abstract class Character extends Container implements OutlineableInterfac
         }
         this.texturePromise?.cancel();
         this.list.forEach((objectContaining) => objectContaining.destroy());
+        // quanta: after its sprite: the look's texture may go with it.
+        this.wokaLease?.release();
+        this.wokaLease = undefined;
         this.outlineColorStoreUnsubscribe?.();
         this.destroyed = true;
         super.destroy();

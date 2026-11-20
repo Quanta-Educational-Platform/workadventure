@@ -144,6 +144,50 @@ export function placement(seat: Seat): SeatPlacement {
 
 const CELL = 32;
 const NONE: readonly Seat[] = [];
+
+/** The room editor's furniture catalogue: its seating pieces are seats wherever the editor places them. */
+export const FURNITURE_COLLECTION = "Quanta furniture";
+const SEAT_PIECE = /^quanta:(chair|office-chair|stool|bean-bag|armchair|sofa):[^:]+:(Down|Up|Left|Right)$/;
+const PIECE_FACING: Record<string, SeatFacing> = { Down: "down", Up: "up", Left: "left", Right: "right" };
+
+/** An object placed in the room (map editor), as the scene holds it: its top-left corner and size. */
+export interface PlacedPiece {
+    id: string;
+    prefabId: string;
+    collectionName: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Seats for the catalogue's seating pieces placed in the room: placed objects carry no map areas, so without these a
+ * chair from the editor is only its picture, walked onto and never sat on. A chair, stool, bean bag or armchair is one
+ * seat and a sofa two, on the piece's bottom row of tiles, facing the way the piece was placed. Named after the placed
+ * object, so every player in the room names the same seat.
+ */
+export function furnitureSeatAreas(pieces: Iterable<PlacedPiece>): Pick<AreaData, "name" | "x" | "y" | "width" | "height">[] {
+    const seats: Pick<AreaData, "name" | "x" | "y" | "width" | "height">[] = [];
+    for (const piece of pieces) {
+        if (piece.collectionName !== FURNITURE_COLLECTION) continue;
+        const match = SEAT_PIECE.exec(piece.prefabId);
+        if (!match) continue;
+        const facing = PIECE_FACING[match[2]];
+        const sideways = facing === "left" || facing === "right";
+        const count = match[1] === "sofa" ? 2 : 1;
+        for (let k = 0; k < count; k++) {
+            // Side by side along a sofa seen from the front or the back; one behind the other along one turned sideways.
+            const x =
+                count > 1 && !sideways
+                    ? piece.x + Math.round((piece.width - count * CELL) / 2) + k * CELL
+                    : piece.x + Math.round((piece.width - CELL) / 2);
+            const y = count > 1 && sideways ? piece.y + piece.height - (k + 1) * CELL : piece.y + piece.height - CELL;
+            seats.push({ name: `${SEAT_PREFIX}${facing}:p${k}-${piece.id}`, x, y, width: CELL, height: CELL });
+        }
+    }
+    return seats;
+}
 const cellKey = (cx: number, cy: number) => (cx + 4096) * 16384 + (cy + 4096);
 
 /** A map's seats by name, and by the 32-pixel cells their reach covers: finding the seats by a point is one lookup. */

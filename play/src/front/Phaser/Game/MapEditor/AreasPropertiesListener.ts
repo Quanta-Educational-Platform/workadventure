@@ -89,7 +89,9 @@ import {
     lectureSpeakerZoneOf,
     onSpotSpeakerSilenced,
     SpotLectures,
+    spotsAvailableStore,
 } from "../../../quanta/megaphoneSpots";
+import { SpotMarks } from "../../../quanta/spotMarks";
 import { classLectureAvailableStore, onSpeakToClass, onStopSpeakingToClass } from "../../../quanta/speakingToClass";
 import { QL } from "../../../quanta/i18n";
 import { hintDone } from "../../../quanta/dockHints";
@@ -150,6 +152,8 @@ export function getAreaProximitySpaceName(rawName: string, fallbackId: string): 
 export class AreasPropertiesListener {
     private scene: GameScene;
     private readonly interactHighlights: InteractHighlights | undefined;
+    /** quanta: the dashed floor marks of the megaphone spots. */
+    private spotMarks: SpotMarks | undefined;
 
     /**
      * Opened by Areas only, per property
@@ -245,7 +249,15 @@ export class AreasPropertiesListener {
     constructor(scene: GameScene) {
         this.scene = scene;
         this.interactHighlights = QUANTA_UI ? new InteractHighlights(scene) : undefined;
-        if (QUANTA_UI) classLectureAvailableStore.set(classLectureOf(this.wamAreas()) !== undefined);
+        if (QUANTA_UI) {
+            this.spotMarks = new SpotMarks(scene, () => scene.getGameMapFrontWrapper().getTileDimensions());
+            this.spotMarks.sync(this.wamAreas());
+        }
+        if (QUANTA_UI) {
+            classLectureAvailableStore.set(classLectureOf(this.wamAreas()) !== undefined);
+            const areas = [...this.wamAreas()];
+            spotsAvailableStore.set(areas.some((area) => lectureSpeakerZoneOf(area, areas) !== undefined));
+        }
 
         // Subscribe to area property variable changes to update lock state store
         // We subscribe to the manager store to handle cases where the manager is set later
@@ -347,11 +359,13 @@ export class AreasPropertiesListener {
             return;
         }
         this.spotStands.enter(areaData.id, lecture);
+        this.spotMarks?.setLive(areaData.id, true);
         hintDone("megaphone");
     }
 
     private leaveSpotLecture(areaData: AreaData): void {
         this.spotStands.leave(areaData.id);
+        this.spotMarks?.setLive(areaData.id, false);
     }
 
     public onUpdateAreasHandler(
@@ -360,6 +374,8 @@ export class AreasPropertiesListener {
         newProperties: AreaDataProperties | undefined,
     ): void {
         const propertiesTreated = new Set<string>();
+        // A spot moved, resized or renamed in the map editor keeps its floor mark in step.
+        this.spotMarks?.sync(this.wamAreas());
 
         if (newProperties === undefined) {
             return;
@@ -2338,7 +2354,11 @@ export class AreasPropertiesListener {
         this.stopSilencingSpots();
         this.stopOnAirOnRequest();
         this.stopSpeakToClassRequests();
-        if (QUANTA_UI) classLectureAvailableStore.set(false);
+        if (QUANTA_UI) {
+            classLectureAvailableStore.set(false);
+            spotsAvailableStore.set(false);
+            this.spotMarks?.destroy();
+        }
 
         // Clean up action trigger callbacks
         for (const callback of this.actionTriggerCallback.values()) {

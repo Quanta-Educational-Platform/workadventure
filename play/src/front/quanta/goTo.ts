@@ -71,10 +71,22 @@ function walkBeside(scene: GameScene, at: { x: number; y: number }, direction: n
     );
     // Rather stay put than land somewhere that broadcasts or opens something.
     if (!tile) return;
-    const destination = toPixels(tile);
-    // Crossing a megaphone, board or call on the way would open it for a moment: those are walls for the route, apart
-    // from the ones the walk starts or ends in.
-    const ends = [toTile(scene.CurrentPlayer), tile];
+    void walkQuietlyTo(scene, toPixels(tile));
+}
+
+/**
+ * Walks the player to a point. Crossing a megaphone, board or call on the way would open it for a moment: those are
+ * walls for the route, apart from the ones the walk starts or ends in. Settles once the walk is over, whatever ended it.
+ */
+export function walkQuietlyTo(scene: GameScene, destination: { x: number; y: number }): Promise<void> {
+    const map = scene.getGameMapFrontWrapper();
+    const { width, height } = map.getTileDimensions();
+    const toTile = (point: { x: number; y: number }): Tile => ({
+        x: Math.floor(point.x / width),
+        y: Math.floor(point.y / height),
+    });
+    const gameMapAreas = map.getGameMap().getWamFile()?.getGameMapAreas();
+    const ends = [toTile(scene.CurrentPlayer), toTile(destination)];
     const grid = map.getCollisionGrid({ emitMapChangedEvent: false });
     const quietGrid = grid.map((row) => [...row]);
     for (const area of gameMapAreas?.getAreas().values() ?? []) {
@@ -86,7 +98,7 @@ function walkBeside(scene: GameScene, at: { x: number; y: number }, direction: n
         if (ends.some((end) => end.x >= x0 && end.x < x1 && end.y >= y0 && end.y < y1)) continue;
         for (let row = y0; row < y1; row++) quietGrid[row].fill(PathTileType.Collider, x0, x1);
     }
-    walkThere(scene, destination, [quietGrid, grid]).catch((error: unknown) => {
+    return walkThere(scene, destination, [quietGrid, grid]).catch((error: unknown) => {
         console.warn("Go to could not walk, teleporting", error);
         scene.CurrentPlayer.teleportTo(destination.x, destination.y);
     });

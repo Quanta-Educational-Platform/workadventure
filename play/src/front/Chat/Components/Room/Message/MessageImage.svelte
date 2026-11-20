@@ -27,7 +27,7 @@
 </script>
 
 {#if canDisplayImage}
-    <div class="cursor-pointer relative group block p-1 pb-0">
+    <div class="cursor-pointer relative group block {message?.attachment?.delivery ? 'p-1 pb-0' : ''}">
         <div
             class="bg-contrast/50 p-1 rounded absolute top-2 right-2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all h-fit w-fit z-10"
             role="group"
@@ -79,7 +79,9 @@
             }}
         >
             <img
-                class="w-full object-cover max-h-52 rounded"
+                class={message?.attachment?.delivery
+                    ? "w-full object-cover max-h-52 rounded"
+                    : "block w-auto max-w-full max-h-64 rounded-lg"}
                 src={displayUrl}
                 alt={$content.body}
                 draggable="false"

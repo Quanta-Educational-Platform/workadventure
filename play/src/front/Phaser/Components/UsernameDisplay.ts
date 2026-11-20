@@ -12,7 +12,7 @@ import { UsernameStatusDisplay } from "./UsernameStatusDisplay";
 const CORRECTION_RATE = 0.65; // When one game pixel is smaller than one screen pixel (zoomed-out), we zoom out the Woka name, but only up to CORRECTION_RATE. After that, the Woka name will stay at its current screen size even if we zoom out more (to keep the text readable)
 // quanta: names in Quanta's typeface (svelte.ts loads it)
 const USERNAME_FONT_FAMILY = QUANTA_UI ? "Fira Sans" : "Roboto";
-const USERNAME_FONT_SIZE = 10;
+const USERNAME_FONT_SIZE = 9;
 const USERNAME_FONT_WEIGHT = 500;
 
 const PLAYER_NAME_BACKGROUND_COLOR = "rgba(27, 42, 65, 0.5)";

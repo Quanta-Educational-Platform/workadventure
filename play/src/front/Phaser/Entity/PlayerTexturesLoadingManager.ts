@@ -1,8 +1,11 @@
 import * as Phaser from "phaser";
 import { CancelablePromise } from "cancelable-promise";
+import { asError } from "catch-unknown";
 import type { SuperLoaderPlugin } from "../Services/SuperLoaderPlugin";
+import type { GameScene } from "../Game/GameScene";
 import { PlayerTexturesKey } from "./PlayerTextures";
 import type { WokaTextureDescriptionInterface, PlayerTextures } from "./PlayerTextures";
+import { bakedTextureList, wokaBaker } from "./WokaBaker";
 
 import Texture = Phaser.Textures.Texture;
 import LoaderPlugin = Phaser.Loader.LoaderPlugin;
@@ -76,4 +79,35 @@ export const lazyLoadPlayerCharacterTextures = (
             return key.id;
         }),
     );
+};
+
+/**
+ * quanta: a woka's textures for the map: its look baked into one sheet (WokaBaker.ts), held until the woka showing it
+ * goes; or a texture per layer, as before, where baking is off or the look cannot be baked.
+ */
+export const loadPlayerCharacterTextures = (
+    scene: GameScene,
+    textures: WokaTextureDescriptionInterface[],
+): CancelablePromise<string[]> => {
+    const lease = wokaBaker.lease(scene.game, textures, () => scene.markDirty());
+    if (!lease) return lazyLoadPlayerCharacterTextures(scene.superLoad, textures);
+    return new CancelablePromise<string[]>((resolve, reject, onCancel) => {
+        let cancelled = false;
+        let layered: CancelablePromise<string[]> | undefined;
+        onCancel(() => {
+            cancelled = true;
+            lease.dropIfUnadopted();
+            layered?.cancel();
+        });
+        lease
+            .whenReady()
+            .then(() => resolve(bakedTextureList(lease)))
+            .catch((e: unknown) => {
+                lease.release();
+                if (cancelled) return;
+                console.warn("quanta: woka drawn by layers, not baked", asError(e).message);
+                layered = lazyLoadPlayerCharacterTextures(scene.superLoad, textures);
+                layered.then(resolve, reject);
+            });
+    });
 };

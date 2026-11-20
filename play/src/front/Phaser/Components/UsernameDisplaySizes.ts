@@ -6,7 +6,7 @@
  */
 
 /** Height of the pill, in game pixels. Multiplied by `--username-dom-scale` at render time. */
-export const PLAYER_NAME_HEIGHT = 14;
+export const PLAYER_NAME_HEIGHT = 13;
 
 /** Gap between the pill's children, in game pixels. */
 export const PLAYER_NAME_GAP = 4;

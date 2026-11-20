@@ -111,6 +111,7 @@ Environment variables for the Play service (frontend and pusher).
 | `MAP_EDITOR_ALLOWED_USERS` | No | Comma-separated list of user IDs allowed to edit maps |
 | `MAP_EDITOR_ALLOW_ALL_USERS` | No | If set to true, all users can edit the map. If set to false, only the users in MAP_EDITOR_ALLOWED_USERS or users with the "admin" or "editor" tag can edit the map. Note: this setting is ignored if an Admin API is configured. |
 | `WOKA_SPEED` | No | Avatar (WOKA) movement speed. Defaults to 9 |
+| `WOKA_BAKE` | No | How the room draws avatars: `auto` bakes each look's layers into one sheet at the density the room is drawn at (1x at zoom 1, 2x at zoom 2 and more), `2x` or `1x` bakes at that density always, `off` draws every layer as its own sprite. Defaults to auto |
 | `KLAXOON_ENABLED` | No | Enable Klaxoon embedded application integration. Defaults to false |
 | `KLAXOON_CLIENT_ID` | No | Klaxoon OAuth2 client ID |
 | `YOUTUBE_ENABLED` | No | Enable YouTube map editor tool. Defaults to false |

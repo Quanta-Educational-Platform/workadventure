@@ -49,7 +49,7 @@ import { UserInputManager } from "../UserInput/UserInputManager";
 import { touchScreenManager } from "../../Touch/TouchScreenManager";
 import { PinchManager } from "../UserInput/PinchManager";
 import { waScaleManager } from "../Services/WaScaleManager";
-import { lazyLoadPlayerCharacterTextures } from "../Entity/PlayerTexturesLoadingManager";
+import { loadPlayerCharacterTextures } from "../Entity/PlayerTexturesLoadingManager";
 import { lazyLoadPlayerCompanionTexture } from "../Companion/CompanionTexturesLoadingManager";
 import { iframeListener } from "../../Api/IframeListener";
 import { coWebsiteManager, coWebsites } from "../../Stores/CoWebsiteStore";
@@ -2495,8 +2495,12 @@ export class GameScene extends DirtyScene {
 
         this._applicationManager = new ApplicationManager(room.applications);
 
+        const ownWokaTextures = loadPlayerCharacterTextures(this, room.characterTextures);
+        // quanta: a baked look the own woka never took over (the scene ended first) is let go with the scene.
+        if (this.abortController.signal.aborted) ownWokaTextures.cancel();
+        else this.abortController.signal.addEventListener("abort", () => ownWokaTextures.cancel(), { once: true });
         allPromises.push(
-            lazyLoadPlayerCharacterTextures(this.superLoad, room.characterTextures)
+            ownWokaTextures
                 .then((textures) => {
                     this.currentPlayerTexturesResolve(textures);
                 })
@@ -4552,6 +4556,7 @@ ${escapedMessage}
         }
 
         let player: RemotePlayer;
+        const characterTextures = loadPlayerCharacterTextures(this, addPlayerData.characterTextures);
 
         try {
             player = new RemotePlayer(
@@ -4561,7 +4566,7 @@ ${escapedMessage}
                 addPlayerData.position.x,
                 addPlayerData.position.y,
                 addPlayerData.name,
-                lazyLoadPlayerCharacterTextures(this.superLoad, addPlayerData.characterTextures),
+                characterTextures,
                 addPlayerData.position.direction,
                 addPlayerData.position.moving,
                 addPlayerData.visitCardUrl,
@@ -4573,6 +4578,8 @@ ${escapedMessage}
                 addPlayerData.sayMessage,
             );
         } catch (error) {
+            // quanta: no woka took the look over: let go of it.
+            characterTextures.cancel();
             if (error instanceof CharacterTextureError) {
                 console.warn("Error while loading remote player character texture", error.message);
             } else if (error instanceof CompanionTextureError) {

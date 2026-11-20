@@ -3,9 +3,12 @@
 import type { Character } from "../Phaser/Entity/Character";
 import type { GameScene } from "../Phaser/Game/GameScene";
 import type { Player } from "../Phaser/Player/Player";
-import { placement, SEAT_VARIABLE, SeatController, SeatIndex, type SeatAction } from "./seats";
+import { furnitureSeatAreas, placement, SEAT_VARIABLE, SeatController, SeatIndex, type SeatAction } from "./seats";
 
-/** Seats come from the map's areas, which the map editor can change: read again now and then, while walking. */
+/**
+ * Seats come from the map's areas and from the seating pieces placed with the map editor, both of which the editor can
+ * change: read again now and then, while walking.
+ */
 const RELOAD_SEATS_MS = 5000;
 
 export class SeatManager {
@@ -74,7 +77,7 @@ export class SeatManager {
         if (!this.index || now - this.indexReadAt >= RELOAD_SEATS_MS) {
             this.indexReadAt = now;
             const areas = this.scene.getGameMap().getWamFile()?.getGameMapAreas()?.getAreas();
-            this.index = new SeatIndex(areas ? areas.values() : []);
+            this.index = new SeatIndex([...(areas ? areas.values() : []), ...furnitureSeatAreas(this.placedPieces())]);
             const seated = this.controller.seated;
             if (seated && !this.index.get(seated.id)) {
                 // Its seat is gone from the map.
@@ -83,6 +86,23 @@ export class SeatManager {
             }
         }
         return this.index;
+    }
+
+    private *placedPieces() {
+        const entities = this.scene.getGameMapFrontWrapper()?.getEntitiesManager()?.getEntities();
+        if (!entities) return;
+        for (const entity of entities.values()) {
+            const prefab = entity.getPrefab();
+            yield {
+                id: entity.entityId,
+                prefabId: prefab.id,
+                collectionName: prefab.collectionName,
+                x: entity.x,
+                y: entity.y,
+                width: entity.displayWidth,
+                height: entity.displayHeight,
+            };
+        }
     }
 
     private readonly isTaken = (seatId: string): boolean => {

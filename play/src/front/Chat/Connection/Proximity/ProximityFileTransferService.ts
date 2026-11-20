@@ -121,6 +121,8 @@ export type ProximityFileTransferServiceOptions = {
     space: ProximityFileTransferSpace;
     getIceServers: () => Promise<RTCIceServer[]>;
     canExchangeWith: (spaceUserId: string) => boolean;
+    // Owned by the caller when given: files already received outlive this service.
+    storage?: ProximityFileStorage;
 };
 
 type PeerSession = {
@@ -169,7 +171,8 @@ export class ProximityFileTransferService {
     private readonly requestedTransfers = new Map<string, string>();
     // Downloads still connecting: a second Accept must not ask the sender twice.
     private readonly connectingTransfers = new Set<string>();
-    private readonly storage = new ProximityFileStorage();
+    private readonly storage: ProximityFileStorage;
+    private readonly ownsStorage: boolean;
     private readonly subscriptions = new Subscription();
     private readonly incomingOfferSubject = new Subject<IncomingProximityFileTransferOffer>();
     public readonly incomingOffers: Observable<IncomingProximityFileTransferOffer> = this.incomingOfferSubject;
@@ -179,6 +182,8 @@ export class ProximityFileTransferService {
     public readonly outgoingUpdates: Observable<OutgoingProximityFileTransferUpdate> = this.outgoingUpdateSubject;
 
     constructor(private readonly options: ProximityFileTransferServiceOptions) {
+        this.storage = options.storage ?? new ProximityFileStorage();
+        this.ownsStorage = options.storage === undefined;
         this.subscriptions.add(
             this.options.space.observePrivateEvent("proximityFileTransferOffer").subscribe((event) => {
                 const senderSpaceUserId = event.sender.spaceUserId;
@@ -329,14 +334,18 @@ export class ProximityFileTransferService {
         );
     }
 
-    /** Only the author can withdraw an offer; space signalling authenticates that author to recipients. */
-    deleteOutgoing(transferId: string): void {
+    /**
+     * Only the author can withdraw an offer; space signalling authenticates that author to recipients.
+     * False when this service never sent it (it was sent before the chat was last left).
+     */
+    deleteOutgoing(transferId: string): boolean {
         const transfer = this.outgoingTransfers.get(transferId);
-        if (!transfer) return;
+        if (!transfer) return false;
         this.revokeTransfer(transferId);
         for (const recipient of transfer.recipients) {
             this.emitSignal(recipient, transferId, "", { type: "delete" });
         }
+        return true;
     }
 
     private revokeTransfer(transferId: string): void {
@@ -373,7 +382,9 @@ export class ProximityFileTransferService {
         this.requestedTransfers.clear();
         this.connectingTransfers.clear();
         this.initiatingSessions.clear();
-        this.storage.destroy().catch((error) => console.warn("Unable to clean up proximity file storage", error));
+        if (this.ownsStorage) {
+            this.storage.destroy().catch((error) => console.warn("Unable to clean up proximity file storage", error));
+        }
         for (const session of this.peerSessions.values()) {
             clearTimeout(session.negotiationTimeout);
             session.dataChannel?.close();

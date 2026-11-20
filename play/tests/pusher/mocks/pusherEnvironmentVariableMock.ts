@@ -153,6 +153,7 @@ export const FRONT_ENVIRONMENT_VARIABLES: FrontConfigurationInterface = {
     SENTRY_RELEASE: undefined,
     SENTRY_TRACES_SAMPLE_RATE: undefined,
     WOKA_SPEED: 9,
+    WOKA_BAKE: "off",
     KLAXOON_ENABLED,
     KLAXOON_CLIENT_ID,
     YOUTUBE_ENABLED,

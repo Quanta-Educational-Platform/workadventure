@@ -22,6 +22,7 @@ const woka: DeepPartial<Translation["woka"]> = {
         noGlasses: "Без окулярів",
         skinTone: "Тон шкіри {n}",
         turn: "Повернути",
+        readyMadeRetired: "Готових аватарів більше немає, тож ось новий для початку: змініть що завгодно й натисніть «Готово».",
         names: {
             classic: "Класичні",
             lashes: "З віями",

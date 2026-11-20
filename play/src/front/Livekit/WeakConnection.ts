@@ -3,7 +3,7 @@
 // budgets for 180p (CameraCap), until the link has been good again for a while. A screen share sends few frames or its
 // lowest layer (ScreenShareCap).
 import { ConnectionQuality } from "livekit-client";
-import { derived, writable } from "svelte/store";
+import { derived, writable, type Readable } from "svelte/store";
 
 /** Poor for this long before video steps down: one bad report is not a weak link. */
 const ENTER_MS = 6_000;
@@ -17,6 +17,22 @@ export const weakConnectionStore = derived(weakRooms, (rooms) => rooms.size > 0)
 
 /** quanta: counts the times this browser's own link came back good (not a call left while weak), for the notice. */
 export const linkRecoveredStore = writable(0);
+
+// quanta: other people's links as their tiles judge them (LivekitParticipant), by person: a space user id is the same in
+// every space of the room, and the person is weak while any of their calls here says so (quanta/presenterLink.ts).
+const weakPeers = writable(new Map<object, string>());
+
+export const weakPeersStore: Readable<ReadonlySet<string>> = derived(weakPeers, (peers) => new Set(peers.values()));
+
+export function setPeerWeak(call: object, spaceUserId: string, weak: boolean): void {
+    weakPeers.update((peers) => {
+        if (weak ? peers.get(call) === spaceUserId : !peers.has(call)) return peers;
+        const next = new Map(peers);
+        if (weak) next.set(call, spaceUserId);
+        else next.delete(call);
+        return next;
+    });
+}
 
 function setRoomWeak(room: object, weak: boolean): void {
     weakRooms.update((rooms) => {

@@ -93,6 +93,8 @@
     } = $derived(message);
 
     let messageFromSystem = $derived(type === "incoming" || type === "outcoming");
+    // quanta: a picture kept on Quanta stands on its own, without a bubble behind it.
+    let mediaOnly = $derived(type === "image" && !message.attachment?.delivery && !quotedMessage);
 
     // quanta: a teacher's marks name who dealt with something; the rest are a count, with the names on hover.
     const REACTION_NAMES_SHOWN = 3;
@@ -469,10 +471,10 @@
                 class="message rounded-md
                     {$isDeleted && !isMyMessage && !messageFromSystem && replyDepth === 0 ? 'bg-white/10' : ''}
                     {$isDeleted && isMyMessage && !messageFromSystem && replyDepth === 0 ? 'bg-white/10' : ''}
-                    {!isMyMessage && !messageFromSystem && !$isDeleted && replyDepth === 0
+                    {!isMyMessage && !messageFromSystem && !$isDeleted && replyDepth === 0 && !mediaOnly
                     ? 'bg-contrast/90 rounded-bl-none'
                     : ''}
-                    {isMyMessage && !messageFromSystem && !$isDeleted && replyDepth === 0
+                    {isMyMessage && !messageFromSystem && !$isDeleted && replyDepth === 0 && !mediaOnly
                     ? 'bg-secondary/90 rounded-br-none'
                     : ''}
                     {$reactionsWithUsers.length > 0 && !$isDeleted && replyDepth === 0 ? 'mb-4 p-0.5' : ''}

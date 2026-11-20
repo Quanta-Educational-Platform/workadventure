@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { pictureCell } from "../../Phaser/Player/WokaSheet";
+    import { frameSizeOf, pictureCell } from "../../Phaser/Player/WokaSheet";
     import { WOKA_V3_LAYERS } from "../../quanta/wokaV3";
     import type { WokaData, WokaTexture } from "./WokaTypes";
 
@@ -11,7 +11,8 @@
         direction?: number;
         getTextureUrl?: (url: string) => string;
         classList?: string;
-        /** quanta: part of the frame only (in sheet pixels), drawn `scale` times; the canvas fits it. */
+        /** quanta: part of the frame only (in room pixels: twice as many texels on a 2x sheet), drawn `scale` times;
+         * the canvas fits it. */
         crop?: { x: number; y: number; w: number; h: number };
         scale?: number;
     }
@@ -72,28 +73,34 @@
         }
     }
 
+    // quanta: the canvas has a pixel per device pixel, so a 2x sheet's texels show; they stay crisp where each covers a
+    // whole number of pixels and are smoothed where not (a 1x screen showing a 2x sheet at an odd scale).
+    const density = Math.max(1, Math.round(window.devicePixelRatio || 1));
+
     function draw() {
+        if (canvas.width !== width * density) canvas.width = width * density;
+        if (canvas.height !== height * density) canvas.height = height * density;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         for (const part of bodyPartOrder) {
             const img = images[part];
-            ctx.imageSmoothingEnabled = false;
-            if (img && img.complete) {
+            if (img && img.complete && img.naturalWidth) {
+                const size = frameSizeOf(img.naturalWidth);
+                const k = size / 32;
                 const cell = pictureCell(img.naturalWidth, direction, frame);
-                if (crop) {
-                    ctx.drawImage(
-                        img,
-                        cell.column * 32 + crop.x,
-                        cell.row * 32 + crop.y,
-                        crop.w,
-                        crop.h,
-                        0,
-                        0,
-                        width,
-                        height,
-                    );
-                } else {
-                    ctx.drawImage(img, cell.column * 32, cell.row * 32, 32, 32, 0, 0, canvasSize, canvasSize);
-                }
+                const area = crop ?? { x: 0, y: 0, w: 32, h: 32 };
+                ctx.imageSmoothingEnabled = !Number.isInteger(canvas.width / (area.w * k));
+                ctx.imageSmoothingQuality = "high";
+                ctx.drawImage(
+                    img,
+                    cell.column * size + area.x * k,
+                    cell.row * size + area.y * k,
+                    area.w * k,
+                    area.h * k,
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height,
+                );
             }
         }
     }
@@ -121,4 +128,10 @@
     });
 </script>
 
-<canvas bind:this={canvas} {width} {height} style="image-rendering: pixelated;" class={classList}></canvas>
+<canvas
+    bind:this={canvas}
+    width={width * density}
+    height={height * density}
+    style="image-rendering: pixelated; width: {width}px; height: {height}px;"
+    class={classList}
+></canvas>

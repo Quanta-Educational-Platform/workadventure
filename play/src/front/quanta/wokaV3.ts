@@ -73,12 +73,6 @@ export function idsToLook(ids: readonly string[]): WokaV3Look | null {
     return WOKA_V3_LAYERS.every((l) => l.optional || look[l.part]) ? look : null;
 }
 
-/** The ready-made characters (quanta01-12) as parts, so a student can start from one and change it. */
-export function presetLook(textureId: string): WokaV3Look | null {
-    const ids = WOKA_V3_MANIFEST.presets[textureId];
-    return ids ? idsToLook(ids) : null;
-}
-
 type Random = () => number;
 
 function weighted(random: Random, weights: Record<string, number>): string {

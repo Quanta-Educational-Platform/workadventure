@@ -86,6 +86,31 @@ export function listenerZonesOf(
 /** Areas trigger at a player's feet, this far below the centre of their sprite (GameMapAreas). */
 export const AREA_FEET_OFFSET_Y = 16;
 
+/**
+ * The tiles one can stand on to be in an area (the area triggers at the feet), the one whose middle is nearest the
+ * area's middle first: for a megaphone spot that is the tile its floor mark shows and its button walks to.
+ */
+export function standTilesOf(
+    area: { x: number; y: number; width: number; height: number },
+    tileWidth: number,
+    tileHeight: number,
+): Tile[] {
+    const tiles: { tile: Tile; off: number }[] = [];
+    const cx = area.x + area.width / 2;
+    const cy = area.y + area.height / 2;
+    const y0 = Math.floor((area.y - AREA_FEET_OFFSET_Y) / tileHeight);
+    const y1 = Math.floor((area.y + area.height - AREA_FEET_OFFSET_Y) / tileHeight);
+    for (let y = y0; y <= y1; y++)
+        for (let x = Math.floor(area.x / tileWidth); x * tileWidth < area.x + area.width; x++) {
+            const mx = x * tileWidth + tileWidth / 2;
+            const my = y * tileHeight + tileHeight / 2;
+            const feet = my + AREA_FEET_OFFSET_Y;
+            if (mx < area.x || mx > area.x + area.width || feet < area.y || feet > area.y + area.height) continue;
+            tiles.push({ tile: { x, y }, off: Math.hypot(mx - cx, my - cy) });
+        }
+    return tiles.sort((a, b) => a.off - b.off).map(({ tile }) => tile);
+}
+
 /** The tile types of the collision grid one may stand on (PathTileType): not a wall, not an exit to another map. */
 const STANDABLE = new Set([0, 3, 4, 5]);
 
