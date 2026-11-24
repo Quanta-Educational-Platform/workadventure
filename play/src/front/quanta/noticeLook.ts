@@ -18,6 +18,7 @@ const LOOKS: Record<string, { icon: IconName | "rec"; tone: NoticeTone }> = {
     "quanta-attention": { icon: "bellRing", tone: "action" },
     "quanta-problem": { icon: "info", tone: "problem" },
     "quanta-removed": { icon: "userX", tone: "info" },
+    "quanta-share": { icon: "share", tone: "action" },
 };
 
 export function notificationLook(notification: Notification): { icon: IconName | "rec"; tone: NoticeTone } {

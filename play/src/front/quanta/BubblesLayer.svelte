@@ -3,6 +3,7 @@
     // quanta-ui.css, only those on camera or talking shown); this draws the names under them, the face pile of everyone
     // else in the call, and the room's window while something is presented. Dragging any of them moves them to the
     // nearest corner of the stage, kept for next time; touches on them never reach the map, so dragging doesn't walk.
+    import { showOnStage } from "./stageModel";
     import { onDestroy, untrack } from "svelte";
     import { derived, readable, type Readable } from "svelte/store";
     import { LL } from "../../i18n/i18n-svelte";
@@ -445,7 +446,12 @@
         if (!drag || event.pointerId !== drag.pointerId) return;
         const done = drag;
         drag = null;
-        if (!done.moved) return;
+        if (!done.moved) {
+            // A tap on a camera that is on puts that camera on the stage, as the enlarge button does in the strip.
+            const box = done.target.closest<HTMLElement>("#cameras-container > .camera-box[data-quanta-video]");
+            if (event.type === "pointerup" && box?.dataset.quantaBox) showOnStage(box.dataset.quantaBox);
+            return;
+        }
         const moved = shift ?? { x: 0, y: 0 };
         shift = null;
         // The piece's middle where it was let go decides its corner.

@@ -31,7 +31,7 @@ import { errorScreenStore } from "../Stores/ErrorScreenStore";
 import { startCallStats } from "./callStats";
 import { pageLeaving, watchPageLeave } from "./pageLeave";
 import { quantaCameraAwakeStore } from "./cameraAwake";
-import { roomOverlayStore } from "./roomOverlay";
+import { roomOverlayStore, tileMenuOpenStore } from "./roomOverlay";
 import { roomControlsVisibleStore } from "./roomControlsVisible";
 import { dockGuttersStore, dockSizeStore } from "./dockBar";
 import { startPhoneShareFullScreen } from "./phoneShare";
@@ -141,6 +141,8 @@ export function startRoomBridge(): void {
     mediaStore.subscribe((media) => post({ type: "quanta_wa_media", ...media }));
     // eslint-disable-next-line svelte/no-ignored-unsubscribe
     roomOverlayStore.subscribe((open) => post({ type: "quanta_wa_overlay", open }));
+    // eslint-disable-next-line svelte/no-ignored-unsubscribe
+    tileMenuOpenStore.subscribe((open) => post({ type: "quanta_wa_tile_menu", open }));
     // Whether the map is on screen at all, not a screen of the room's own over it (the avatar or camera screen, an
     // error): the platform's handle at the edge of a chat column the room draws is not left over such a screen.
     // eslint-disable-next-line svelte/no-ignored-unsubscribe

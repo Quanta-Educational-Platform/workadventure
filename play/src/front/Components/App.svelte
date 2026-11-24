@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { BOT } from "../quanta/botMode";
     /* eslint no-undef: 0 */
     import { onDestroy, onMount } from "svelte";
     import * as Sentry from "@sentry/svelte";
@@ -97,15 +98,16 @@
             /**
              * The minimum acceptable rendering rate, in frames per second.
              */
-            min: 60,
+            min: BOT ? 10 : 60,
             /**
              * The optimum rendering rate, in frames per second.
              */
-            target: 60,
+            target: BOT ? 20 : 60,
             /**
              * Use setTimeout instead of requestAnimationFrame to run the game loop.
              */
-            forceSetTimeOut: false,
+            // quanta: a fake student's frame is off screen, where animation frames don't come.
+            forceSetTimeOut: BOT !== null,
             /**
              * Calculate the average frame delta from this many consecutive frame intervals.
              */
@@ -215,6 +217,8 @@
                 },
             },
             backgroundColor: "#1b2a41",
+            // quanta: a fake student's frame makes no sound.
+            ...(BOT ? { audio: { noAudio: true } } : {}),
         };
 
         game = new Game(config);

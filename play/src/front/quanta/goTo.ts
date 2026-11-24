@@ -104,12 +104,12 @@ export function walkQuietlyTo(scene: GameScene, destination: { x: number; y: num
     });
 }
 
-// A walk, never a jump, calmer than walking by keys (WOKA_SPEED 9 is 180 px a second): it speeds up from a standstill
-// and slows to one, so crossing a classroom takes about six seconds. A long walk across a big map is sped up to end
+// A walk, never a jump, at running pace (WOKA_SPEED 9 walks 180 px a second, Shift runs 450): it gets going and stops
+// in a moment, so crossing a classroom takes under two seconds. A long walk across a big map is sped up to end
 // within WALK_SECONDS_MAX.
-const WALK_PX_PER_SECOND = 120;
-const WALK_RAMP_SECONDS = 0.6;
-const WALK_SECONDS_MAX = 8;
+const WALK_PX_PER_SECOND = 480;
+const WALK_RAMP_SECONDS = 0.2;
+const WALK_SECONDS_MAX = 3;
 
 /** Walks the player there along the first grid with a route. Where none has one, a straight walk would cross walls,
  * calls and megaphone spots (opening the microphone to them on the way): it lands on the quiet tile instead. */

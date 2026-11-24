@@ -47,6 +47,13 @@
             lead={notification.lead}
             text={notification.text}
             {live}
+            action={notification.action?.label}
+            onaction={notification.action
+                ? () => {
+                      notification.action?.run();
+                      notificationPlayingStore.removeNotification(notification);
+                  }
+                : undefined}
             ondismiss={() => notificationPlayingStore.removeNotification(notification)}
             testid="quanta-notice"
         />

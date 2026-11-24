@@ -90,7 +90,7 @@
         </div>
     </div>
 {:else if undrawable}
-    <div class="px-2.5 pt-2 text-xs text-white/70" data-testid="undrawableImage">
+    <div class="px-2.5 pt-2 pb-2.5 text-xs text-white/70" data-testid="undrawableImage">
         {$LL.chat.imagePreview.cannotDisplay()}
     </div>
     <MessageFile {content} {message} />

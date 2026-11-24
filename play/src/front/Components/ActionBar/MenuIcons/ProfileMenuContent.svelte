@@ -41,11 +41,12 @@
     import { QL } from "../../../quanta/i18n";
     import { mapEditorModeStore } from "../../../Stores/MapEditorStore";
     import { EditorToolName } from "../../../Phaser/Game/MapEditor/MapEditorModeManager";
-    import { IconMapEditor } from "@wa-icons";
+    import { IconMapEditor, IconUsersGroup } from "@wa-icons";
     import { dockFoldedStore } from "../../../quanta/dockFold";
     import { pageMenuStore } from "../../../quanta/pageMenu";
     import DockFoldedItems from "../../../quanta/DockFoldedItems.svelte";
     import LayoutMenuItems from "../../../quanta/LayoutMenuItems.svelte";
+    import { devBotsPanelFoldedStore, devBotsPanelOpenStore, devToolsAvailable } from "../../../quanta/devBots";
     import ActionBarButton from "../ActionBarButton.svelte";
     import AvailabilityStatusList from "../AvailabilityStatus/AvailabilityStatusList.svelte";
     import Companion from "../../Companion/Companion.svelte";
@@ -305,6 +306,21 @@
                 }}
             >
                 <MegaphoneIcon />
+            </ActionBarButton>
+        {/if}
+
+        <!-- quanta: dev tools on staging (quanta/devBots.ts): fake students to try and show the class with -->
+        {#if QUANTA_UI && $userIsAdminStore && devToolsAvailable}
+            <ActionBarButton
+                label="Dev tools: fake students"
+                dataTestId="quanta-dev-tools"
+                onclick={() => {
+                    devBotsPanelOpenStore.set(true);
+                    devBotsPanelFoldedStore.set(false);
+                    openedMenuStore.close("profileMenu");
+                }}
+            >
+                <IconUsersGroup font-size="22" />
             </ActionBarButton>
         {/if}
 

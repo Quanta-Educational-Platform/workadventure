@@ -6,6 +6,7 @@
 // whenever it needs to sign in again. It leaves codes behind only when the page says it no longer uses them, or says
 // nothing at all for a while it could have: the page answers by itself, whatever its server is doing, so an outage or a
 // slow code never reads as either. Without a code in sight none of this does anything.
+import { BOT } from "./botMode";
 import { z } from "zod";
 
 const PARAM = "quantaCode";
@@ -80,6 +81,8 @@ export function takeSignInCode(): string | null {
 }
 
 export function inCodeSignedFrame(): boolean {
+    // A fake student only ever enters on a code from its own page: every path that would sign in another way asks it.
+    if (BOT) return true;
     if (!isFramed()) return false;
     try {
         return sessionStorage.getItem(FRAME_MARKER) === "1";

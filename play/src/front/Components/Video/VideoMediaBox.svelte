@@ -24,6 +24,7 @@
     import { gameManager } from "../../Phaser/Game/GameManager";
     import { QUANTA_UI } from "../../Enum/EnvironmentVariable";
     import PersonMenu from "../../quanta/PersonMenu.svelte";
+    import { tileMenuOpened } from "../../quanta/roomOverlay";
     import { roomWindowRect } from "../../quanta/roomWindow";
     import { fullNamesStore, shownName } from "../../quanta/fullNames";
     import { tileName, tileNamesStore } from "../../quanta/layout";
@@ -69,6 +70,10 @@
     let name = $derived(extendedSpaceUser?.name);
 
     let showUserSubMenu = $state(false);
+    // quanta: the platform lays a presented board over the room; while this menu is open it steps aside (roomOverlay.ts).
+    $effect(() => {
+        return showUserSubMenu ? tileMenuOpened() : undefined;
+    });
 
     let hasVideoStore = $derived(streamable?.hasVideo);
     let hasAudioStore = $derived(streamable?.hasAudio);
@@ -300,9 +305,12 @@
                 false,
                 undefined,
                 3000,
-                // quanta: inside the room's window by the margin its cards keep, its submenus too.
+                // quanta: inside the room's window by the margin its cards keep, its submenus too; a tile in the stage's
+                // strip stands above that window, so its menu keeps to the screen instead (beside its tile).
                 QUANTA_UI ? 12 : 5,
-                QUANTA_UI ? roomWindowRect : undefined,
+                QUANTA_UI
+                    ? () => (document.documentElement.hasAttribute("data-quanta-strip") ? undefined : roomWindowRect())
+                    : undefined,
             );
             // onclose={() => (showUserSubMenu = false)}
         } else {
@@ -577,6 +585,11 @@
         <button
             class="full-screen-button absolute top-0 bottom-0 right-0 left-0 m-auto h-14 w-14 z-20 p-4 rounded-lg bg-contrast/50 backdrop-blur transition-all opacity-0 group-hover/screenshare:opacity-100 hover:bg-white/10 cursor-pointer"
             onclick={highlightPeer}
+            onpointerup={(event) => {
+                // quanta: the first press into the room (its window taking the focus) redraws the tile between press
+                // and release, and the browser then sends no click: the release opens it (a second open is a no-op).
+                if (QUANTA_UI && event.button === 0) highlightPeer();
+            }}
         >
             <IconArrowsMaximize font-size="20" class="text-white" />
         </button>

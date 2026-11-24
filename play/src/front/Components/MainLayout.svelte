@@ -56,6 +56,8 @@
     import QuantaSettings from "../quanta/QuantaSettings.svelte";
     import { QUANTA_UI } from "../Enum/EnvironmentVariable";
     import NoticeStack from "../quanta/NoticeStack.svelte";
+    import DevBotsPanel from "../quanta/DevBotsPanel.svelte";
+    import { devToolsAvailable } from "../quanta/devBots";
     import StageRoomTile from "../quanta/StageRoomTile.svelte";
     import RailColumn from "../quanta/RailColumn.svelte";
     import BubblesLayer from "../quanta/BubblesLayer.svelte";
@@ -428,6 +430,7 @@
             {#if QUANTA_UI}
                 <!-- quanta: every notice in one stack above the dock, in the order they came (quanta/NoticeStack.svelte). -->
                 <NoticeStack />
+                {#if devToolsAvailable}<DevBotsPanel />{/if}
                 <StageRoomTile />
                 <RailColumn />
                 <BubblesLayer />

@@ -41,7 +41,7 @@ export function showFloatingUi(
     onClose?: () => void,
     zIndex = 3000,
     edgePadding = 5,
-    boundary?: () => Rect,
+    boundary?: () => Rect | undefined,
 ): () => void {
     let arrowNode: HTMLElement | undefined;
     let contentNode: HTMLElement | undefined;

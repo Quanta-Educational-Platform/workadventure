@@ -7,6 +7,8 @@
     import { QL } from "./i18n";
     import { nameTag } from "./nameTag";
     import { audibleSpeakers, visibleSpeakers, type OnAirPrompt } from "./onAir";
+    import { laneShows, laneStore, offerLane, LANE_RANK, type LaneOffer } from "./lane";
+    import LaneMore from "./LaneMore.svelte";
 
     interface Speaker {
         id: string;
@@ -108,6 +110,28 @@
         return $QL.speakersOnAir({ names: `${names.join(", ")} ${tail}` });
     });
 
+    // Under a board these share one row with the room's notices (lane.ts): each says what it weighs.
+    let offered = $derived.by(() => {
+        const list: LaneOffer[] = [];
+        if (noticesHidden) return list;
+        if (weakLinkText)
+            list.push({
+                key: "strip:weak",
+                rank: weakLink?.kind === "cameraOff" && weakLink.better ? LANE_RANK.action : LANE_RANK.problem,
+            });
+        if (presenterWeakText) list.push({ key: "strip:presenterWeak", rank: LANE_RANK.problem });
+        if (prompt === "heard") list.push({ key: "strip:heard", rank: LANE_RANK.heard });
+        else if (prompt === "micBlocked") list.push({ key: "strip:micBlocked", rank: LANE_RANK.problem });
+        else if (prompt) list.push({ key: `strip:${prompt}`, rank: LANE_RANK.actOnAir });
+        if (speakerLine) list.push({ key: "strip:speakers", rank: LANE_RANK.speakers });
+        if (stepAgain) list.push({ key: "strip:stepAgain", rank: LANE_RANK.actOnAir });
+        if (notHeard && !prompt) list.push({ key: "strip:notHeard", rank: LANE_RANK.hint });
+        if (megaphoneHint && !prompt) list.push({ key: "strip:megaphoneHint", rank: LANE_RANK.hint });
+        return list;
+    });
+    $effect(() => offerLane("strip", offered));
+    const shows = (key: string) => laneShows($laneStore, key);
+
     // Beside the dock unless what is shown is taller than the ground there: then above it until what is shown changes,
     // so the two placements don't take turns. Judged on the settled height, unseen meanwhile: a notice measures itself
     // into its stacked form a frame after it appears (Notice.svelte).
@@ -148,7 +172,7 @@
     });
 </script>
 
-{#if !noticesHidden && (prompt || speakerLine || stepAgain || megaphoneHint || notHeard || weakLinkText || presenterWeakText)}
+{#if offered.some((offer) => shows(offer.key))}
     <!-- Clear of the zoom column, which stands level with it at the map's right edge, except on a phone's full width. -->
     <div
         class="qs"
@@ -159,111 +183,138 @@
         style:width={`${placed ? placed.width : Math.max(Math.min(maxWidth > 456 ? maxWidth - 144 : maxWidth, 760), 200)}px`}
         data-testid="quanta-on-air-strip"
     >
-        {#if weakLinkText}
-            <Notice
-                tone={weakLink?.kind === "cameraOff" && weakLink.better ? "action" : "problem"}
-                icon={weakLink?.kind === "cameraOff" && weakLink.better ? "videocam" : "wifiOff"}
-                text={weakLinkText}
-                action={weakLink?.kind === "cameraOff"
-                    ? $QL.cameraOn()
-                    : weakLink?.kind === "share" && staff && presentBoard
-                      ? $QL.presentBoardInstead()
-                      : undefined}
-                onaction={weakLink?.kind === "cameraOff" ? oncameraon : onpresentboard}
-                ondismiss={ondismissweaklink}
-                testid="quanta-weak-link"
-            />
+        {#if weakLinkText && shows("strip:weak")}
+            <div class="qs-row">
+                <Notice
+                    tone={weakLink?.kind === "cameraOff" && weakLink.better ? "action" : "problem"}
+                    icon={weakLink?.kind === "cameraOff" && weakLink.better ? "videocam" : "wifiOff"}
+                    text={weakLinkText}
+                    action={weakLink?.kind === "cameraOff"
+                        ? $QL.cameraOn()
+                        : weakLink?.kind === "share" && staff && presentBoard
+                          ? $QL.presentBoardInstead()
+                          : undefined}
+                    onaction={weakLink?.kind === "cameraOff" ? oncameraon : onpresentboard}
+                    ondismiss={ondismissweaklink}
+                    testid="quanta-weak-link"
+                />
+                <LaneMore key="strip:weak" />
+            </div>
         {/if}
 
-        {#if presenterWeakText}
-            <Notice
-                tone="problem"
-                icon="wifiOff"
-                text={presenterWeakText}
-                action={canTakeOver ? $QL.speakToClass() : undefined}
-                actionIcon="campaign"
-                onaction={ontakeover}
-                ondismiss={ondismisspresenterweak}
-                testid="quanta-presenter-weak-link"
-            />
+        {#if presenterWeakText && shows("strip:presenterWeak")}
+            <div class="qs-row">
+                <Notice
+                    tone="problem"
+                    icon="wifiOff"
+                    text={presenterWeakText}
+                    action={canTakeOver ? $QL.speakToClass() : undefined}
+                    actionIcon="campaign"
+                    onaction={ontakeover}
+                    ondismiss={ondismisspresenterweak}
+                    testid="quanta-presenter-weak-link"
+                />
+                <LaneMore key="strip:presenterWeak" />
+            </div>
         {/if}
 
-        {#if prompt === "heard"}
-            <Notice
-                icon="campaign"
-                text={staff ? $QL.onAirHeardStaff() : $QL.onAirHeard()}
-                testid="quanta-on-air-heard"
-            >
-                {#snippet trailing()}
-                    <span class="qs-level" aria-hidden="true">
-                        {#each levels as level, i (i)}
-                            <i style:--level={level}></i>
-                        {/each}
-                    </span>
-                {/snippet}
-            </Notice>
-        {:else if prompt === "micOff"}
-            <Notice
-                tone="action"
-                icon="micOff"
-                live="assertive"
-                text={staff ? $QL.onAirMicOffStaff() : $QL.onAirMicOffPrompt()}
-                action={$QL.microphoneOn()}
-                actionIcon="mic"
-                actionDisabled={micToggleDisabled}
-                onaction={onmicon}
-                testid="quanta-on-air-mic-off"
-            />
-        {:else if prompt === "micBlocked"}
-            <Notice
-                tone="problem"
-                icon="micOff"
-                live="assertive"
-                text={$QL.onAirMicBlocked()}
-                testid="quanta-on-air-mic-blocked"
-            />
-        {:else if prompt === "quiet"}
-            <Notice
-                tone="problem"
-                icon="mic"
-                text={$QL.onAirQuiet()}
-                action={$QL.audioSettings()}
-                onaction={onaudiosettings}
-                ondismiss={ondismissquiet}
-                testid="quanta-on-air-quiet"
-            />
+        {#if prompt && shows(`strip:${prompt}`)}
+            <div class="qs-row">
+                {#if prompt === "heard"}
+                    <Notice
+                        icon="campaign"
+                        text={staff ? $QL.onAirHeardStaff() : $QL.onAirHeard()}
+                        testid="quanta-on-air-heard"
+                    >
+                        {#snippet trailing()}
+                            <span class="qs-level" aria-hidden="true">
+                                {#each levels as level, i (i)}
+                                    <i style:--level={level}></i>
+                                {/each}
+                            </span>
+                        {/snippet}
+                    </Notice>
+                {:else if prompt === "micOff"}
+                    <Notice
+                        tone="action"
+                        icon="micOff"
+                        live="assertive"
+                        text={staff ? $QL.onAirMicOffStaff() : $QL.onAirMicOffPrompt()}
+                        action={$QL.microphoneOn()}
+                        actionIcon="mic"
+                        actionDisabled={micToggleDisabled}
+                        onaction={onmicon}
+                        testid="quanta-on-air-mic-off"
+                    />
+                {:else if prompt === "micBlocked"}
+                    <Notice
+                        tone="problem"
+                        icon="micOff"
+                        live="assertive"
+                        text={$QL.onAirMicBlocked()}
+                        testid="quanta-on-air-mic-blocked"
+                    />
+                {:else if prompt === "quiet"}
+                    <Notice
+                        tone="problem"
+                        icon="mic"
+                        text={$QL.onAirQuiet()}
+                        action={$QL.audioSettings()}
+                        onaction={onaudiosettings}
+                        ondismiss={ondismissquiet}
+                        testid="quanta-on-air-quiet"
+                    />
+                {/if}
+                <LaneMore key={`strip:${prompt}`} />
+            </div>
         {/if}
 
-        {#if speakerLine}
-            <Notice icon="campaign" text={speakerLine} testid="quanta-on-air-speakers">
-                {#snippet trailing()}
-                    {#if audible.some((speaker) => speaker.talking)}
-                        <span class="qs-level talking" aria-hidden="true"><i></i><i></i><i></i></span>
-                    {/if}
-                {/snippet}
-            </Notice>
+        {#if speakerLine && shows("strip:speakers")}
+            <div class="qs-row">
+                <Notice icon="campaign" text={speakerLine} testid="quanta-on-air-speakers">
+                    {#snippet trailing()}
+                        <!-- Three still dots while nobody talks: the line keeps its width and its end stays filled. -->
+                        <span
+                            class="qs-level"
+                            class:talking={audible.some((speaker) => speaker.talking)}
+                            class:quiet={!audible.some((speaker) => speaker.talking)}
+                            aria-hidden="true"><i></i><i></i><i></i></span
+                        >
+                    {/snippet}
+                </Notice>
+                <LaneMore key="strip:speakers" />
+            </div>
         {/if}
 
-        {#if stepAgain}
-            <Notice tone="action" icon="campaign" text={$QL.onAirStepAgain()} testid="quanta-spot-step-again" />
+        {#if stepAgain && shows("strip:stepAgain")}
+            <div class="qs-row">
+                <Notice tone="action" icon="campaign" text={$QL.onAirStepAgain()} testid="quanta-spot-step-again" />
+                <LaneMore key="strip:stepAgain" />
+            </div>
         {/if}
 
-        {#if notHeard && !prompt}
-            <Notice
-                icon="volumeOff"
-                text={staff ? $QL.notHeardStaff() : $QL.notHeardStudent()}
-                ondismiss={ondismissnotheard}
-                testid="quanta-not-heard"
-            />
+        {#if notHeard && !prompt && shows("strip:notHeard")}
+            <div class="qs-row">
+                <Notice
+                    icon="volumeOff"
+                    text={staff ? $QL.notHeardStaff() : $QL.notHeardStudent()}
+                    ondismiss={ondismissnotheard}
+                    testid="quanta-not-heard"
+                />
+                <LaneMore key="strip:notHeard" />
+            </div>
         {/if}
 
-        {#if megaphoneHint && !prompt}
-            <Notice
-                icon="campaign"
-                text={$QL.megaphoneHint()}
-                ondismiss={ondismisshint}
-                testid="quanta-megaphone-hint"
-            />
+        {#if megaphoneHint && !prompt && shows("strip:megaphoneHint")}
+            <div class="qs-row">
+                <Notice
+                    icon="campaign"
+                    text={$QL.megaphoneHint()}
+                    ondismiss={ondismisshint}
+                    testid="quanta-megaphone-hint"
+                />
+                <LaneMore key="strip:megaphoneHint" />
+            </div>
         {/if}
     </div>
 {/if}
@@ -291,10 +342,29 @@
         --qs-dock: 8px;
     }
 
+    /* A board covers the room: no window edge to keep inside, so the line stands 12px over the dock, as far as the
+       board stops above it (the platform's stage). */
+    :global(html[data-quanta-board-on]) .qs {
+        bottom: calc(var(--qs-window) - var(--qs-dock) + var(--quanta-chat-below, 0px));
+    }
+
     @media (max-width: 480px), (max-height: 480px) {
         .qs {
             --qs-window: 84px;
         }
+    }
+
+    /* One message and, under a board, its "+N" (lane.ts) on one line. */
+    .qs-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        max-width: 100%;
+    }
+
+    .qs-row > :global(.qn) {
+        min-width: 0;
     }
 
     /* Still read out by screen readers while it settles. */
@@ -343,6 +413,13 @@
 
     .qs-level.talking i {
         animation: qs-talk 0.9s ease-in-out infinite;
+    }
+
+    .qs-level.quiet i {
+        height: 3px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.45;
     }
 
     .qs-level.talking i:nth-child(2) {

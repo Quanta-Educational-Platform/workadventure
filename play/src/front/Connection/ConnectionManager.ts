@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/svelte";
+import { BOT } from "../quanta/botMode";
 import { get } from "svelte/store";
 import type { ErrorApiErrorData, ErrorApiRetryData, ErrorApiUnauthorizedData } from "@workadventure/messages";
 import { MeResponse, ErrorScreenMessage } from "@workadventure/messages";
@@ -193,6 +194,11 @@ class ConnectionManager {
             );
             if ("failed" in exchange) return this.signInNeededInFrame(exchange.failed);
             token = exchange.authToken;
+        } else if (BOT) {
+            // quanta: a fake student (dev tools) enters on a code only. Without one (its frame reloaded) the steps
+            // below would sign in whoever this browser's own session is: the person running it.
+            localUserStore.forgetUser();
+            return this.signInNeededInFrame("expired");
         } else if (inCodeSignedFrame() && localUserStore.getAuthToken()) {
             // quanta: a token kept from an earlier load is this frame's only while the page still agrees. Frames that
             // never held a code don't come here, and wait for nothing.

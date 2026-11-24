@@ -38,6 +38,7 @@
     import MessageEdition from "./MessageEdition.svelte";
     import MessageReactions from "./MessageReactions.svelte";
     import MessageIncoming from "./Message/MessageIncoming.svelte";
+    import { pictureOr, wokaPictureStore } from "../../../quanta/wokaPicture";
     import MessageOutcoming from "./Message/MessageOutcoming.svelte";
     import Message from "./Message.svelte";
     import ThreadSummary from "./ThreadSummary.svelte";
@@ -377,7 +378,10 @@
             ? roomMembersList.find((m) => m.id === message.sender!.chatId)
             : undefined,
     );
-    let messageAvatarPictureStore = $derived(memberForSender?.pictureStore ?? message.sender?.pictureStore);
+    // quanta: the chat's picture for the sender, else their woka on the map (the People list's face), else a letter.
+    let messageAvatarPictureStore = $derived(
+        pictureOr(memberForSender?.pictureStore ?? message.sender?.pictureStore, wokaPictureStore(message.sender?.uuid)),
+    );
     let senderName = $derived($fullNamesStore.get(message.sender?.uuid ?? "") ?? message.sender?.username);
     let waParensStore = $derived(memberForSender?.waDisplayNameIfDifferent);
     let waDisplayNameParens = $derived($waParensStore ? $waParensStore : undefined);

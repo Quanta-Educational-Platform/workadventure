@@ -1,3 +1,5 @@
+// quanta: a fake student's frame (dev tools) keeps to its own storage, devices and silence before anything reads them.
+import "./front/quanta/botMode";
 // quanta: before anything that might read or report the address: takes a sign-in code out of it.
 import "./front/quanta/signInCode";
 // quanta: first, before WA's own modules keep the native RTCPeerConnection.
@@ -22,6 +24,8 @@ import { startEmojiCentre } from "./front/quanta/emojiCentre";
 import { startStagingOverlay } from "./front/quanta/stagingOverlay";
 import { startPageMenu } from "./front/quanta/pageMenu";
 import { startPresentBoardBridge } from "./front/quanta/presentBoardBridge";
+import { startBotControl } from "./front/quanta/botControl";
+import { BOT } from "./front/quanta/botMode";
 
 // Initialize E2E hooks
 declare global {
@@ -34,7 +38,8 @@ window.e2eHooks = e2eHooks;
 // quanta: every WA screen takes the room's style, error screens included, before anything is shown.
 if (QUANTA_UI) {
     document.documentElement.classList.add("quanta-ui");
-    startRoomBridge();
+    startBotControl();
+    if (!BOT) startRoomBridge();
     startEmojiCentre();
     startStagingOverlay();
     startPageMenu();

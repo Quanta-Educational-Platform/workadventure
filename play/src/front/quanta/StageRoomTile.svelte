@@ -126,7 +126,6 @@
             data-testid="stage-board-tile"
             onclick={pinBoard}
         >
-            {#if !folded}<span class="quanta-strip-board-icon"><Icon name="board" size={28} /></span>{/if}
             <span class="quanta-strip-label">
                 <Icon name="board" size={14} />
                 <span class="quanta-strip-label-text">{$boardTileStore || $QL.stageBoard()}</span>
@@ -164,8 +163,14 @@
         box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
     }
 
+    /* The board waiting in the strip looks like a piece of it: its white and its grid, named in the corner. */
     .quanta-strip-tile.board {
-        background: #c9d5ea;
+        background-color: #fff;
+        background-image:
+            linear-gradient(rgb(29 43 69 / 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgb(29 43 69 / 0.08) 1px, transparent 1px);
+        background-size: 14px 14px;
+        background-position: -1px -1px;
         color: #1d2b45;
     }
 
@@ -221,14 +226,6 @@
 
     .board.folded .quanta-strip-label {
         color: #1d2b45;
-    }
-
-    .quanta-strip-board-icon {
-        position: absolute;
-        inset: 0 0 26px;
-        display: grid;
-        place-items: center;
-        opacity: 0.75;
     }
 
     .quanta-strip-expand {

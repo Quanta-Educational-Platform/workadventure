@@ -11,6 +11,8 @@ export type Notification = {
     lead?: string;
     /** quanta: what kind of notice it is (quanta/Notice.svelte); otherwise told from its icon. */
     tone?: "info" | "action" | "problem" | "recording";
+    /** quanta: one button on the notice (its label and what it does); pressing it also closes the notice. */
+    action?: { label: string; run: () => void };
 };
 
 export const NOTIFICATION_MS = 5000;
@@ -30,7 +32,7 @@ function createNotificationStore() {
             icon?: string,
             id?: string,
             durationMs?: number,
-            extra?: Pick<Notification, "lead" | "tone">,
+            extra?: Pick<Notification, "lead" | "tone" | "action">,
         ) => {
             const notification: Notification = {
                 id: id ?? uuid(),

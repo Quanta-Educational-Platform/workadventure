@@ -11,6 +11,7 @@ import { streamableCollectionStore } from "../Stores/StreamableCollectionStore";
 import { roomLayoutStore } from "./layout";
 import { fromPlatform, platformOrigin } from "./platformOrigin";
 import { phoneLayoutStore } from "./roomWindow";
+import { setStageBoard, showOnStage, startStageModel } from "./stageModel";
 
 const on = writable(false);
 /** A board the platform presents is on the stage (not a share, not the room put back). */
@@ -146,13 +147,12 @@ function tell(message: object): void {
  * (it waits as the strip's first tile until presented again).
  */
 export function pinRoom(): void {
-    if (get(shareStageStore) && !get(on)) highlightedEmbedScreen.removeHighlight();
-    else tell({ type: "quanta_wa_stage_pin", pin: "room" });
+    showOnStage("map");
 }
 
-/** Asks the platform to put the waiting board back on the stage. */
+/** Puts the waiting board back on the stage. */
 export function pinBoard(): void {
-    tell({ type: "quanta_wa_stage_pin", pin: "board" });
+    showOnStage("board");
 }
 
 let started = false;
@@ -160,11 +160,26 @@ export function startStage(): void {
     if (started || !QUANTA_UI) return;
     started = true;
     window.addEventListener("message", (event: MessageEvent) => {
-        if (event.data?.type !== "quanta_stage" || !fromPlatform(event)) return;
+        if (!fromPlatform(event)) return;
+        // The page's own controls (its board/room switch, "Back to the board", the phone's top bar) ask the stage.
+        if (event.data?.type === "quanta_stage_pick") {
+            const item = event.data.item;
+            if (item === "board" || item === "map") showOnStage(item);
+            return;
+        }
+        if (event.data?.type !== "quanta_stage") return;
         on.set(event.data.on === true);
         const label = event.data.boardTile;
         boardTile.set(event.data.on !== true && typeof label === "string" ? label.slice(0, 120) : null);
+        // The presented board (its key) or none: a new one takes the stage, a gone one leaves it. A page from before
+        // the key says nothing here, and the stage keeps to what it is asked.
+        if ("board" in event.data) {
+            const key = event.data.board;
+            setStageBoard(typeof key === "string" && key ? key.slice(0, 200) : null);
+        }
     });
+    // What fills the stage is decided in one place (stageModel.ts): it tells the platform whether its board is up.
+    startStageModel((pin, picture) => tell({ type: "quanta_wa_stage_pin", pin, picture }));
     // The strip's tiles share its width: the window less the chat column and the fold button at its end.
     let fitFrame = 0;
     const fit = () => {

@@ -9,6 +9,21 @@ import { popupStore } from "../Stores/PopupStore";
 /** The dock's microphone or camera tray is open (QuantaDock.svelte). */
 export const dockTrayOpenStore = writable(false);
 
+/** How many people's menus (a call tile's arrow, VideoMediaBox.svelte) are open: the platform hides a presented board
+ * in place while one is (roomBridge.ts), without laying the stage out again, which would close the menu. */
+const tileMenus = writable(0);
+export const tileMenuOpenStore = derived(tileMenus, ($n) => $n > 0);
+/** A call tile's menu opened; the returned function says it closed. */
+export function tileMenuOpened(): () => void {
+    tileMenus.update((n) => n + 1);
+    let open = true;
+    return () => {
+        if (!open) return;
+        open = false;
+        tileMenus.update((n) => Math.max(0, n - 1));
+    };
+}
+
 export const roomOverlayStore = derived(
     [
         activeSecondaryZoneActionBarStore,
@@ -19,5 +34,10 @@ export const roomOverlayStore = derived(
         dockTrayOpenStore,
     ],
     ([$secondary, $menu, $settings, $modal, $popups, $tray]) =>
-        $secondary !== undefined || $menu !== undefined || $settings || $modal || $popups.length > 0 || $tray,
+        $secondary !== undefined ||
+        $menu !== undefined ||
+        $settings ||
+        $modal ||
+        $popups.length > 0 ||
+        $tray,
 );

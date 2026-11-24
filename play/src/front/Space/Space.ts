@@ -52,6 +52,8 @@ import { VideoBox } from "./VideoBox";
 import { idleVideoBoxPriority, VIDEO_STARTING_PRIORITY } from "./VideoBoxPriorities";
 import { LOCAL_SCREEN_SHARING_STREAM_ID } from "./Streamable";
 import type { Streamable } from "./Streamable";
+import { QUANTA_UI } from "../Enum/EnvironmentVariable";
+import { stageShareStarted } from "../quanta/stageModel";
 
 export class Space implements SpaceInterface {
     private readonly name: string;
@@ -864,7 +866,9 @@ export class Space implements SpaceInterface {
                 }
 
                 this.allScreenShareStreamStore.set(userToUpdate.spaceUserId, videoBox);
-                this._highlightedEmbedScreenStore.highlight(videoBox);
+                // quanta: whether a share takes the stage is the stage's to decide (quanta/stageModel.ts).
+                if (QUANTA_UI) stageShareStarted(videoBox);
+                else this._highlightedEmbedScreenStore.highlight(videoBox);
             } else {
                 this.allScreenShareStreamStore.get(userToUpdate.spaceUserId)?.destroy();
                 this.allScreenShareStreamStore.delete(userToUpdate.spaceUserId);
@@ -1428,7 +1432,8 @@ export class Space implements SpaceInterface {
                 waitForFirstFrame: this.shouldWaitForFirstFrameDuringTransition(user, true),
             });
 
-            this._highlightedEmbedScreenStore.highlight(videoBox);
+            if (QUANTA_UI) stageShareStarted(videoBox);
+            else this._highlightedEmbedScreenStore.highlight(videoBox);
         });
         this.observeScreenSharingPeerRemoved = this._peerManager.screenSharingPeerRemoved.subscribe((peer) => {
             const spaceUserId = peer.spaceUserId;

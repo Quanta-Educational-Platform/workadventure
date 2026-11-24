@@ -15,6 +15,7 @@ import {
 } from "../../common/quanta/RoomSession";
 import { mentionText, namesMention } from "../../common/quanta/chatBody";
 import type { PusherWebSocket } from "../services/PusherWebSocket";
+import { forwardTranscriptLine } from "./roomTranscript";
 import type { SpaceInterface } from "../models/Space";
 import type { ConnectingSocketData } from "../models/Websocket/SocketData";
 import {
@@ -658,6 +659,7 @@ export function handleRoomChat(socket: PusherWebSocket, event: PublicEventFrontT
             );
             broadcast(socket, { append: message }, ref, message);
             appendRoomChat(roomOf(socket), message, CHAT_OCCUPIED_TTL_MS, session.startedAt);
+            forwardTranscriptLine(socket.getUserData().roomId, { op: "send", message });
         } else if (input.op === "edit") {
             // Only messages this person may see are touched at all, here and in the session.
             const saved = session.messages.find(
@@ -685,6 +687,7 @@ export function handleRoomChat(socket: PusherWebSocket, event: PublicEventFrontT
             if (edited && before) {
                 broadcast(socket, { edited }, ref, edited);
                 editRoomChat(roomOf(socket), before, edited, CHAT_OCCUPIED_TTL_MS, session.startedAt);
+                forwardTranscriptLine(socket.getUserData().roomId, { op: "edit", message: edited });
                 if (session.pins.some((pin) => pin.id === edited.id)) publishPins(roomOf(socket));
             } else if (saved) {
                 // Nothing to change: taken as it is.
@@ -708,6 +711,7 @@ export function handleRoomChat(socket: PusherWebSocket, event: PublicEventFrontT
             if (deleted) {
                 broadcast(socket, { deleted: deleted.id }, undefined, deleted);
                 deleteRoomChat(roomOf(socket), deleted, CHAT_OCCUPIED_TTL_MS);
+                forwardTranscriptLine(socket.getUserData().roomId, { op: "delete", message: deleted });
                 if (session.pins.length !== pinsBefore) publishPins(roomOf(socket));
             }
         } else if (input.op === "poke") {

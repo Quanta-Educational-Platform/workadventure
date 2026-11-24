@@ -38,7 +38,7 @@
     <div class="{position} z-30 responsive-dimension">
         <div class="flex justify-between rounded bg-transparent">
             <div
-                class="relative px-2 py-1 text-white text-sm bold rounded text-nowrap flex flex-col items-center gap-2"
+                class="relative px-2 py-1 text-white text-sm bold rounded text-nowrap flex flex-col items-center gap-3"
             >
                 <div
                     class="w-8 @[15rem]/videomediabox:w-16 @[25rem]/videomediabox:w-32"
@@ -46,8 +46,16 @@
                 >
                     <Woka src={$picture ?? ""} customWidth="100%" {grayscale} />
                 </div>
-                <div class="flex items-center {isHandRaised ? 'rounded bg-success text-black pl-2' : ''}">
-                    <span class="select-none">{name}</span>
+                <!-- quanta: the name with its badges and menu arrow, centred together under the face, by what is drawn:
+                     the name's line is trimmed to its capitals (no room kept for letters reaching below it), the arrow's
+                     button adds no height to the line, and its icon is as empty after its stroke as the row is made
+                     before the name. -->
+                <div
+                    class="relative flex items-center {isHandRaised
+                        ? 'rounded bg-success text-black pl-2'
+                        : '[&_.user-menu-btn]:mr-0 [&_.user-menu-btn]:-my-[5px] has-[.user-menu-btn]:pl-[8px]'}"
+                >
+                    <span class="block select-none" style="text-box: trim-both cap alphabetic">{name}</span>
                     {@render children?.()}
                 </div>
             </div>

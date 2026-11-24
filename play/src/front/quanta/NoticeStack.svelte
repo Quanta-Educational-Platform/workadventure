@@ -21,6 +21,12 @@
     import GlobalNotice, { globalMessageText } from "./GlobalNotice.svelte";
     import { notificationLook, noticesKeptOut } from "./noticeLook";
     import { weakLinkNoticeStore } from "../Livekit/WeakLinkNotice";
+    import { laneStore, offerLane, LANE_RANK, closeLaneWhenMouseLeaves } from "./lane";
+    import LaneMore from "./LaneMore.svelte";
+    import { QL } from "./i18n";
+
+    // While a board fills the stage the stack shares one row with the on-air line (lane.ts): only the most important
+    // message shows, "+N" beside it opens the rest.
 
     const MAX_SHOWN = 3;
     const GAP = 8;
@@ -145,7 +151,9 @@
             info: alone ? true : item.info,
             pinned: item.pinned,
         }));
-        const next = noticesKeptOut(measured, alone ? 0 : MAX_SHOWN, room(stack), GAP);
+        let next = noticesKeptOut(measured, alone ? 0 : MAX_SHOWN, room(stack), GAP);
+        if ($laneStore.active && !$laneStore.open)
+            next = new Set(measured.filter((notice) => laneKey(notice.key) !== $laneStore.winner).map((n) => n.key));
         if (next.size !== out.size || [...next].some((key) => !out.has(key))) out = next;
     }
 
@@ -154,6 +162,7 @@
     $effect(() => {
         void items;
         void $weakLinkNoticeStore;
+        void $laneStore;
         void tick().then(fit);
     });
     $effect(() => {
@@ -177,6 +186,26 @@
             variables.disconnect();
             window.removeEventListener("resize", later);
         };
+    });
+
+    // What each message weighs when the row under a board is shared (lane.ts).
+    const laneKey = (key: string) => `notice:${key}`;
+    function laneRank(item: Item): number {
+        if (item.kind === "warning" || item.urgent) return LANE_RANK.problem;
+        if (item.kind === "global") return LANE_RANK.staffMessage;
+        if (item.kind === "toast") return LANE_RANK.toast;
+        if (item.pinned) return LANE_RANK.recording;
+        if (item.kind === "note" && notificationLook(item.notification).tone === "action") return LANE_RANK.action;
+        return LANE_RANK.information;
+    }
+    $effect(() => {
+        offerLane(
+            "notices",
+            items.map((item) => ({ key: laneKey(item.key), rank: laneRank(item) })),
+        );
+    });
+    $effect(() => {
+        return $laneStore.open ? closeLaneWhenMouseLeaves() : undefined;
     });
 
     // The newest staff message showing is the one Escape closes.
@@ -217,6 +246,7 @@
             {:else if item.kind === "global"}
                 <GlobalNotice message={item.message} escape={item.key === newestGlobal} />
             {/if}
+            <LaneMore key={laneKey(item.key)} />
         </div>
     {/each}
 </div>

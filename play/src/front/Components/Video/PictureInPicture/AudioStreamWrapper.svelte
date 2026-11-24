@@ -3,6 +3,7 @@
     import { selectDefaultSpeaker, speakerSelectedStore } from "../../../Stores/MediaStore";
     import type { VideoBox } from "../../../Space/VideoBox";
     import AudioStream from "./AudioStream.svelte";
+    import { mutedBotIdsStore } from "../../../quanta/devBots";
 
     interface Props {
         videoBox: VideoBox;
@@ -15,9 +16,11 @@
     let muteAudio = $derived($muteAudioStore ?? false);
 
     let hasAudio = $derived($streamable?.hasAudio ?? writable(false));
+    // quanta: a fake student (dev tools) muted for this person: still in the call, not in their ears.
+    let mutedBot = $derived($mutedBotIdsStore.has(videoBox.spaceUser?.uuid ?? ""));
 </script>
 
-{#if $streamable && ($streamable?.media.type === "webrtc" || $streamable?.media.type === "livekit") && !muteAudio && $hasAudio}
+{#if $streamable && ($streamable?.media.type === "webrtc" || $streamable?.media.type === "livekit") && !muteAudio && $hasAudio && !mutedBot}
     <AudioStream
         streamStore={$streamable.media.streamStore}
         volume={$streamable.volume}
