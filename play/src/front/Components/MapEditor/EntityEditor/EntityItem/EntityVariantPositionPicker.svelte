@@ -1,17 +1,20 @@
 <script lang="ts">
     import type { EntityPrefab } from "@workadventure/map-editor";
+    import { QL } from "../../../../quanta/i18n";
 
     interface Props {
         entityPrefabsPositions: EntityPrefab[];
         selectedEntity: EntityPrefab;
         onPickItem: (entity: EntityPrefab) => void;
+        /** quanta: the row's name; "Positions" when none is given. */
+        label?: string;
     }
 
-    let { entityPrefabsPositions, selectedEntity, onPickItem }: Props = $props();
+    let { entityPrefabsPositions, selectedEntity, onPickItem, label }: Props = $props();
 </script>
 
 {#if entityPrefabsPositions.length > 1}
-    <p class="m-0 text-xxs">Positions</p>
+    <p class="m-0 text-xxs">{label ?? $QL.piecePositions()}</p>
     <div class="flex flex-row gap-2">
         {#each entityPrefabsPositions as item (item.id)}
             <!-- svelte-ignore a11y_click_events_have_key_events -->

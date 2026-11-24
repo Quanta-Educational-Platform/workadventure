@@ -1,3 +1,4 @@
+import { mapEditorModeStore } from "../../../../Stores/MapEditorStore";
 import * as Phaser from "phaser";
 import type { EditMapCommandMessage } from "@workadventure/messages";
 import debug from "debug";
@@ -203,8 +204,10 @@ export class ExplorerTool implements MapEditorTool {
             }
         }
 
-        // Restore camera mode
-        cameraManager.startFollowPlayer(this.scene.CurrentPlayer, 1000);
+        // Restore camera mode. quanta: switching to another editing tool keeps the view where the person was looking
+        // (placing a piece there is why they explored); it returns to them when they walk or close the editor.
+        if (get(mapEditorModeStore)) cameraManager.holdViewAt();
+        else cameraManager.startFollowPlayer(this.scene.CurrentPlayer, 1000);
         if (targetZoom) {
             const targetZoomFactor = targetZoom / waScaleManager.zoomModifier;
             cameraManager.zoomByFactor(targetZoomFactor, 1000);

@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { get } from "svelte/store";
 import { mapEditorModeStore } from "../../Stores/MapEditorStore";
+import { mapEditorSideBarWidthStore } from "../../Components/MapEditor/MapEditorSideBarWidthStore";
 import { coWebsiteManager } from "../../Stores/CoWebsiteStore";
 import { type Insets, NO_INSETS, roomBounds, roomFitScale, type Size, windowView } from "../../quanta/roomFit";
 import { chatColumnWidth, roomWindowInsets, sideColumnFrameShare, withRoomMargin } from "../../quanta/roomWindow";
@@ -98,6 +99,9 @@ const railLayout = (): boolean => document.documentElement.dataset.quantaLayout 
  * The CameraManager handles the transitions / animations between the different camera modes.
  * It also handles the smooth zoom in and out of the camera.
  */
+/** quanta: the editor's column of tool buttons beside its panel, in CSS pixels. */
+const EDITOR_TOOLS_CSS_PX = 96;
+
 export class CameraManager extends EventEmitter {
     private camera: Camera;
     private waScaleManager: WaScaleManager;
@@ -237,6 +241,27 @@ export class CameraManager extends EventEmitter {
         this.waScaleManager.maxZoomOut = this.wholeRoomZoomModifier(screen, insets);
         this.waScaleManager.setZoomModifier(this.fittedZoomModifier(screen), this.camera);
         this.updateRoomBounds();
+        // quanta: while editing the map, the whole room fits beside the editor's panel, around its middle rather than
+        // around the person; walking brings the camera back to them.
+        if (whole && get(mapEditorModeStore)) {
+            const panel = get(mapEditorSideBarWidthStore) + EDITOR_TOOLS_CSS_PX;
+            const beside = { ...insets, right: insets.right + panel };
+            const zoom = this.wholeRoomZoomModifier(screen, beside);
+            this.waScaleManager.maxZoomOut = Math.min(this.waScaleManager.maxZoomOut, zoom);
+            this.waScaleManager.setZoomModifier(zoom, this.camera);
+            const mapPerCss = screen.width ? this.camera.width / (this.camera.zoom || 1) / screen.width : 0;
+            this.holdViewAt(this.mapSize.width / 2 + (panel / 2) * mapPerCss, this.mapSize.height / 2);
+        }
+    }
+
+    /** quanta: the view stays on this point of the map (or where it is now) until the person walks again. */
+    public holdViewAt(x?: number, y?: number): void {
+        this.panBy(0, 0);
+        if (x === undefined || y === undefined) return;
+        this.explorerFocusOn.x = x + this.camera.followOffset.x;
+        this.explorerFocusOn.y = y + this.camera.followOffset.y;
+        this.scene.markDirty();
+        this.emit(CameraManagerEvent.CameraUpdate, this.getCameraUpdateEventData());
     }
 
     /**

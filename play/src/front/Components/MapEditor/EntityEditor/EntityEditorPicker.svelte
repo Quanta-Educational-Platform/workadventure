@@ -312,8 +312,11 @@
             </ul>
         {:else}
             {#if pickedEntityVariant && pickedEntity}
+                <!-- quanta: the picked piece sits at the top of the panel's list, not over the map: a wall piece is placed
+                     wherever the person looks, without walking to the wall first. -->
                 <div
-                    class="fixed left-2 flex flex-row gap-2 items-center justify-center border-b-blue-50 p-4 mb-2 min-h-[200px] bg-white/20 backdrop-blur-xl rounded-2xl w-[calc(100%-16px)]"
+                    class="sticky top-0 z-10 flex flex-row gap-3 items-center border-b-blue-50 p-3 mb-2 bg-white/20 backdrop-blur-xl rounded-2xl w-full relative"
+                    data-testid="pickedEntityBand"
                 >
                     {#if isEditingCustomEntity}
                         <CustomEntityEditionForm
@@ -376,7 +379,7 @@
                 </div>
             {/if}
             {#if !isEditingCustomEntity}
-                <div class="flex flex-col gap-2" class:mt-52={pickedEntityVariant && pickedEntity}>
+                <div class="flex flex-col gap-2">
                     {#if $selectCategoryStore}
                         <span class="font-bold text-lg">
                             {getCategoryLabel($selectCategoryStore)}

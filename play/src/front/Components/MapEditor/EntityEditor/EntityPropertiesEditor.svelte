@@ -11,6 +11,13 @@
     import { analyticsClient } from "../../../Administration/AnalyticsClient";
     import LL from "../../../../i18n/i18n-svelte";
     import AddPropertyButtonWrapper from "../PropertyEditor/AddPropertyButtonWrapper.svelte";
+    import { QUANTA_UI } from "../../../Enum/EnvironmentVariable";
+    import { get } from "svelte/store";
+    import type { EntityPrefab } from "@workadventure/map-editor";
+    import { QL } from "../../../quanta/i18n";
+    import { CreateEntityFrontCommand } from "../../../Phaser/Game/MapEditor/Commands/Entity/CreateEntityFrontCommand";
+    import { DeleteEntityFrontCommand } from "../../../Phaser/Game/MapEditor/Commands/Entity/DeleteEntityFrontCommand";
+    import EntityVariantPositionPicker from "./EntityItem/EntityVariantPositionPicker.svelte";
     import PlayAudioPropertyEditor from "../PropertyEditor/PlayAudioPropertyEditor.svelte";
     import OpenWebsitePropertyEditor from "../PropertyEditor/OpenWebsitePropertyEditor.svelte";
 
@@ -30,6 +37,9 @@
     let entitySearchable = $state(false);
     let showDescriptionField = $state(false);
     let selectedEntity: Entity | undefined = undefined;
+    // quanta: the piece's other directions, to turn it where it stands (not only before placing it).
+    let turnPositions: EntityPrefab[] = $state([]);
+    let currentPrefab: EntityPrefab | undefined = $state(undefined);
 
     let selectedEntityUnsubscriber = mapEditorSelectedEntityStore.subscribe((currentEntity) => {
         if (currentEntity) {
@@ -49,8 +59,46 @@
                 entitySearchable = descriptionProperty.searchable ?? false;
             }
             selectedEntity = currentEntity;
+            currentPrefab = currentEntity.getPrefab();
+            const variant = get(
+                gameManager.getCurrentGameScene().getEntitiesCollectionsManager().getEntitiesPrefabsVariantStore(),
+            ).find((v) => currentPrefab && v.prefabIds.includes(currentPrefab.id));
+            try {
+                turnPositions = variant && currentPrefab ? variant.getEntityPrefabsPositions(currentPrefab.color) : [];
+            } catch {
+                turnPositions = [];
+            }
         }
     });
+
+    /** quanta: a placed piece turned: the same piece in the other direction, where it stands, with its properties. */
+    function turnTo(prefab: EntityPrefab) {
+        const entity = selectedEntity;
+        if (!entity || prefab.id === currentPrefab?.id) return;
+        const scene = gameManager.getCurrentGameScene();
+        const manager = scene.getMapEditorModeManager();
+        const wam = scene.getGameMap().getWamFile();
+        if (!manager || !wam) return;
+        const entities = scene.getGameMapFrontWrapper().getEntitiesManager();
+        const data = structuredClone(entity.getEntityData());
+        const size = { width: entity.width, height: entity.height };
+        mapEditorSelectedEntityStore.set(undefined);
+        manager
+            .executeCommand(new DeleteEntityFrontCommand(wam, entity.entityId, undefined, entities))
+            .then(() =>
+                manager.executeCommand(
+                    new CreateEntityFrontCommand(
+                        wam,
+                        undefined,
+                        { ...data, prefabRef: { id: prefab.id, collectionName: prefab.collectionName } },
+                        undefined,
+                        entities,
+                        size,
+                    ),
+                ),
+            )
+            .catch((e) => console.error(e));
+    }
 
     function onAddProperty(type: EntityDataPropertiesKeys, subtype?: string) {
         if ($mapEditorSelectedEntityStore) {
@@ -297,6 +345,16 @@
             <IconArrowLeft font-size="12" class="cursor-pointer" />
             <span class="ml-1 cursor-pointer">{$LL.mapEditor.entityEditor.itemPicker.backToSelectObject()}</span>
         </p>
+        {#if turnPositions.length > 1 && currentPrefab}
+            <div class="m-2" data-testid="turnPlacedPiece">
+                <EntityVariantPositionPicker
+                    label={$QL.turnPiece()}
+                    entityPrefabsPositions={turnPositions}
+                    selectedEntity={currentPrefab}
+                    onPickItem={turnTo}
+                />
+            </div>
+        {/if}
         <div class="properties-buttons flex flex-row m-2">
             <AddPropertyButtonWrapper
                 property="playAudio"
@@ -318,6 +376,8 @@
                     onAddProperty("openFile");
                 }}
             />
+            <!-- quanta: our rooms offer no third-party apps (English-only, outside our accounts): a website, a file or a sound. -->
+            {#if !QUANTA_UI}
             <AddPropertyButtonWrapper
                 property="openWebsite"
                 subProperty="klaxoon"
@@ -381,7 +441,9 @@
                     onAddProperty("openWebsite", "tldraw");
                 }}
             />
+            {/if}
         </div>
+        {#if !QUANTA_UI}
         <div class="properties-buttons flex flex-row flex-wrap m-2">
             {#each applicationManager.applications as app, index (`my-own-app-${index}`)}
                 <AddPropertyButtonWrapper
@@ -393,6 +455,7 @@
                 />
             {/each}
         </div>
+        {/if}
         <div class="entity-name-container">
             <Input
                 id="objectName"
