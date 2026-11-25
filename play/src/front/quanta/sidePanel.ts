@@ -163,6 +163,35 @@ export function startSidePanel(): () => void {
     let slideWidth = 0;
     let lastSpace = 0;
     let lastWidens = 0;
+    // The frame's width without the column: where a closing slide ends and an opening one starts. The platform resizes
+    // the frame before its word that the column opened or closed arrives, so it is followed here as the frame changes,
+    // never worked out from the width at the moment the word lands (a closed column was held for the slide's whole
+    // timeout, the map squeezed beside an empty strip).
+    let restWidth = window.innerWidth;
+    let trackedWidth = window.innerWidth;
+    let resizedAhead = false;
+    const track = () => {
+        const w = window.innerWidth;
+        if (w === trackedWidth) return;
+        if (!sideSlideActive()) {
+            const widens = lastSpace > 0 ? lastWidens : (get(sidePanelLayoutStore).widens ?? 0);
+            // Open, the frame gave the column back; closed, it grew by it: the word follows.
+            const ahead =
+                widens > 0 && Math.abs((lastSpace > 0 ? trackedWidth - w : w - trackedWidth) - widens) <= 1;
+            if (ahead && !resizedAhead) {
+                resizedAhead = true;
+                // No word came after all (the window itself was resized by that much): back to plain following.
+                setTimeout(() => {
+                    if (!resizedAhead) return;
+                    resizedAhead = false;
+                    restWidth = lastSpace > 0 ? window.innerWidth - lastWidens : window.innerWidth;
+                }, FRAME_SLIDE_MAX_MS);
+            }
+            if (lastSpace > 0) restWidth = resizedAhead ? w : w - lastWidens;
+            else if (!resizedAhead) restWidth = w;
+        }
+        trackedWidth = w;
+    };
     const endSlide = () => {
         clearTimeout(slideTimer);
         cancelAnimationFrame(slideFrame);
@@ -178,6 +207,7 @@ export function startSidePanel(): () => void {
     // What the map (quanta-ui.css, domLayerClip.ts) and the co-website leave free on the right for the open chat.
     // Beside a co-website (landscape) the chat sits over the website's side, not the map's.
     const reserve = () => {
+        track();
         const open = get(chatVisibilityStore);
         const { width, margin, cover, widens, below } = get(sidePanelLayoutStore);
         const reserved = get(sidePanelReservedStore);
@@ -192,10 +222,11 @@ export function startSidePanel(): () => void {
             endSlide();
             const opening = space > 0;
             setSideSlide({
-                base: opening ? window.innerWidth : window.innerWidth - lastWidens,
+                base: restWidth,
                 space: Math.max(space, lastSpace),
                 widens: opening ? (widens ?? 0) : lastWidens,
             });
+            resizedAhead = false;
             slideTimer = setTimeout(() => (endSlide(), reserve()), FRAME_SLIDE_MAX_MS);
             slideFrame = requestAnimationFrame(follow);
         }
@@ -322,6 +353,7 @@ export function startSidePanel(): () => void {
     portrait.addEventListener("change", reserve);
 
     const onResize = () => {
+        track();
         if (!get(sidePanelLayoutStore).tabs) sidePanelLayoutStore.set(ownLayout());
         // Each step of the frame's slide reveals or hides that much more of the column.
         else if (sideSlideActive()) reserve();

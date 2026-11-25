@@ -3699,12 +3699,12 @@ html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-s
     order: 0 !important;
 }
 
-html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-talking] {
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-speaking] {
     position: relative;
 }
 
 /* Inside the tile, over its own card: the strip clips anything past its edge. */
-html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-talking]::after {
+html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-speaking]::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -3714,7 +3714,7 @@ html.quanta-ui[data-quanta-strip] #cameras-container > .camera-box[data-quanta-t
     pointer-events: none;
 }
 
-html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-quanta-talking]::after {
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-quanta-speaking]::after {
     border-radius: 999px;
 }
 
@@ -3803,7 +3803,7 @@ html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-
     background: #000;
 }
 
-html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-quanta-share][data-quanta-talking]::after {
+html.quanta-ui[data-quanta-strip="faces"] #cameras-container > .camera-box[data-quanta-share][data-quanta-speaking]::after {
     border-radius: 8px;
 }
 
@@ -4131,7 +4131,7 @@ html.quanta-ui[data-quanta-bubbles]
     cursor: grab;
 }
 
-html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box[data-quanta-talking] {
+html.quanta-ui[data-quanta-bubbles] #cameras-container > .camera-box[data-quanta-speaking] {
     box-shadow:
         0 0 0 3px #80da88,
         0 6px 18px rgb(0 0 0 / 0.35);

@@ -91,7 +91,7 @@
             return !state || (!state.share && !state.video && !state.talking);
         }),
     );
-    let talkingIds = $derived(new Set(boxes.filter((_, i) => states[i]?.talking).map((box) => box.uniqueId)));
+    let talkingIds = $derived(new Set(boxes.filter((_, i) => states[i]?.speaking).map((box) => box.uniqueId)));
     let localInPile = $derived(pileBoxes.some((box) => box.uniqueId === "-1"));
     // The pile names you first, then how many more: "You +2", or "+2" past the faces shown. The pictures are those of
     // the faces shown (you first), not of the call's first three.

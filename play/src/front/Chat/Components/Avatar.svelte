@@ -15,15 +15,19 @@
          * Default: 40×40px, `rounded-sm` — message thread avatars.
          */
         compact?: boolean;
+        /** quanta: a woka's picture as its face: head and shoulders at 32×32px (a message's sender). */
+        face?: boolean;
     }
 
-    let { pictureStore, fallbackName = "A", color = null, isChatAvatar = false, compact = false }: Props = $props();
+    let { pictureStore, fallbackName = "A", color = null, isChatAvatar = false, compact = false, face = false }: Props = $props();
 
     let forceFallback = $state(false);
     let previousPictureUrl: string | undefined = $state();
 
     let sizeClass = $derived(
-        compact
+        face
+            ? "h-8 w-8 min-h-8 min-w-8 shrink-0 rounded-md overflow-hidden"
+            : compact
             ? "h-7 w-7 min-h-[1.75rem] min-w-[1.75rem] shrink-0 rounded-md overflow-hidden"
             : "h-10 w-10 min-h-10 min-w-10 shrink-0 rounded-sm overflow-hidden",
     );
@@ -83,6 +87,7 @@
         src={$pictureStore}
         alt={$LL.chat.a11y.userAvatar()}
         class="object-contain object-center bg-white {sizeClass}"
+        class:woka-face={face}
         draggable="false"
         loading="lazy"
         decoding="async"
@@ -103,3 +108,12 @@
         {fallbackName.charAt(0)}
     </div>
 {/if}
+
+<style>
+    /* quanta: the whole woka is a 64px front still; its head and collar fill the box, drawn crisp. */
+    .woka-face {
+        transform: scale(1.3);
+        transform-origin: 50% 3%;
+        image-rendering: pixelated;
+    }
+</style>

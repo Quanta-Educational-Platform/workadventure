@@ -431,7 +431,7 @@
         {#if (!isMyMessage || isQuotedMessage) && sender !== undefined && replyDepth === 0 && showHeader}
             <AvatarBox class="overflow-hidden mt-4 shrink-0">
                 <Avatar
-                    compact
+                    face
                     pictureStore={messageAvatarPictureStore}
                     fallbackName={senderName}
                     color={messageSenderAvatarColor}

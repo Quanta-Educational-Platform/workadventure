@@ -1,17 +1,20 @@
 // quanta: what a call tile shows, for the layouts that arrange tiles by it (rail.ts, bubbles.ts): a picture (a camera
 // that is on), a shared screen, and whether the person is talking, held a few seconds past each pause so a tile that
-// grows for a speaker doesn't shrink between sentences.
+// grows for a speaker doesn't shrink between sentences, and whether they talk now (the green ring), which follows the
+// voice closely.
 import { derived, readable, type Readable } from "svelte/store";
 import type { VideoBox } from "../Space/VideoBox";
-import { heldTalking } from "./talkingIndicator";
+import { heldTalking, TALK_HOLD_MS } from "./talkingIndicator";
 
 export interface BoxState {
     video: boolean;
     talking: boolean;
+    /** Talking now, held only over the short gaps inside speech: what the green ring shows. */
+    speaking: boolean;
     share: boolean;
 }
 
-const NONE: BoxState = { video: false, talking: false, share: false };
+const NONE: BoxState = { video: false, talking: false, speaking: false, share: false };
 export const TALKING_HOLD_MS = 4000;
 
 const states = new WeakMap<VideoBox, Readable<BoxState>>();
@@ -39,9 +42,11 @@ export function boxStateStore(box: VideoBox): Readable<BoxState> {
             }
             const share = $streamable.videoType === "screenSharing";
             const talking = share ? readable(false) : heldTalking($streamable.showVoiceIndicator, TALKING_HOLD_MS);
-            return derived([$streamable.hasVideo, talking], ([$video, $talking]) => ({
+            const speaking = share ? readable(false) : heldTalking($streamable.showVoiceIndicator, TALK_HOLD_MS);
+            return derived([$streamable.hasVideo, talking, speaking], ([$video, $talking, $speaking]) => ({
                 video: $video,
                 talking: $talking,
+                speaking: $speaking,
                 share,
             })).subscribe(set);
         },

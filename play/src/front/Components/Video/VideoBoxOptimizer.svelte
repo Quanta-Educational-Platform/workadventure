@@ -180,6 +180,7 @@
     data-quanta-box={QUANTA_UI ? videoBox.uniqueId : undefined}
     data-quanta-video={$boxState?.video ? "" : undefined}
     data-quanta-talking={$boxState?.talking ? "" : undefined}
+    data-quanta-speaking={$boxState?.speaking ? "" : undefined}
     data-quanta-share={$boxState?.share ? "" : undefined}
     data-quanta-staff={staff ? "" : undefined}
 >
