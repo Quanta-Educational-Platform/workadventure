@@ -31,12 +31,8 @@ import EventEmitter = Phaser.Events.EventEmitter;
 import Camera = Phaser.Cameras.Scene2D.Camera;
 import Tween = Phaser.Tweens.Tween;
 
-// quanta: how long the room's size must hold still before it glides to the new fit, and how long that glide takes.
-const REFIT_SETTLE_MS = 90;
+// quanta: how long the room's zoom glides to a new fit or window.
 const REFIT_GLIDE_MS = 280;
-// quanta: a settled frame whose fit is within this share of the last fit keeps the zoom on screen: a frame that
-// wavers by a few pixels never zooms the map out and back in.
-const REFIT_HYSTERESIS = 0.03;
 
 function sameInsets(a: Insets, b: Insets): boolean {
     return a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left;
@@ -144,13 +140,10 @@ export class CameraManager extends EventEmitter {
     // map's part of the frame last shown.
     private fittedRoom: { tileWidth: number; key?: string; shown?: string; scale?: number } | undefined;
     // quanta: CSS pixels per map pixel last shown, kept while the window changes; the window insets the camera's
-    // bounds use (moving with a glide); the pending glide to the fit and the window it waits on.
+    // bounds use (moving with a glide).
     private shownZoom: number | undefined;
-    private fitCheckTimer: ReturnType<typeof setTimeout> | undefined;
     private boundsInsets: Insets = NO_INSETS;
     private boundsTarget: Insets = NO_INSETS;
-    private refitTimer: ReturnType<typeof setTimeout> | undefined;
-    private refitHeldFor: string | undefined;
     // quanta: the person asked for the whole room (menu): shown whole, without filling the window, until the frame resizes.
     private showWhole = false;
 
@@ -227,9 +220,8 @@ export class CameraManager extends EventEmitter {
         if (!screen.width || !screen.height) return;
         const insets = this.windowInsets();
         const key = this.fitKey();
-        if (!force && !this.refitTimer && key === this.fittedRoom.key) return;
+        if (!force && key === this.fittedRoom.key) return;
         this.showWhole = whole;
-        this.cancelRefitGlide();
         this.fittedRoom.key = key;
         this.fittedRoom.shown = viewKey(screen, insets);
         this.fittedRoom.scale = this.fitScale();
@@ -265,12 +257,13 @@ export class CameraManager extends EventEmitter {
     }
 
     /**
-     * quanta: the map's part of the frame changed. A board or the chat column opening or closing beside the map keeps
-     * the room's on-screen scale (the map shows less or more of it, panning to its new window); only the frame itself
-     * changing size refits: the room keeps its scale while the size moves, then glides to the new fit once it has held
-     * still for a moment, so a resize is one smooth zoom rather than a jump per frame.
+     * quanta: the map's part of the frame changed. The room keeps its on-screen scale whatever changes: a board or the
+     * chat column beside the map, or the frame itself resized (the room moving beside the page, its divider dragged).
+     * A resized frame crops or uncovers the room on the side that moved; the map stays where it is on screen.
      */
     public onScreenResized(): void {
+        // The view as last drawn, before this size: what the side that stayed put shows.
+        const before = { right: this.camera.worldView.right, centreY: this.camera.worldView.centerY };
         this.updateRoomBounds();
         if (!this.fittedRoom) return;
         const screen = coWebsiteManager.getGameSize();
@@ -280,8 +273,7 @@ export class CameraManager extends EventEmitter {
         const shown = viewKey(screen, insets);
         const resized = key !== this.fittedRoom.key;
         if (resized) this.showWhole = false;
-        if (!resized && !this.refitTimer && shown === this.fittedRoom.shown) return;
-        if (this.refitTimer && key === this.refitHeldFor && shown === this.fittedRoom.shown) return;
+        if (!resized && shown === this.fittedRoom.shown) return;
         const shownZoom = this.shownZoom;
         // Nothing on screen to keep yet, or editing the map: fit straight away.
         if (!this.fittedRoom.key || !shownZoom || get(mapEditorModeStore)) {
@@ -289,79 +281,67 @@ export class CameraManager extends EventEmitter {
             return;
         }
         this.fittedRoom.shown = shown;
+        if (resized) {
+            this.keepScaleThroughResize(screen, insets, shownZoom, before);
+            return;
+        }
         // The person is zooming: their zoom goes on, in the new window.
         if (this.buttonZoomAnimation) {
-            if (resized) this.refitRoom();
-            else this.glideBounds(insets);
+            this.glideBounds(insets);
             return;
         }
 
         // A glide of the bounds alone may go on; one of the zoom was for the previous window.
         if (!this.zoomAnimation?.boundsOnly) {
-            // Cut short, it leaves the room between two scales: the next settle glides to the fit, however near the
-            // last one, rather than keeping the room cropped or shrunk.
-            if (this.zoomAnimation) this.fittedRoom.scale = undefined;
             this.zoomAnimation?.onInterrupt();
             this.zoomAnimation = undefined;
         }
         const keep = this.zoomModifierForScale(screen, shownZoom);
         this.waScaleManager.maxZoomOut = Math.min(this.wholeRoomZoomModifier(screen, insets), keep);
-        if (!resized && !this.refitTimer) {
-            this.waScaleManager.setZoomModifier(keep, this.camera);
-            this.glideBounds(insets);
-            return;
-        }
-        this.zoomAnimation?.onInterrupt();
-        this.zoomAnimation = undefined;
-        this.waScaleManager.setZoomModifier(keep, this.camera, true);
-        this.updateRoomBounds();
-        this.refitHeldFor = key;
-        if (this.refitTimer) clearTimeout(this.refitTimer);
-        this.refitTimer = setTimeout(() => this.glideToFit(), REFIT_SETTLE_MS);
-    }
-
-    private readonly onWindowInsetsChanged = (): void => this.onScreenResized();
-
-    private glideToFit(): void {
-        this.refitTimer = undefined;
-        this.refitHeldFor = undefined;
-        if (!this.fittedRoom) return;
-        const screen = coWebsiteManager.getGameSize();
-        if (!screen.width || !screen.height) return;
-        const insets = this.windowInsets();
-        this.fittedRoom.key = this.fitKey();
-        this.fittedRoom.shown = viewKey(screen, insets);
-        // The person took the zoom into their own hands meanwhile.
-        if (this.buttonZoomAnimation) return;
-        const scale = this.fitScale();
-        // Against what is drawn now, not the last fit worked out: steps of a pane's resize can leave the zoom between
-        // two fits (a glide cut short, a step's own refit), and only the room as drawn says whether it is right.
-        const drawn = this.waScaleManager.zoomModifier;
-        const fitted = this.fittedZoomModifier(screen);
-        this.checkFitAfterGlide();
-        if (drawn && Math.abs(fitted / drawn - 1) < REFIT_HYSTERESIS) {
-            // Kept while the frame moved, drawn for an animation: drawn at rest again, only the bounds gliding.
-            this.waScaleManager.setZoomModifier(this.waScaleManager.zoomModifier, this.camera, false);
-            this.glideBounds(insets);
-            return;
-        }
-        this.fittedRoom.scale = scale;
-        this.glide(this.fittedZoomModifier(screen), insets, this.wholeRoomZoomModifier(screen, insets));
+        this.waScaleManager.setZoomModifier(keep, this.camera);
+        this.glideBounds(insets);
     }
 
     /**
-     * quanta: once the glide has had its time, a pane that changed again meanwhile without telling (the frame's last
-     * step, the side column's reserve arriving after it) is fitted again: nothing is left waiting for another change.
+     * quanta: a resized frame shows the room at the scale it had. The room beside the page grows and shrinks from its
+     * left edge (the divider, or the page taking the window's left), so the view keeps its right edge where it was;
+     * the person stays in view, and the camera returns to following them on their next step.
      */
-    private checkFitAfterGlide(): void {
-        if (this.fitCheckTimer) clearTimeout(this.fitCheckTimer);
-        this.fitCheckTimer = setTimeout(() => {
-            this.fitCheckTimer = undefined;
-            if (!this.fittedRoom || this.refitTimer || this.buttonZoomAnimation) return;
-            if (this.fitKey() !== this.fittedRoom.key || this.shownKey() !== this.fittedRoom.shown)
-                this.onScreenResized();
-        }, REFIT_GLIDE_MS + REFIT_SETTLE_MS);
+    private keepScaleThroughResize(
+        screen: Size,
+        insets: Insets,
+        shownZoom: number,
+        before: { right: number; centreY: number },
+    ): void {
+        if (this.fittedRoom) this.fittedRoom.key = this.fitKey();
+        if (!this.buttonZoomAnimation) {
+            this.zoomAnimation?.onInterrupt();
+            this.zoomAnimation = undefined;
+            const keep = this.zoomModifierForScale(screen, shownZoom);
+            this.waScaleManager.maxZoomOut = Math.min(this.wholeRoomZoomModifier(screen, insets), keep);
+            this.waScaleManager.setZoomModifier(keep, this.camera);
+        }
+        this.boundsInsets = insets;
+        this.boundsTarget = insets;
+        this.updateRoomBounds();
+        if (!Number.isFinite(before.right) || before.right <= 0) return;
+
+        const half = screen.width / shownZoom / 2;
+        let centreX = before.right - half;
+        const player = this.playerToFollow;
+        if (player) {
+            const margin = Math.min(48, half / 2);
+            centreX = Clamp(centreX, player.x - half + margin, player.x + half - margin);
+        }
+        // The camera follows this very object while panned: moved in place.
+        this.panBy(0, 0);
+        this.explorerFocusOn.x = centreX + this.camera.followOffset.x;
+        this.explorerFocusOn.y = before.centreY + this.camera.followOffset.y;
+        // Held inside the room's bounds for the new size.
+        this.panBy(0, 0);
     }
+
+    private readonly onWindowInsetsChanged = (): void => this.onScreenResized();
 
     /** quanta: the camera's bounds move to a new window without a jump, the zoom staying as it is. */
     private glideBounds(insets: Insets): void {
@@ -421,14 +401,6 @@ export class CameraManager extends EventEmitter {
                 this.waScaleManager.maxZoomOut = maxZoomOut;
             },
         };
-    }
-
-    private cancelRefitGlide(): void {
-        if (this.fitCheckTimer) clearTimeout(this.fitCheckTimer);
-        this.fitCheckTimer = undefined;
-        if (this.refitTimer) clearTimeout(this.refitTimer);
-        this.refitTimer = undefined;
-        this.refitHeldFor = undefined;
     }
 
     private shownKey(): string {
@@ -511,7 +483,6 @@ export class CameraManager extends EventEmitter {
 
     public destroy(): void {
         if (QUANTA_UI) window.removeEventListener("quanta-chat-reserve", this.onWindowInsetsChanged);
-        this.cancelRefitGlide();
         this.cancelOffsetTween();
         this.zoomAnimation?.onInterrupt();
         this.zoomAnimation = undefined;
