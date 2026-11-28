@@ -110,10 +110,15 @@ export const sidePanelOpenStore = derived([chatVisibilityStore, peopleOpenStore]
  * Layout A beside the stage: the column holds the room and the call above People or Chat, so it stays whether or not
  * either is open (rail.ts). On an upright screen it is a band under the stage instead, and phones' cover too.
  */
-export const railColumnStore = derived(
-    [roomLayoutStore, sidePanelLayoutStore],
-    ([$layout, side]) => $layout === "a" && side.tabs && !side.cover && !side.below,
+const isRailColumn = ($layout: string, side: SidePanelLayout) =>
+    $layout === "a" && side.tabs && !side.cover && !side.below;
+
+export const railColumnStore = derived([roomLayoutStore, sidePanelLayoutStore], ([$layout, side]) =>
+    isRailColumn($layout, side),
 );
+
+const isReserved = (chat: boolean, people: boolean, side: SidePanelLayout, rail: boolean) =>
+    ((chat || (people && side.tabs)) && !side.cover) || rail;
 
 /**
  * The side column (People or Chat) takes the map's right side. The platform draws People over the room, so both tabs
@@ -121,8 +126,22 @@ export const railColumnStore = derived(
  */
 export const sidePanelReservedStore = derived(
     [chatVisibilityStore, peopleOpenStore, sidePanelLayoutStore, railColumnStore],
-    ([chat, people, side, rail]) => ((chat || (people && side.tabs)) && !side.cover) || rail,
+    ([chat, people, side, rail]) => isReserved(chat, people, side, rail),
 );
+
+/**
+ * The same, read from its sources: a subscriber of one of them (reserve()) can run before the derived store has
+ * caught up, and would read the state from before the change (People closed left the column reserved).
+ */
+function reservedNow(): boolean {
+    const side = get(sidePanelLayoutStore);
+    return isReserved(
+        get(chatVisibilityStore),
+        get(peopleOpenStore),
+        side,
+        isRailColumn(get(roomLayoutStore), side),
+    );
+}
 
 /** From the chat's People tab: the platform opens its list, which closes the chat. */
 export function showPeople(): void {
@@ -210,7 +229,7 @@ export function startSidePanel(): () => void {
         track();
         const open = get(chatVisibilityStore);
         const { width, margin, cover, widens, below } = get(sidePanelLayoutStore);
-        const reserved = get(sidePanelReservedStore);
+        const reserved = reservedNow();
         // Layout A's row of tiles sits above the band, under the stage: the map ends above both.
         const band = (reserved && below ? below + margin : 0) + get(railRowStore);
         const space = reserved && !below ? width + margin : 0;
@@ -339,13 +358,13 @@ export function startSidePanel(): () => void {
         reserve();
         const opened = sites.length > websitesOpen;
         websitesOpen = sites.length;
-        if (!opened || !get(sidePanelReservedStore)) return;
+        if (!opened || !reservedNow()) return;
         measuring?.();
         measuring = afterPaint(() => {
             measuring = undefined;
             const website = document.querySelector("#cowebsites-container > div:first-child");
             const parentOrigin = platformOrigin();
-            if (!website || !parentOrigin || !get(sidePanelReservedStore)) return;
+            if (!website || !parentOrigin || !reservedNow()) return;
             if (website.getBoundingClientRect().width < WEBSITE_MIN_WIDTH)
                 window.parent.postMessage({ type: "quanta_wa_hide_side_panel" }, parentOrigin);
         });
