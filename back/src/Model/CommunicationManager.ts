@@ -403,9 +403,18 @@ export class CommunicationManager implements ICommunicationManager {
         const users = this.space.getAllUsers();
         return this.policy.shouldTransition(
             this.lifecycleManager.getCurrentState().communicationType as CommunicationType,
-            users.length,
+            this.countForTransport(users.length),
             users.filter((user) => user.cpuLimited).length,
         );
+    }
+
+    /**
+     * quanta: a broadcast (megaphone, podium) goes out through LiveKit from its first speaker. Its audience is not counted
+     * among the users, so one teacher speaking to a whole class stayed peer-to-peer, a stream per listener, where the
+     * lesson's recording (LiveKit egress) never hears it.
+     */
+    private countForTransport(count: number): number {
+        return this.space.filterType !== FilterType.ALL_USERS && count > 0 ? count + 1_000_000 : count;
     }
 
     /** What the policy would transition to, on the state of the space right now. */
